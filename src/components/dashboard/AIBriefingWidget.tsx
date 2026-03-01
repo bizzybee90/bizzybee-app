@@ -83,7 +83,7 @@ export const AIBriefingWidget = () => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-2">
               <h3 className="font-semibold text-amber-900 dark:text-amber-100">
-                🐝 {getGreeting()}!
+                {getGreeting()}!
               </h3>
               <Button 
                 variant="ghost" 

@@ -13,7 +13,7 @@ export function useReviewFeedback() {
 
   const celebratePatternLearned = (domain: string) => {
     toast({
-      title: "🐝 Pattern learned!",
+      title: "Pattern learned",
       description: `BizzyBee will handle emails from @${domain} automatically from now on.`,
       duration: 4000,
     });
@@ -21,7 +21,7 @@ export function useReviewFeedback() {
 
   const celebrateQueueComplete = (count: number) => {
     toast({
-      title: "🎉 All caught up!",
+      title: "All caught up",
       description: `You reviewed ${count} emails. BizzyBee is getting smarter!`,
       duration: 5000,
     });
@@ -29,7 +29,7 @@ export function useReviewFeedback() {
 
   const celebrateMilestone = (rulesLearned: number) => {
     toast({
-      title: "🐝 Milestone reached!",
+      title: "Milestone reached",
       description: `BizzyBee has learned ${rulesLearned} patterns from your input.`,
       duration: 4000,
     });

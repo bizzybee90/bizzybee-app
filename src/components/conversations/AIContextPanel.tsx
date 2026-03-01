@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Conversation } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
 interface AIContextPanelProps {
   conversation: Conversation;
@@ -15,10 +15,10 @@ export const AIContextPanel = ({ conversation, onUpdate, onUseDraft }: AIContext
 
   const getSentimentEmoji = (sentiment: string | null) => {
     switch (sentiment) {
-      case 'positive': return '😊';
-      case 'negative': return '😟';
-      case 'frustrated': return '😤';
-      case 'neutral': return '😐';
+      case 'positive': return null;
+      case 'negative': return null;
+      case 'frustrated': return null;
+      case 'neutral': return null;
       default: return null;
     }
   };
@@ -37,7 +37,7 @@ export const AIContextPanel = ({ conversation, onUpdate, onUseDraft }: AIContext
       onClick={() => setExpanded(!expanded)}
       className="w-full text-left flex items-start gap-2 px-1 py-1.5 rounded-lg hover:bg-muted/30 transition-colors group"
     >
-      <span className="text-xs flex-shrink-0 mt-0.5 opacity-60">✨</span>
+      <Sparkles className="h-3 w-3 flex-shrink-0 mt-0.5 opacity-60" />
       <div className="min-w-0 flex-1">
         <p className={cn(
           "text-xs text-muted-foreground leading-relaxed",

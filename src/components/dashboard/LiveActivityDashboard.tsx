@@ -179,9 +179,9 @@ export const LiveActivityDashboard = () => {
 
   const getSentimentIcon = (sentiment: string | null) => {
     switch (sentiment) {
-      case 'positive': return '😊';
-      case 'negative': return '😟';
-      default: return '😐';
+      case 'positive': return '';
+      case 'negative': return '';
+      default: return '';
     }
   };
 
@@ -234,23 +234,23 @@ export const LiveActivityDashboard = () => {
           </div>
           <div className="space-y-2 pt-4 border-t">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">📧 Email</span>
+              <span className="text-muted-foreground">Email</span>
               <span className="font-semibold">{stats.unreadByChannel.email}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">💬 WhatsApp</span>
+              <span className="text-muted-foreground">WhatsApp</span>
               <span className="font-semibold">{stats.unreadByChannel.whatsapp}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">📱 SMS</span>
+              <span className="text-muted-foreground">SMS</span>
               <span className="font-semibold">{stats.unreadByChannel.sms}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">📞 Phone</span>
+              <span className="text-muted-foreground">Phone</span>
               <span className="font-semibold">{stats.unreadByChannel.phone}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">💻 Web Chat</span>
+              <span className="text-muted-foreground">Web Chat</span>
               <span className="font-semibold">{stats.unreadByChannel.webchat}</span>
             </div>
           </div>
@@ -406,17 +406,14 @@ export const LiveActivityDashboard = () => {
         <h3 className="text-lg font-semibold mb-4">Customer Sentiment</h3>
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
-            <div className="text-3xl mb-2">😊</div>
             <p className="text-2xl font-bold text-green-600">{stats.positiveCount}</p>
             <p className="text-sm text-muted-foreground">Positive</p>
           </div>
           <div className="text-center">
-            <div className="text-3xl mb-2">😐</div>
             <p className="text-2xl font-bold">{stats.neutralCount}</p>
             <p className="text-sm text-muted-foreground">Neutral</p>
           </div>
           <div className="text-center">
-            <div className="text-3xl mb-2">😟</div>
             <p className="text-2xl font-bold text-red-600">{stats.negativeCount}</p>
             <p className="text-sm text-muted-foreground">Negative</p>
           </div>

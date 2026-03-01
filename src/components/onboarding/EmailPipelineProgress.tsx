@@ -337,7 +337,7 @@ export function EmailPipelineProgress({
     <div className="space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold text-foreground">🐝 Setting Up Your AI Assistant</h2>
+        <h2 className="text-xl font-semibold text-foreground">Setting Up Your AI Assistant</h2>
         <p className="text-sm text-muted-foreground">
           Teaching BizzyBee to understand your emails.
           <br />

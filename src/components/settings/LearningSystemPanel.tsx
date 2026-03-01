@@ -182,19 +182,19 @@ export function LearningSystemPanel() {
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-green-600">
               {lastResult.seeded !== undefined && (
-                <span>✓ {lastResult.seeded} rules seeded</span>
+                <span>{lastResult.seeded} rules seeded</span>
               )}
               {lastResult.learned !== undefined && (
-                <span>✓ {lastResult.learned} patterns learned</span>
+                <span>{lastResult.learned} patterns learned</span>
               )}
               {lastResult.skipped !== undefined && (
-                <span>○ {lastResult.skipped} already existed</span>
+                <span>{lastResult.skipped} already existed</span>
               )}
               {lastResult.statsUpdated !== undefined && (
-                <span>✓ {lastResult.statsUpdated} stats updated</span>
+                <span>{lastResult.statsUpdated} stats updated</span>
               )}
               {lastResult.retriaged !== undefined && (
-                <span>✓ {lastResult.retriaged} emails re-sorted</span>
+                <span>{lastResult.retriaged} emails re-sorted</span>
               )}
             </div>
           </div>
@@ -294,7 +294,7 @@ export function LearningSystemPanel() {
           </div>
           {(stats?.uniqueRulesCount || 0) === 0 && (
             <p className="text-xs text-amber-600 mt-2">
-              ⚠️ No sender rules configured. Click "Bootstrap Now" first to add rules.
+              No sender rules configured. Click "Bootstrap Now" first to add rules.
             </p>
           )}
         </div>

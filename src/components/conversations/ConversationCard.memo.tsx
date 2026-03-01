@@ -213,28 +213,18 @@ const ConversationCardComponent = ({ conversation, selected, onClick, onUpdate }
         <div
           onClick={handleClick}
           className={cn(
-            "relative cursor-pointer transition-all duration-300 rounded-[22px] overflow-hidden",
-            "bg-card border border-border/30 hover:border-primary/30",
-            "apple-shadow hover:apple-shadow-lg spring-press",
-            selected && "border-primary/50 apple-shadow-lg bg-gradient-to-br from-primary/8 via-primary/4 to-card"
+            "relative cursor-pointer transition-all duration-200 ease-out overflow-hidden",
+            "bg-card",
+            selected && "bg-primary/4"
           )}
           style={{
+            borderRadius: 'var(--radius-lg)',
+            border: selected ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+            boxShadow: selected ? 'var(--shadow-elevated)' : 'var(--shadow-card)',
             transform: isSwiping ? `translateX(${swipeDistance}px)` : 'translateX(0)',
-            transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: isSwiping ? 'none' : 'all 0.2s ease-out',
           }}
         >
-        {/* Priority/Status Accent Bar */}
-        <div 
-          className={cn(
-            "absolute top-0 left-0 right-0 h-1",
-            conversation.status === 'resolved' 
-              ? "bg-green-500" 
-              : conversation.priority 
-                ? getPriorityBarColor(conversation.priority)
-                : "bg-muted"
-          )}
-        />
-        
         {/* Overdue Badge */}
         {isOverdue && (
           <Badge variant="priority-urgent" className="absolute top-4 right-4 text-[11px] font-bold uppercase tracking-wide px-3 py-1.5 rounded-full shadow-sm">
@@ -275,7 +265,7 @@ const ConversationCardComponent = ({ conversation, selected, onClick, onUpdate }
             </Badge>
 
             {hasDraft && (
-              <Badge variant="secondary" className="rounded-full text-xs font-semibold px-3 py-1.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1.5">
+              <Badge variant="secondary" className="rounded-full text-xs font-semibold px-3 py-1.5 bg-[#34C759]/10 text-[#34C759] border border-[#34C759]/20 flex items-center gap-1.5">
                 <FileEdit className="h-3 w-3" />
                 Draft
               </Badge>
@@ -304,24 +294,16 @@ const ConversationCardComponent = ({ conversation, selected, onClick, onUpdate }
     <div
       onClick={handleClick}
       className={cn(
-        "relative cursor-pointer transition-all duration-300 ease-out rounded-[22px] mb-3 overflow-hidden",
-        "bg-card border border-border/30 hover:border-primary/30",
-        "apple-shadow hover:apple-shadow-lg spring-press",
-        selected && "border-primary/50 apple-shadow-lg bg-gradient-to-br from-primary/8 via-primary/4 to-card"
+        "relative cursor-pointer transition-all duration-200 ease-out mb-3 overflow-hidden",
+        "bg-card",
+        selected && "bg-primary/4"
       )}
+      style={{
+        borderRadius: 'var(--radius-lg)',
+        border: selected ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+        boxShadow: selected ? 'var(--shadow-elevated)' : 'var(--shadow-card)',
+      }}
     >
-      {/* Priority/Status Accent Bar */}
-      <div 
-        className={cn(
-          "absolute top-0 left-0 right-0 h-1",
-          conversation.status === 'resolved' 
-            ? "bg-green-500" 
-            : conversation.priority 
-              ? getPriorityBarColor(conversation.priority)
-              : "bg-muted"
-        )}
-      />
-      
       {/* Overdue Badge */}
       {isOverdue && (
         <Badge variant="priority-urgent" className="absolute top-4 right-4 text-[11px] font-bold uppercase tracking-wide px-3 py-1.5 rounded-full shadow-sm">
@@ -362,7 +344,7 @@ const ConversationCardComponent = ({ conversation, selected, onClick, onUpdate }
           </Badge>
 
           {hasDraft && (
-            <Badge variant="secondary" className="rounded-full text-xs font-semibold px-3 py-1.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1.5">
+            <Badge variant="secondary" className="rounded-full text-xs font-semibold px-3 py-1.5 bg-[#34C759]/10 text-[#34C759] border border-[#34C759]/20 flex items-center gap-1.5">
               <FileEdit className="h-3 w-3" />
               Draft
             </Badge>

@@ -134,11 +134,11 @@ export const DraftDisplay = ({
 
   const getIssueTypeLabel = (type: string) => {
     switch (type) {
-      case 'hallucination': return '🔮 Hallucination';
-      case 'incorrect_fact': return '❌ Incorrect Fact';
-      case 'unsupported_claim': return '⚠️ Unsupported Claim';
-      case 'tone_mismatch': return '🎭 Tone Mismatch';
-      case 'missing_info': return '📝 Missing Info';
+      case 'hallucination': return 'Hallucination';
+      case 'incorrect_fact': return 'Incorrect Fact';
+      case 'unsupported_claim': return 'Unsupported Claim';
+      case 'tone_mismatch': return 'Tone Mismatch';
+      case 'missing_info': return 'Missing Info';
       default: return type;
     }
   };

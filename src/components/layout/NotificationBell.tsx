@@ -110,13 +110,13 @@ export const NotificationBell = () => {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'ai_summary':
-        return '📬';
+        return '';
       case 'escalation':
-        return '🚨';
+        return '';
       case 'sla_warning':
-        return '⏰';
+        return '';
       default:
-        return '🔔';
+        return '';
     }
   };
 

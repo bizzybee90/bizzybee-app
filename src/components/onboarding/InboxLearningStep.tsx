@@ -119,10 +119,10 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
 
   const getToneLabel = (tone: string) => {
     const labels: Record<string, string> = {
-      friendly: '😊 Friendly & Approachable',
-      professional: '💼 Professional & Polished',
-      casual: '👋 Casual & Relaxed',
-      formal: '📋 Formal & Business-like',
+      friendly: 'Friendly & Approachable',
+      professional: 'Professional & Polished',
+      casual: 'Casual & Relaxed',
+      formal: 'Formal & Business-like',
     };
     return labels[tone] || tone;
   };

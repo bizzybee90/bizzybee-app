@@ -26,7 +26,7 @@ export const useSLANotifications = () => {
         // Warn at 15 minutes
         if (minutesRemaining > 0 && minutesRemaining <= 15 && minutesRemaining > 14) {
           toast({
-            title: "⚠️ SLA Warning",
+            title: "SLA Warning",
             description: `${conv.customer?.name || 'Conversation'} will breach SLA in ${Math.round(minutesRemaining)} minutes`,
             variant: "destructive",
           });
@@ -43,7 +43,7 @@ export const useSLANotifications = () => {
         // Alert on breach
         if (minutesRemaining <= 0 && minutesRemaining > -1) {
           toast({
-            title: "🚨 SLA BREACHED",
+            title: "SLA BREACHED",
             description: `${conv.customer?.name || 'Conversation'} has breached SLA!`,
             variant: "destructive",
           });

@@ -144,11 +144,11 @@ export const AIActivityWidget = () => {
 
             {/* Status Message */}
             <p className="text-xs text-muted-foreground">
-              {metrics.resolutionRate >= 80 
-                ? "✅ Excellent performance"
+              {metrics.resolutionRate >= 80
+                ? "Excellent performance"
                 : metrics.resolutionRate >= 60
-                  ? "⚠️ Good, room for improvement"
-                  : "🚨 Needs attention"}
+                  ? "Good, room for improvement"
+                  : "Needs attention"}
             </p>
           </div>
 

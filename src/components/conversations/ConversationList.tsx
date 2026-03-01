@@ -430,7 +430,7 @@ export const ConversationList = ({ selectedId, onSelect, filter = 'all-open', on
           <div className="flex items-center gap-2 text-sm">
             <Sparkles className="h-4 w-4 text-primary" />
             <span className="text-foreground/80">
-              🐝 BizzyBee cleared <span className="font-semibold text-primary">{autoHandledCount}</span> messages for you today
+              BizzyBee cleared <span className="font-semibold text-primary">{autoHandledCount}</span> messages for you today
             </span>
           </div>
         </div>
@@ -500,11 +500,11 @@ export const ConversationList = ({ selectedId, onSelect, filter = 'all-open', on
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="sla_urgent">🚨 SLA Urgent First</SelectItem>
-            <SelectItem value="newest">🆕 Newest First</SelectItem>
-            <SelectItem value="oldest">⏰ Oldest First</SelectItem>
-            <SelectItem value="priority_high">🔴 High Priority First</SelectItem>
-            <SelectItem value="priority_low">🟢 Low Priority First</SelectItem>
+            <SelectItem value="sla_urgent">SLA Urgent First</SelectItem>
+            <SelectItem value="newest">Newest First</SelectItem>
+            <SelectItem value="oldest">Oldest First</SelectItem>
+            <SelectItem value="priority_high">High Priority First</SelectItem>
+            <SelectItem value="priority_low">Low Priority First</SelectItem>
           </SelectContent>
         </Select>
       </div>

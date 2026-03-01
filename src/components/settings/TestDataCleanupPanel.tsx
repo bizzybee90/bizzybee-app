@@ -173,7 +173,7 @@ export const TestDataCleanupPanel = () => {
       setNuclearResult({ success: true, result: data.result });
 
       toast({
-        title: '☢️ Nuclear Reset Complete',
+        title: 'Nuclear Reset Complete',
         description: `Cleared ${data.result?.messages_cleared?.toLocaleString() || 0} messages, ${data.result?.conversations_cleared?.toLocaleString() || 0} conversations, ${data.result?.customers_cleared?.toLocaleString() || 0} customers`,
       });
 
@@ -352,7 +352,7 @@ export const TestDataCleanupPanel = () => {
 
               {companyName && (
                 <p className="text-xs text-muted-foreground">
-                  ✓ AI will classify invoices addressed to "{companyName}" as legitimate.
+                  AI will classify invoices addressed to "{companyName}" as legitimate.
                 </p>
               )}
             </div>
@@ -501,7 +501,7 @@ export const TestDataCleanupPanel = () => {
             <Bomb className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
             <div className="space-y-3 flex-1">
               <div>
-                <h3 className="text-lg font-semibold text-red-700">☢️ Nuclear Reset</h3>
+                <h3 className="text-lg font-semibold text-red-700">Nuclear Reset</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   <strong>For 8M+ records that won't delete.</strong> Uses TRUNCATE to instantly 
                   clear ALL messages, conversations, customers, and import data. This bypasses 
@@ -511,7 +511,7 @@ export const TestDataCleanupPanel = () => {
 
               {nuclearResult?.success && (
                 <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-                  <p className="text-sm text-green-700 font-medium">✅ Nuclear reset complete!</p>
+                  <p className="text-sm text-green-700 font-medium">Nuclear reset complete!</p>
                   <p className="text-xs text-green-600 mt-1">
                     Cleared {nuclearResult.result?.messages_cleared?.toLocaleString()} messages, 
                     {nuclearResult.result?.conversations_cleared?.toLocaleString()} conversations, 
@@ -531,7 +531,7 @@ export const TestDataCleanupPanel = () => {
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-red-600 flex items-center gap-2">
                       <Bomb className="h-5 w-5" />
-                      ☢️ Nuclear Reset - Point of No Return
+                      Nuclear Reset - Point of No Return
                     </AlertDialogTitle>
                     <AlertDialogDescription className="space-y-3">
                       <p className="font-medium text-foreground">

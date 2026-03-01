@@ -121,12 +121,12 @@ export const ConversationOrderingPanel = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sla_urgent">🚨 SLA Urgent First</SelectItem>
-                <SelectItem value="newest">🆕 Newest First</SelectItem>
-                <SelectItem value="oldest">⏰ Oldest First</SelectItem>
-                <SelectItem value="priority_high">🔴 High Priority First</SelectItem>
-                <SelectItem value="priority_low">🟢 Low Priority First</SelectItem>
-                <SelectItem value="custom">⚙️ Custom Rules (below)</SelectItem>
+                <SelectItem value="sla_urgent">SLA Urgent First</SelectItem>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="priority_high">High Priority First</SelectItem>
+                <SelectItem value="priority_low">Low Priority First</SelectItem>
+                <SelectItem value="custom">Custom Rules (below)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
@@ -214,7 +214,7 @@ export const ConversationOrderingPanel = () => {
       <Card className="border-blue-500/20 bg-blue-500/5">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            💡 How Custom Ordering Works
+            How Custom Ordering Works
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">

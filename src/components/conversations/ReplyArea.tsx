@@ -194,7 +194,8 @@ export const ReplyArea = ({ conversationId, channel, aiDraftResponse, onSend, ex
       <div className="flex-shrink-0 px-4 pb-4">
         <button
           onClick={() => setIsCollapsed(false)}
-          className="mt-auto border border-slate-200 rounded-full py-3 px-4 text-muted-foreground cursor-text shadow-sm bg-white hover:border-purple-300 transition-all flex items-center gap-3 w-full text-left text-sm"
+          className="mt-auto rounded-full py-3 px-4 cursor-text bg-card flex items-center gap-3 w-full text-left text-sm transition-all duration-200"
+          style={{ border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)', color: 'var(--text-secondary)' }}
         >
           <Reply className="w-4 h-4" />
           Reply to {senderName || 'sender'}...
@@ -212,13 +213,13 @@ export const ReplyArea = ({ conversationId, channel, aiDraftResponse, onSend, ex
       <div className={cn(
         "relative",
         !useMobileStyle && "bg-card rounded-2xl",
-        !useMobileStyle && replyBody && draftUsed && "ring-1 ring-inset ring-purple-300 shadow-sm focus-within:ring-2 focus-within:ring-purple-500 transition-all",
-        !useMobileStyle && !(replyBody && draftUsed) && "ring-1 ring-inset ring-border shadow-sm focus-within:ring-2 focus-within:ring-primary transition-all"
+        !useMobileStyle && "ring-1 ring-inset ring-border shadow-sm focus-within:ring-2 focus-within:ring-primary/30 transition-all"
       )}>
         {/* Collapse toggle */}
         <button
           onClick={() => setIsCollapsed(true)}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 bg-white rounded-md p-1 z-10"
+          className="absolute top-4 right-4 bg-card rounded-md p-1 z-10 transition-colors duration-200"
+          style={{ color: 'var(--text-tertiary)' }}
           title="Collapse"
         >
           <Minimize2 className="w-4 h-4" />
@@ -233,8 +234,8 @@ export const ReplyArea = ({ conversationId, channel, aiDraftResponse, onSend, ex
             </TabsList>
             {replyBody && draftUsed && (
               <div className="flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3 text-purple-500" />
-                <span className="text-[11px] font-medium text-purple-600 dark:text-purple-400">AI pre-filled draft</span>
+                <Sparkles className="h-3 w-3" style={{ color: 'var(--system-blue)' }} />
+                <span className="text-[11px] font-medium" style={{ color: 'var(--system-blue)' }}>AI pre-filled draft</span>
               </div>
             )}
           </div>
@@ -258,7 +259,7 @@ export const ReplyArea = ({ conversationId, channel, aiDraftResponse, onSend, ex
                   }}
                   className={cn(
                     useMobileStyle ? "min-h-[80px] text-sm" : "min-h-[56px] text-base",
-                    "w-full resize-none rounded-xl border-0 bg-purple-50/30 dark:bg-purple-500/5 focus-visible:ring-1 focus-visible:ring-purple-300/50 leading-relaxed placeholder:text-muted-foreground/50 transition-all duration-200 flex-1 overflow-y-auto"
+                    "w-full resize-none rounded-xl border-0 bg-muted/30 focus-visible:ring-1 focus-visible:ring-primary/20 leading-relaxed placeholder:text-muted-foreground/50 transition-all duration-200 flex-1 overflow-y-auto"
                   )}
                 />
                 <div className="flex flex-col gap-1 mb-1">
@@ -276,9 +277,10 @@ export const ReplyArea = ({ conversationId, channel, aiDraftResponse, onSend, ex
                   <Button
                     onClick={handleSendReply}
                     disabled={sending || uploading || (!replyBody.trim() && attachments.length === 0)}
-                    className="rounded-xl bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 font-medium shadow-sm flex-shrink-0 gap-1.5"
+                    className="rounded-full text-white px-5 py-2.5 font-medium flex-shrink-0 gap-1.5"
+                    style={{ backgroundColor: 'var(--accent-primary)', boxShadow: 'var(--shadow-card)' }}
                   >
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <Send className="h-3.5 w-3.5" />
                     {draftUsed ? 'Approve & Send' : 'Send'}
                   </Button>
                 </div>

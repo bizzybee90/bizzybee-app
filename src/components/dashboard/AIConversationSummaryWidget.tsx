@@ -138,10 +138,10 @@ export const AIConversationSummaryWidget = () => {
 
   const getSentimentEmoji = (sentiment: string | null) => {
     switch (sentiment?.toLowerCase()) {
-      case 'positive': return '😊';
-      case 'negative': return '😟';
-      case 'neutral': return '😐';
-      default: return '💬';
+      case 'positive': return '';
+      case 'negative': return '';
+      case 'neutral': return '';
+      default: return '';
     }
   };
 

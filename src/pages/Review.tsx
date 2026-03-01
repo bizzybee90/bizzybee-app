@@ -403,7 +403,7 @@ export default function Review() {
         const conv = unreviewedQueue.find(c => c.id === variables.conversationId);
         const senderName = conv ? getSenderName(conv) : 'this sender';
         toast({
-          title: '🐝 Learned',
+          title: 'Learned',
           description: `Future emails from ${senderName} will be classified as ${result.newCategory.replace(/_/g, ' ')}`,
           duration: 3000,
         });
@@ -547,7 +547,7 @@ export default function Review() {
               <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                 <PartyPopper className="h-8 w-8 text-green-600" />
               </div>
-              <h2 className="text-lg font-semibold mb-2">All caught up! 🎉</h2>
+              <h2 className="text-lg font-semibold mb-2">All caught up!</h2>
               <p className="text-sm text-muted-foreground">BizzyBee classified {weeklyStats?.totalProcessed || 0} emails with {weeklyStats?.accuracy || 100}% accuracy this week.</p>
             </div>
           </div>
@@ -976,10 +976,10 @@ export default function Review() {
                           : 'border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400'
                     )}>
                       {currentConversation.decision_bucket === 'auto_handled' || !currentConversation.requires_reply
-                        ? '✓ Auto-handled'
+                        ? 'Auto-handled'
                         : currentConversation.decision_bucket === 'act_now'
-                          ? '🔴 Escalated'
-                          : '⚡ Needs Reply'}
+                          ? 'Escalated'
+                          : 'Needs Reply'}
                     </Badge>
                   </div>
                 </div>

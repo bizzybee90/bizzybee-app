@@ -225,10 +225,10 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
 
   const getSentimentLabel = (s: string | null) => {
     switch (s) {
-      case 'positive': return { emoji: '😊', label: 'Positive', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-      case 'negative': return { emoji: '😟', label: 'Negative', color: 'bg-red-50 text-red-700 border-red-200' };
-      case 'frustrated': return { emoji: '😤', label: 'Frustrated', color: 'bg-orange-50 text-orange-700 border-orange-200' };
-      case 'neutral': return { emoji: '😐', label: 'Neutral', color: 'bg-slate-50 text-slate-600 border-slate-200' };
+      case 'positive': return { emoji: '', label: 'Positive', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+      case 'negative': return { emoji: '', label: 'Negative', color: 'bg-red-50 text-red-700 border-red-200' };
+      case 'frustrated': return { emoji: '', label: 'Frustrated', color: 'bg-orange-50 text-orange-700 border-orange-200' };
+      case 'neutral': return { emoji: '', label: 'Neutral', color: 'bg-slate-50 text-slate-600 border-slate-200' };
       default: return null;
     }
   };
@@ -307,7 +307,7 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
             <div className="flex items-center gap-2 flex-wrap">
               {sentiment && (
                 <span className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border", sentiment.color)}>
-                  {sentiment.emoji} {sentiment.label}
+                  {sentiment.label}
                 </span>
               )}
               {conversation.category && (

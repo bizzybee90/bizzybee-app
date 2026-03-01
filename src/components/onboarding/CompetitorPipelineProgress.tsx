@@ -528,7 +528,7 @@ export function CompetitorPipelineProgress({
         >
           {stageStatuses.discover === 'done' && stats.sitesDiscovered > 0 && (
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-sm text-success">✓ {stats.sitesDiscovered} competitors found</p>
+              <p className="text-sm text-success">{stats.sitesDiscovered} competitors found</p>
               <CompetitorListDialog jobId={jobId} workspaceId={workspaceId} serviceArea={serviceArea} nicheQuery={nicheQuery} />
             </div>
           )}
@@ -594,7 +594,7 @@ export function CompetitorPipelineProgress({
               {/* Helpful tip after 30 seconds */}
               {elapsedSeconds > 30 && (
                 <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
-                  💡 This step uses Google Maps to find real businesses. It typically takes 2-4 minutes to complete.
+                  This step uses Google Maps to find real businesses. It typically takes 2-4 minutes to complete.
                   {isStale && ' The service may be busy - please wait a bit longer.'}
                 </p>
               )}
@@ -634,7 +634,7 @@ export function CompetitorPipelineProgress({
           )}
           {stageStatuses.validate === 'done' && (
             <p className="text-sm text-success">
-              ✓ {stats.sitesValidated} valid websites confirmed
+              {stats.sitesValidated} valid websites confirmed
             </p>
           )}
         </StageCard>
@@ -678,7 +678,7 @@ export function CompetitorPipelineProgress({
           )}
           {stageStatuses.scrape === 'done' && (
             <p className="text-sm text-success">
-              ✓ {stats.sitesScraped} sites • {stats.pagesScraped} pages scraped
+              {stats.sitesScraped} sites, {stats.pagesScraped} pages scraped
             </p>
           )}
         </StageCard>
@@ -711,7 +711,7 @@ export function CompetitorPipelineProgress({
                 </span>
                 <span>
                   {stats.faqsExtracted > 0 ? `${stats.faqsExtracted} FAQs extracted` : 'Processing content...'}
-                  {stats.faqsAfterDedup > 0 && ` → ${stats.faqsAfterDedup} after dedup`}
+                  {stats.faqsAfterDedup > 0 && `, ${stats.faqsAfterDedup} after dedup`}
                 </span>
               </div>
               
@@ -784,7 +784,7 @@ export function CompetitorPipelineProgress({
           )}
           {stageStatuses.extract === 'done' && (
             <p className="text-sm text-success">
-              ✓ {stats.faqsExtracted} FAQs → {stats.faqsAfterDedup} unique
+              {stats.faqsExtracted} FAQs, {stats.faqsAfterDedup} unique
             </p>
           )}
         </StageCard>
@@ -821,7 +821,7 @@ export function CompetitorPipelineProgress({
           )}
           {stageStatuses.refine === 'done' && (
             <p className="text-sm text-success">
-              ✓ {stats.faqsAdded} FAQs added to knowledge base
+              {stats.faqsAdded} FAQs added to knowledge base
             </p>
           )}
         </StageCard>

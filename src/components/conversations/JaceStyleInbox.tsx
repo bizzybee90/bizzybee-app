@@ -401,7 +401,7 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
             <div className="flex items-center gap-2 text-sm">
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-foreground/80">
-                🐝 BizzyBee cleared <span className="font-semibold text-primary">{autoHandledCount}</span> today
+                BizzyBee cleared <span className="font-semibold text-primary">{autoHandledCount}</span> today
               </span>
             </div>
           )}

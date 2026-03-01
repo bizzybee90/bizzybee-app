@@ -233,7 +233,7 @@ export function DraftVerificationBadge({
                         </p>
                         {issue.suggestion && (
                           <p className="mt-1 text-xs text-primary">
-                            💡 {issue.suggestion}
+                            {issue.suggestion}
                           </p>
                         )}
                       </div>
@@ -244,7 +244,7 @@ export function DraftVerificationBadge({
             </ScrollArea>
           ) : localStatus === 'passed' ? (
             <p className="text-sm text-muted-foreground">
-              ✓ No issues found. Draft is ready to send.
+              No issues found. Draft is ready to send.
             </p>
           ) : !localStatus ? (
             <p className="text-sm text-muted-foreground">

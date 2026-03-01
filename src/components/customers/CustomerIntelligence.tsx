@@ -239,7 +239,7 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
           <div className="h-3 w-4/5 bg-muted rounded animate-pulse" />
         </div>
         <p className="text-xs text-center font-medium bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500 animate-pulse">
-          ✨ AI analysing customer history...
+          AI analysing customer history...
         </p>
       </div>
     );
@@ -262,7 +262,7 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
           <div className="h-3 w-4/5 bg-muted rounded animate-pulse" />
         </div>
         <p className="text-xs text-center font-medium bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500 animate-pulse">
-          {enriching ? '✨ AI analysing customer history...' : '✨ Building intelligence profile...'}
+          {enriching ? 'AI analysing customer history...' : 'Building intelligence profile...'}
         </p>
       </div>
     );

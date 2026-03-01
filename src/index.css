@@ -342,6 +342,12 @@ All colors MUST be HSL.
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Base transition for all interactive elements */
+  button, a, input, select, textarea,
+  [role="button"], [role="tab"], [role="menuitem"] {
+    transition: all 200ms ease;
+  }
 }
 
 /* Nuclear font override for raw HTML emails */
