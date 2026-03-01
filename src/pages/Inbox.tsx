@@ -58,25 +58,24 @@ const Inbox = () => {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50/50 overflow-hidden">
-      {/* Stats Bar */}
-      <div className="absolute top-0 left-0 right-0 h-8 bg-card border-b border-border flex items-center px-4 gap-4 text-xs text-muted-foreground z-10">
-        <Button variant="ghost" size="sm" className="h-6 px-2 gap-1 text-xs" onClick={() => navigate('/')}>
+    <div className="flex h-screen w-full overflow-hidden" style={{ backgroundColor: 'var(--bg-canvas)' }}>
+      {/* Stats Bar — glassmorphic */}
+      <div className="absolute top-0 left-0 right-0 h-12 glass-header flex items-center px-4 gap-4 text-[13px] z-10" style={{ color: 'var(--text-secondary)' }}>
+        <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[13px]" style={{ color: 'var(--accent-primary)' }} onClick={() => navigate('/')}>
           <ArrowLeft className="h-3.5 w-3.5" />
-          Home
+          Back
         </Button>
-        <span className="text-border">|</span>
-        <span><strong className="text-foreground">{counts?.inbox?.toLocaleString() || 0}</strong> in inbox</span>
-        <span className="text-border">|</span>
-        <span><strong className="text-foreground">{counts?.needsReply?.toLocaleString() || 0}</strong> need reply</span>
-        <span className="text-border">|</span>
-        <span><strong className="text-foreground">{counts?.aiReview?.toLocaleString() || 0}</strong> AI review</span>
-        <span className="text-border">|</span>
-        <span><strong className="text-foreground">{counts?.unread?.toLocaleString() || 0}</strong> unread</span>
+        <span className="font-semibold text-[17px]" style={{ color: 'var(--text-primary)' }}>Inbox</span>
+        <div className="flex-1" />
+        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.inbox?.toLocaleString() || 0}</strong> in inbox</span>
+        <span style={{ color: 'var(--separator)' }}>·</span>
+        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.needsReply?.toLocaleString() || 0}</strong> need reply</span>
+        <span style={{ color: 'var(--separator)' }}>·</span>
+        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.unread?.toLocaleString() || 0}</strong> unread</span>
       </div>
 
       {/* Main Layout below stats bar */}
-      <div className="flex w-full h-full pt-8">
+      <div className="flex w-full h-full pt-12">
         <InboxSidebar
           activeFolder={folder}
           onFolderChange={setFolder}

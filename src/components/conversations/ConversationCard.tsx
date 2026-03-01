@@ -12,14 +12,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { TriageQuickActions } from './TriageQuickActions';
 
-// Status dot color based on decision bucket / status
+// Status dot color based on decision bucket / status — iOS system colours
 const getStatusDotColor = (bucket: string | null | undefined, status: string | null | undefined): string => {
-  if (bucket === 'act_now') return 'bg-destructive';
-  if (bucket === 'quick_win') return 'bg-amber-500';
-  if (bucket === 'auto_handled') return 'bg-green-500';
-  if (bucket === 'wait') return 'bg-blue-400';
-  if (status === 'resolved') return 'bg-green-500';
-  return 'bg-muted-foreground/40';
+  if (bucket === 'act_now') return 'bg-[#FF3B30]';
+  if (bucket === 'quick_win') return 'bg-[#FF9500]';
+  if (bucket === 'auto_handled') return 'bg-[#34C759]';
+  if (bucket === 'wait') return 'bg-[#007AFF]';
+  if (status === 'resolved') return 'bg-[#34C759]';
+  return 'bg-[#AEAEB2]';
 };
 
 // Short relative time: "2m", "1h", "3d"

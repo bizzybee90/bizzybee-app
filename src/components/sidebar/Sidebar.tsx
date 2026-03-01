@@ -145,12 +145,13 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
           to={to}
           end={end}
           onClick={onNavigate}
-          className="flex items-center justify-center w-10 h-10 rounded-xl text-foreground hover:bg-accent/50 transition-all relative"
-          activeClassName="bg-primary/10 text-primary"
+          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all relative"
+          activeClassName="text-primary"
+          style={{ color: 'var(--text-secondary)' }}
         >
-          <Icon className={`h-5 w-5 ${color || 'text-muted-foreground'}`} />
+          <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
           {count ? (
-            <span className="absolute -top-0.5 -right-0.5 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5 leading-none">
+            <span className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none" style={{ backgroundColor: 'var(--system-red)' }}>
               {count > 99 ? '99+' : count}
             </span>
           ) : null}
@@ -164,12 +165,12 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center h-full w-16 py-3 gap-1">
+      <div className="flex flex-col items-center h-full w-16 py-3 gap-1" style={{ backgroundColor: 'var(--bg-secondary)' }}>
         {/* Logo */}
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="mb-3 cursor-pointer hover:scale-110 transition-transform">
-              <img src={bizzybeelogo} alt="BizzyBee" className="h-10 w-10 object-contain" />
+              <img src={bizzybeelogo} alt="BizzyBee" className="h-8 w-8 object-contain" />
             </div>
           </TooltipTrigger>
           <TooltipContent side="right"><p className="font-semibold">BizzyBee</p></TooltipContent>
@@ -195,7 +196,7 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
         <div className="flex-1" />
 
         {/* Secondary nav - bottom anchored */}
-        <nav className="flex flex-col items-center gap-1 border-t border-border/50 pt-2">
+        <nav className="flex flex-col items-center gap-1 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
           <IconRailItem to="/analytics" icon={BarChart3} label="Analytics" />
           <IconRailItem to="/knowledge-base" icon={BookOpen} label="Knowledge Base" />
           <IconRailItem to="/settings" icon={Settings} label="Settings" />

@@ -18,36 +18,80 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 220 17% 97%;
-    --foreground: 220 15% 12%;
+    /* ── Shared BizzyBee Design Tokens ── */
+    /* Backgrounds */
+    --bg-canvas: #FFFFFF;
+    --bg-secondary: #F5F5F7;
+    --bg-grouped: #F2F2F7;
+    --bg-elevated: #FFFFFF;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 15% 12%;
+    /* Text */
+    --text-primary: #1D1D1F;
+    --text-secondary: #86868B;
+    --text-tertiary: #AEAEB2;
+
+    /* Brand */
+    --accent-primary: #C4973B;
+    --accent-hover: #B8860B;
+
+    /* System Colours */
+    --system-red: #FF3B30;
+    --system-green: #34C759;
+    --system-orange: #FF9500;
+    --system-blue: #007AFF;
+    --system-purple: #AF52DE;
+
+    /* Borders & Separators */
+    --border-subtle: rgba(0, 0, 0, 0.04);
+    --border-input: rgba(0, 0, 0, 0.12);
+    --separator: rgba(60, 60, 67, 0.12);
+
+    /* Shadows */
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
+    --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
+
+    /* Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-pill: 980px;
+
+    /* Font */
+    --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+
+    /* ── Tailwind HSL Mapping (synced with tokens above) ── */
+    --background: 240 11% 96%;       /* #F5F5F7 — app canvas */
+    --foreground: 240 3% 12%;        /* #1D1D1F — primary text */
+
+    --card: 0 0% 100%;               /* #FFFFFF — elevated cards */
+    --card-foreground: 240 3% 12%;   /* #1D1D1F */
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 12%;
+    --popover-foreground: 240 3% 12%;
 
-    --primary: 35 55% 55%;
+    --primary: 40 54% 50%;           /* #C4973B — brand accent */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 15% 12%;
+    --secondary: 240 11% 96%;        /* #F5F5F7 */
+    --secondary-foreground: 240 3% 12%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 240 20% 96%;            /* #F2F2F7 — grouped bg */
+    --muted-foreground: 240 2% 54%;  /* #86868B — secondary text */
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 220 15% 12%;
+    --accent: 240 11% 96%;
+    --accent-foreground: 240 3% 12%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 4 100% 59%;       /* #FF3B30 — system red */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 35 55% 55%;
+    --border: 0 0% 0% / 0.04;        /* rgba(0,0,0,0.04) — subtle */
+    --input: 0 0% 0% / 0.12;         /* rgba(0,0,0,0.12) — input borders */
+    --ring: 40 54% 50%;              /* matches primary */
 
     --radius: 0.75rem;
-    
+
     /* Tablet-specific design tokens (768px-1199px) */
     --tablet-spacing-xl: 1.75rem;
     --tablet-spacing-lg: 1.5rem;
@@ -55,50 +99,43 @@ All colors MUST be HSL.
     --tablet-card-radius: 1.5rem;
     --tablet-header-height: 3.5rem;
     --tablet-column-gap: 1px;
-    
-    /* Priority colors - uniform across all views */
-    --priority-urgent: 0 84% 60%;
+
+    /* Priority / status colors — iOS system palette */
+    --priority-urgent: 4 100% 59%;
     --priority-urgent-foreground: 0 0% 100%;
-    
-    --priority-high: 38 92% 50%;
+
+    --priority-high: 35 100% 50%;
     --priority-high-foreground: 0 0% 100%;
-    
-    --priority-medium: 45 93% 47%;
+
+    --priority-medium: 35 100% 50%;
     --priority-medium-foreground: 0 0% 100%;
-    
-    --priority-low: 220 9% 46%;
+
+    --priority-low: 240 2% 54%;
     --priority-low-foreground: 0 0% 100%;
-    
-    --urgent: 25 95% 53%;
+
+    --urgent: 4 100% 59%;
     --urgent-foreground: 0 0% 100%;
-    
-    --success: 142 71% 45%;
+
+    --success: 142 69% 49%;          /* #34C759 */
     --success-foreground: 0 0% 100%;
-    
-    --warning: 38 92% 50%;
+
+    --warning: 35 100% 50%;          /* #FF9500 */
     --warning-foreground: 0 0% 100%;
-    
-    --channel-sms: 267 84% 64%;
-    --channel-whatsapp: 142 71% 45%;
-    --channel-email: 217 91% 60%;
-    --channel-phone: 25 95% 53%;
-    --channel-webchat: 280 71% 60%;
 
-    --sidebar-background: 0 0% 98%;
+    --channel-sms: 280 68% 60%;
+    --channel-whatsapp: 142 69% 49%;
+    --channel-email: 211 100% 50%;
+    --channel-phone: 35 100% 50%;
+    --channel-webchat: 280 68% 60%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 240 11% 96%;   /* #F5F5F7 — matches bg-secondary */
+    --sidebar-foreground: 240 2% 54%;    /* #86868B */
+    --sidebar-primary: 40 54% 50%;       /* #C4973B — active items use accent */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 54% 50% / 0.08; /* subtle amber pill behind active */
+    --sidebar-accent-foreground: 240 3% 12%;
+    --sidebar-border: 0 0% 0% / 0.04;
+    --sidebar-ring: 40 54% 50%;
   }
 
   .dark {
@@ -256,6 +293,42 @@ All colors MUST be HSL.
   .spring-press {
     @apply active:scale-[0.97] transition-transform duration-150 ease-out;
   }
+
+  /* Glassmorphic sticky header */
+  .glass-header {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--separator);
+  }
+
+  /* ── Classification Pills ── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+    border: none;
+  }
+  .pill-enquiry { background: rgba(0, 122, 255, 0.08); color: #007AFF; }
+  .pill-quote { background: rgba(52, 199, 89, 0.08); color: #34C759; }
+  .pill-complaint { background: rgba(255, 59, 48, 0.08); color: #FF3B30; }
+  .pill-booking { background: rgba(175, 82, 222, 0.08); color: #AF52DE; }
+  .pill-urgent { background: rgba(255, 59, 48, 0.08); color: #FF3B30; }
+  .pill-draft-ready { background: rgba(52, 199, 89, 0.08); color: #34C759; }
+  .pill-neutral {
+    background: var(--bg-grouped);
+    color: #636366;
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 400;
+    border: none;
+  }
 }
 
 @layer base {
@@ -265,6 +338,9 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-family);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 

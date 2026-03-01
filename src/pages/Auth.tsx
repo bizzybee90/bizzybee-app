@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import bizzybeelogo from '@/assets/bizzybee-logo.png';
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -97,16 +98,16 @@ const Auth = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Shield className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-4">
+            <img src={bizzybeelogo} alt="BizzyBee" className="h-12 w-12 object-contain" />
           </div>
-          <CardTitle className="text-2xl font-bold">
-            {isSignUp ? "Create Agent Account" : "Agent Sign In"}
+          <CardTitle className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            {isSignUp ? "Create your account" : "Sign in to BizzyBee"}
           </CardTitle>
-          <CardDescription>
+          <CardDescription style={{ color: 'var(--text-secondary)' }}>
             {isSignUp
-              ? "Create your account to access the escalation dashboard"
-              : "Sign in to access the customer service escalation dashboard"}
+              ? "Get started with your account."
+              : "Welcome back."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -114,7 +115,7 @@ const Auth = () => {
           <Button
             type="button"
             variant="outline"
-            className="w-full"
+            className="w-full !rounded-xl"
             disabled={googleLoading || loading}
             onClick={async () => {
               setGoogleLoading(true);
@@ -194,15 +195,16 @@ const Auth = () => {
           </form>
           
           <div className="mt-4 text-center text-sm">
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {isSignUp ? "Already have an account? " : "Don't have an account? "}
+            </span>
             <button
               type="button"
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-primary hover:underline"
+              className="text-primary hover:underline font-medium"
               disabled={loading}
             >
-              {isSignUp
-                ? "Already have an account? Sign in"
-                : "Don't have an account? Sign up"}
+              {isSignUp ? "Sign in" : "Sign up"}
             </button>
           </div>
         </CardContent>

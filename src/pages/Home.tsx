@@ -155,53 +155,41 @@ export const Home = () => {
 
   const handleNavigate = (path: string) => { navigate(path); };
 
-  // Metric card config
+  // Metric card config — all identical card styling, colour only in icons
   const metrics = [
     {
       label: 'Urgent',
       count: stats.atRiskCount,
       icon: Flame,
-      iconColor: 'text-red-600',
-      iconBoxBg: 'bg-red-100',
-      cardBg: 'bg-gradient-to-b from-red-50/80 to-white',
-      cardBorder: 'border border-red-100',
+      iconColor: 'var(--system-red)',
       onClick: () => navigate('/needs-action?filter=at-risk'),
     },
     {
-      label: 'To Reply',
+      label: 'To reply',
       count: stats.toReplyCount,
       icon: Mail,
-      iconColor: 'text-blue-600',
-      iconBoxBg: 'bg-blue-100',
-      cardBg: 'bg-gradient-to-b from-blue-50/80 to-white',
-      cardBorder: 'border border-blue-100',
+      iconColor: 'var(--system-blue)',
       onClick: () => navigate('/needs-action?filter=needs-action'),
     },
     {
       label: 'Drafts',
       count: stats.draftCount,
       icon: FileEdit,
-      iconColor: 'text-amber-600',
-      iconBoxBg: 'bg-amber-100',
-      cardBg: 'bg-gradient-to-b from-amber-50/80 to-white',
-      cardBorder: 'border border-amber-100',
+      iconColor: 'var(--accent-primary)',
       onClick: () => navigate('/needs-action?filter=drafts'),
     },
     {
       label: 'Training',
       count: stats.reviewCount,
       icon: Sparkles,
-      iconColor: 'text-purple-600',
-      iconBoxBg: 'bg-purple-100',
-      cardBg: 'bg-gradient-to-b from-purple-50/80 to-white',
-      cardBorder: 'border border-purple-100',
+      iconColor: 'var(--system-green)',
       onClick: () => navigate('/review'),
     },
   ];
 
   const mainContent = (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="p-4 md:p-6 space-y-6 bg-slate-50/50 min-h-full">
+      <div className="p-4 md:p-6 space-y-6 min-h-full max-w-[1120px] mx-auto">
         {loading ? (
           <div className="space-y-4">
             <Skeleton className="h-28 rounded-2xl" />
@@ -214,72 +202,32 @@ export const Home = () => {
           </div>
         ) : (
           <>
-            {/* ── Hero Copilot Banner ── */}
-            <div className="w-full bg-gradient-to-r from-amber-100/50 via-purple-50/50 to-blue-100/30 rounded-3xl p-8 ring-1 ring-slate-900/5 shadow-sm relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-2">
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🐝</span>
-                  <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{getGreeting()}!</h1>
-                </div>
-                <p className="text-lg text-slate-700 max-w-2xl mt-2 leading-relaxed">
-                  {stats.atRiskCount > 0
-                    ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
-                    : stats.toReplyCount > 0
-                      ? `${stats.toReplyCount} conversation${stats.toReplyCount !== 1 ? 's' : ''} waiting for your reply.`
-                      : 'Here is what BizzyBee has lined up for you.'}
-                </p>
-                {/* Frosted-glass AI Briefing Panel */}
-                <div className="mt-6 p-5 bg-white/40 backdrop-blur-md rounded-2xl border border-white/60 text-slate-800 text-[15px] leading-relaxed shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
-                  {stats.clearedToday > 0 ? (
-                    <p>
-                      Since this morning, BizzyBee auto-handled <strong>{stats.clearedToday}</strong> message{stats.clearedToday !== 1 ? 's' : ''}
-                      {stats.draftCount > 0 && <>, prepared <strong>{stats.draftCount}</strong> draft{stats.draftCount !== 1 ? 's' : ''} for your review</>}
-                      {stats.reviewCount > 0 && <>, and flagged <strong>{stats.reviewCount}</strong> for training</>}.
-                      {stats.toReplyCount === 0 && stats.atRiskCount === 0
-                        ? ' Your inbox is clear — go grab a coffee ☕'
-                        : ' Here\'s what still needs your attention.'}
-                    </p>
-                  ) : (
-                    <p>
-                      {stats.toReplyCount > 0
-                        ? `You have ${stats.toReplyCount} conversation${stats.toReplyCount !== 1 ? 's' : ''} waiting. BizzyBee is learning your style — the more you review, the smarter it gets.`
-                        : 'BizzyBee is monitoring your inbox. Nothing needs your attention right now — enjoy your day!'}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {stats.clearedToday > 0 && (
-                <div className="bg-white/80 backdrop-blur-md border border-emerald-200 text-emerald-800 px-5 py-2.5 rounded-2xl shadow-sm font-semibold flex items-center gap-2 text-sm whitespace-nowrap self-start md:self-center">
-                  <CheckCircle2 className="w-5 h-5" />
-                  {stats.clearedToday} messages auto-handled today
-                </div>
-              )}
+            {/* ── Greeting ── */}
+            <div className="mb-2">
+              <h1 className="text-[34px] font-bold tracking-[-0.022em]" style={{ color: 'var(--text-primary)' }}>{getGreeting()}</h1>
+              <p className="text-[17px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                {stats.atRiskCount > 0
+                  ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
+                  : stats.toReplyCount > 0
+                    ? `${stats.toReplyCount} conversation${stats.toReplyCount !== 1 ? 's' : ''} waiting for your reply.`
+                    : 'Nothing needs your attention right now.'}
+              </p>
             </div>
 
-            {/* ── Tinted Glass Metric Cards ── */}
+            {/* ── Stat Cards ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {metrics.map(m => {
-                const active = m.count > 0;
                 const Icon = m.icon;
                 return (
                   <div
                     key={m.label}
                     onClick={m.onClick}
-                    className={cn(
-                      'rounded-3xl p-6 cursor-pointer transition-all duration-200',
-                      active
-                        ? `${m.cardBg} ${m.cardBorder} shadow-sm hover:shadow-md hover:-translate-y-1`
-                        : 'bg-slate-50/80 border border-slate-100 opacity-60 grayscale shadow-none'
-                    )}
+                    className="bg-card cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5"
+                    style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}
                   >
-                    <div className={cn(
-                      'w-12 h-12 rounded-2xl flex items-center justify-center',
-                      active ? m.iconBoxBg : 'bg-slate-100'
-                    )}>
-                      <Icon className={cn('h-5 w-5', active ? m.iconColor : 'text-slate-400')} />
-                    </div>
-                    <p className="text-5xl font-extrabold tracking-tight text-slate-900 mt-5 mb-1">{m.count}</p>
-                    <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">{m.label}</p>
+                    <Icon className="h-5 w-5" style={{ color: m.iconColor }} />
+                    <p className="text-[34px] font-semibold tracking-tight mt-3 mb-1" style={{ color: 'var(--text-primary)' }}>{m.count}</p>
+                    <p className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>{m.label}</p>
                   </div>
                 );
               })}
@@ -288,21 +236,18 @@ export const Home = () => {
             {/* ── All caught up ── */}
             {stats.toReplyCount === 0 && stats.reviewCount === 0 && stats.atRiskCount === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                <div className="w-24 h-24 bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-full flex items-center justify-center mb-6 ring-8 ring-emerald-50/50 mx-auto">
-                  <Sparkles className="w-10 h-10 text-emerald-500" />
-                </div>
-                <h3 className="text-2xl font-bold text-slate-900 tracking-tight">You're all caught up!</h3>
-                <p className="text-slate-500 mt-2 max-w-sm mx-auto text-lg">BizzyBee is actively monitoring your inbox. Go grab a coffee.</p>
+                <Sparkles className="w-8 h-8 mb-4" style={{ color: 'var(--text-tertiary)' }} />
+                <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text-primary)' }}>You're all caught up</h3>
+                <p className="text-[15px] mt-1 max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>BizzyBee is actively monitoring your inbox.</p>
               </div>
             )}
 
             {/* ── Widget Grid ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Pending Drafts */}
-              <div className="bg-white rounded-3xl border border-slate-100/80 shadow-sm p-5 flex flex-col">
+              <div className="bg-card p-5 flex flex-col" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
                 <div className="flex items-center gap-2 mb-4">
-                  <FileEdit className="h-4 w-4 text-amber-500" />
-                  <h2 className="font-semibold text-slate-900">Pending Drafts</h2>
+                  <h2 className="text-[20px] font-semibold" style={{ color: 'var(--text-primary)' }}>Pending Drafts</h2>
                 </div>
                 <div className="flex-1">
                   <DraftMessages onNavigate={handleNavigate} maxItems={4} />
@@ -310,7 +255,8 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-slate-500 mt-3 hover:bg-slate-50"
+                  className="w-full mt-3"
+                  style={{ color: 'var(--text-secondary)' }}
                   onClick={() => navigate('/needs-action?filter=drafts')}
                 >
                   View all drafts
@@ -318,10 +264,9 @@ export const Home = () => {
               </div>
 
               {/* Recent Activity */}
-              <div className="bg-white rounded-3xl border border-slate-100/80 shadow-sm p-5 flex flex-col">
+              <div className="bg-card p-5 flex flex-col" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
                 <div className="flex items-center gap-2 mb-4">
-                  <Activity className="h-4 w-4 text-blue-500" />
-                  <h2 className="font-semibold text-slate-900">Recent Activity</h2>
+                  <h2 className="text-[20px] font-semibold" style={{ color: 'var(--text-primary)' }}>Recent Activity</h2>
                 </div>
                 <div className="flex-1">
                   <ActivityFeed onNavigate={handleNavigate} maxItems={6} />
@@ -329,7 +274,8 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-slate-500 mt-3 hover:bg-slate-50"
+                  className="w-full mt-3"
+                  style={{ color: 'var(--text-secondary)' }}
                   onClick={() => navigate('/activity')}
                 >
                   View all activity
@@ -344,10 +290,10 @@ export const Home = () => {
             </div>
 
             {/* System Status Footer */}
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-400 pt-4">
-              <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+            <div className="flex items-center justify-center gap-2 text-[13px] pt-4" style={{ color: 'var(--text-tertiary)' }}>
+              <CheckCircle2 className="h-3 w-3" style={{ color: 'var(--system-green)' }} />
               <span>System active</span>
-              <span>•</span>
+              <span>·</span>
               <Clock className="h-3 w-3" />
               <span>Checking every minute</span>
             </div>
