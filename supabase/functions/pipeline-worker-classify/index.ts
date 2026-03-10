@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
             attempts: record.read_ct,
             workspaceId: job.workspace_id,
             runId: job.run_id,
-            jobPayload: (job || {}) as Record<string, unknown>,
+            jobPayload: (job || {}) as unknown as Record<string, unknown>,
             error: message,
             scope: "pipeline-worker-classify",
           });
