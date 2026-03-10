@@ -6602,7 +6602,7 @@ export type Database = {
           decided_events: number | null
           drafted_events: number | null
           failed_events: number | null
-          heartbeat_age: unknown
+          heartbeat_age: string | null
           last_error: string | null
           last_heartbeat_at: string | null
           materialized_events: number | null
@@ -6626,7 +6626,7 @@ export type Database = {
       }
       bb_stalled_events: {
         Row: {
-          age: unknown
+          age: string | null
           channel: string | null
           config_id: string | null
           created_at: string | null
