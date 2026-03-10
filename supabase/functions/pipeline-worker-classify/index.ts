@@ -596,7 +596,7 @@ Deno.serve(async (req) => {
             workspaceId: job?.workspace_id,
             runId: job?.run_id,
             queueName: QUEUE_NAME,
-            jobPayload: (job || {}) as Record<string, unknown>,
+            jobPayload: (job || {}) as unknown as Record<string, unknown>,
             outcome: "failed",
             error: message,
             attempts: record.read_ct,
