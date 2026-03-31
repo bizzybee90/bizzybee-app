@@ -195,14 +195,168 @@ Deno.serve(async (req) => {
         });
       }
 
-      case 'sms':
-        throw new Error('SMS sending is not yet implemented. Coming soon via Twilio.');
+      case 'whatsapp': {
+        const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+        const authToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+        const whatsappNumber = Deno.env.get('TWILIO_WHATSAPP_NUMBER');
 
-      case 'whatsapp':
-        throw new Error('WhatsApp sending is not yet implemented. Coming soon via Twilio/WhatsApp Business API.');
+        if (!accountSid || !authToken || !whatsappNumber) {
+          throw new Error('Twilio WhatsApp credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_NUMBER.');
+        }
+
+        const customerPhone = customer.phone || (conversation.metadata as Record<string, unknown>)?.whatsapp_number;
+        if (!customerPhone) {
+          throw new Error(`No phone number for customer in conversation ${conversationId}`);
+        }
+
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+        const twilioAuth = btoa(`${accountSid}:${authToken}`);
+
+        const twilioBody = new URLSearchParams({
+          From: `whatsapp:${whatsappNumber}`,
+          To: `whatsapp:${customerPhone}`,
+          Body: content,
+        });
+
+        const twilioResponse = await fetch(twilioUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${twilioAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: twilioBody.toString(),
+        });
+
+        if (!twilioResponse.ok) {
+          const errorBody = await twilioResponse.text();
+          throw new Error(`Twilio WhatsApp error ${twilioResponse.status}: ${errorBody}`);
+        }
+
+        const twilioData = await twilioResponse.json();
+
+        // Save outbound message
+        const { data: whatsappMessage, error: whatsappMsgError } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            channel: 'whatsapp',
+            body: content,
+            actor_type: 'agent',
+            actor_name: whatsappNumber,
+            external_id: twilioData.sid || null,
+            is_ai_draft: false,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (whatsappMsgError) {
+          console.error('[send-reply] Warning: Failed to save WhatsApp message:', whatsappMsgError);
+        }
+
+        // Update conversation status
+        await supabase
+          .from('conversations')
+          .update({
+            status: 'resolved',
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message_id: whatsappMessage?.id || null,
+          external_id: twilioData.sid || null,
+          duration_ms: Date.now() - startTime,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'sms': {
+        const smsAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
+        const smsAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+        const smsFromNumber = Deno.env.get('TWILIO_SMS_NUMBER') || Deno.env.get('TWILIO_WHATSAPP_NUMBER');
+
+        if (!smsAccountSid || !smsAuthToken || !smsFromNumber) {
+          throw new Error('Twilio SMS credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_NUMBER.');
+        }
+
+        const smsCustomerPhone = customer.phone || (conversation.metadata as Record<string, unknown>)?.phone_number;
+        if (!smsCustomerPhone) {
+          throw new Error(`No phone number for customer in conversation ${conversationId}`);
+        }
+
+        const smsTwilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${smsAccountSid}/Messages.json`;
+        const smsTwilioAuth = btoa(`${smsAccountSid}:${smsAuthToken}`);
+
+        const smsBody = new URLSearchParams({
+          From: smsFromNumber,
+          To: String(smsCustomerPhone),
+          Body: content,
+        });
+
+        const smsResponse = await fetch(smsTwilioUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${smsTwilioAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: smsBody.toString(),
+        });
+
+        if (!smsResponse.ok) {
+          const errorBody = await smsResponse.text();
+          throw new Error(`Twilio SMS error ${smsResponse.status}: ${errorBody}`);
+        }
+
+        const smsData = await smsResponse.json();
+
+        // Save outbound message
+        const { data: smsMessage, error: smsMsgError } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            channel: 'sms',
+            body: content,
+            actor_type: 'agent',
+            actor_name: smsFromNumber,
+            external_id: smsData.sid || null,
+            is_ai_draft: false,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (smsMsgError) {
+          console.error('[send-reply] Warning: Failed to save SMS message:', smsMsgError);
+        }
+
+        // Update conversation status
+        await supabase
+          .from('conversations')
+          .update({
+            status: 'resolved',
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message_id: smsMessage?.id || null,
+          external_id: smsData.sid || null,
+          duration_ms: Date.now() - startTime,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       default:
-        throw new Error(`Unsupported channel: ${channel}`);
+        throw new Error(`Unsupported channel: ${channel}. Supported: email, whatsapp, sms.`);
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
