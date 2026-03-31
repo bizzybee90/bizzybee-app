@@ -44,13 +44,12 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find workspace by WhatsApp number
-    // The business WhatsApp number should match a workspace's configured number
+    // Find workspace by WhatsApp channel config
     const { data: workspace } = await supabase
       .from('workspace_channels')
       .select('workspace_id')
-      .eq('channel_type', 'whatsapp')
-      .eq('channel_identifier', businessPhone)
+      .eq('channel', 'whatsapp')
+      .eq('enabled', true)
       .maybeSingle();
 
     // Fallback: if no workspace_channels config, use the first workspace

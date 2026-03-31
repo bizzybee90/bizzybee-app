@@ -37,12 +37,12 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find workspace by SMS number
+    // Find workspace by SMS channel config
     const { data: workspace } = await supabase
       .from('workspace_channels')
       .select('workspace_id')
-      .eq('channel_type', 'sms')
-      .eq('channel_identifier', to)
+      .eq('channel', 'sms')
+      .eq('enabled', true)
       .maybeSingle();
 
     // Fallback: use first workspace
