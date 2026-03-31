@@ -1,107 +1,94 @@
-project_id = "ikioetqbrybnofqkdcib"
+project_id = "atukvssploxwyqpwjmrc"
 
 # =============================================================================
-# SENSITIVE FUNCTIONS - Require JWT authentication (verify in code)
+# PIPELINE — Core email processing pipeline (new unified pipeline)
 # =============================================================================
 
-[functions.email-import]
+[functions.pipeline-supervisor]
 verify_jwt = false
 
-[functions.email-classify]
+[functions.pipeline-worker-import]
 verify_jwt = false
 
-[functions.ai-draft]
+[functions.pipeline-worker-ingest]
 verify_jwt = false
 
-[functions.draft-verify]
+[functions.pipeline-worker-classify]
+verify_jwt = false
+
+[functions.pipeline-worker-draft]
+verify_jwt = false
+
+[functions.start-email-import]
+verify_jwt = false
+
+[functions.unified-ingest]
+verify_jwt = false
+
+# =============================================================================
+# AURINKO / EMAIL — OAuth, sync, and email operations
+# =============================================================================
+
+[functions.aurinko-auth-start]
+verify_jwt = false
+
+[functions.aurinko-auth-callback]
+verify_jwt = false
+
+[functions.aurinko-exchange-token]
+verify_jwt = false
+
+[functions.aurinko-webhook]
+verify_jwt = false
+
+[functions.refresh-aurinko-subscriptions]
+verify_jwt = false
+
+[functions.email-import-v2]
+verify_jwt = false
+
+[functions.email-classify-bulk]
+verify_jwt = false
+
+[functions.classify-emails-dispatcher]
+verify_jwt = false
+
+[functions.convert-emails-to-conversations]
 verify_jwt = false
 
 [functions.email-send]
 verify_jwt = false
 
+[functions.fetch-email-body]
+verify_jwt = false
+
+[functions.mark-email-read]
+verify_jwt = false
+
+# =============================================================================
+# REPLY & ENRICHMENT
+# =============================================================================
+
 [functions.send-reply]
 verify_jwt = false
 
-[functions.submit-training-review]
+[functions.ai-enrich-conversation]
 verify_jwt = false
 
-[functions.nightly-queue-cleanup]
+[functions.draft-verify]
 verify_jwt = false
 
-[functions.export-customer-data]
-verify_jwt = false
-
-[functions.request-deletion]
-verify_jwt = false
-
-[functions.competitor-discover]
-verify_jwt = false
-
-[functions.competitor-scrape]
-verify_jwt = false
-
-[functions.website-scrape]
-verify_jwt = false
-
-[functions.test-conversation]
-verify_jwt = false
-
-[functions.learn-correction]
-verify_jwt = false
-
-[functions.bulk-retriage]
-verify_jwt = false
-
-[functions.voice-learn]
-verify_jwt = false
-
-[functions.business-location]
-verify_jwt = false
-
-[functions.industry-keywords]
-verify_jwt = false
-
-[functions.customer-intelligence]
-verify_jwt = false
-
-[functions.document-process]
-verify_jwt = false
-
-[functions.pattern-detect]
-verify_jwt = false
-
-[functions.image-analyze]
-verify_jwt = false
-
-[functions.audio-process]
-verify_jwt = false
-
-[functions.nuclear-reset]
-verify_jwt = false
-
-[functions.competitor-search-suggest]
+[functions.pre-triage-rules]
 verify_jwt = false
 
 # =============================================================================
-# WEBHOOK/SYSTEM FUNCTIONS - No JWT, but require alternate auth (HMAC/secret)
+# GDPR & CONSENT
 # =============================================================================
 
-[functions.log-conversation]
+[functions.gdpr-portal-request]
 verify_jwt = false
 
-[functions.claude-ai-agent-tools]
-verify_jwt = false
-
-[functions.generate-embedding]
-verify_jwt = false
-
-[functions.send-scheduled-summary]
-verify_jwt = false
-
-[functions.receive-apify-data]
-verify_jwt = false
-
-[functions.send-csat-request]
+[functions.gdpr-portal-verify]
 verify_jwt = false
 
 [functions.check-consent]
@@ -110,204 +97,56 @@ verify_jwt = false
 [functions.create-consent]
 verify_jwt = false
 
-[functions.cleanup-old-data]
-verify_jwt = false
-
-[functions.aurinko-auth-start]
-verify_jwt = false
-
-[functions.aurinko-auth-callback]
-verify_jwt = false
-
-[functions.aurinko-webhook]
-verify_jwt = false
-
-[functions.pre-triage-rules]
-verify_jwt = false
-
-[functions.compute-sender-stats]
-verify_jwt = false
-
-[functions.bootstrap-sender-rules]
-verify_jwt = false
-
-[functions.ai-inbox-summary]
-verify_jwt = false
-
-[functions.send-summary-notifications]
-verify_jwt = false
-
-[functions.gdpr-portal-request]
-verify_jwt = false
-
-[functions.gdpr-portal-verify]
-verify_jwt = false
-
 [functions.withdraw-consent]
 verify_jwt = false
 
-[functions.refresh-aurinko-subscriptions]
+[functions.export-customer-data]
 verify_jwt = false
 
-[functions.mark-email-read]
+[functions.request-deletion]
 verify_jwt = false
 
-[functions.copy-industry-faqs]
+# =============================================================================
+# n8n / WORKFLOWS
+# =============================================================================
+
+[functions.trigger-n8n-workflow]
+verify_jwt = false
+
+[functions.n8n-competitor-callback]
+verify_jwt = false
+
+[functions.n8n-email-callback]
+verify_jwt = false
+
+[functions.validate-competitors]
+verify_jwt = false
+
+# =============================================================================
+# AI / MEDIA PROCESSING
+# =============================================================================
+
+[functions.document-process]
+verify_jwt = false
+
+[functions.image-analyze]
+verify_jwt = false
+
+[functions.audio-process]
 verify_jwt = false
 
 [functions.google-places-autocomplete]
 verify_jwt = false
 
-[functions.competitor-discover-smart]
+# =============================================================================
+# ADMIN / UTILITY
+# =============================================================================
+
+[functions.submit-training-review]
 verify_jwt = false
 
-[functions.competitor-scrape-worker]
+[functions.nightly-queue-cleanup]
 verify_jwt = false
 
-[functions.competitor-faq-generate]
+[functions.nuclear-reset]
 verify_jwt = false
-
-[functions.competitor-faq-per-site]
-verify_jwt = false
-
-[functions.start-competitor-research]
-verify_jwt = false
-
-[functions.competitor-extract-faqs]
-verify_jwt = false
-
-[functions.competitor-dedupe-faqs]
-verify_jwt = false
-
-[functions.competitor-refine-faqs]
-verify_jwt = false
-
-[functions.competitor-research-watchdog]
-verify_jwt = false
-
-[functions.get-mailbox-stats]
-verify_jwt = false
-
-[functions.aurinko-exchange-token]
-verify_jwt = false
-
-[functions.email-import-v2]
-verify_jwt = false
-
-[functions.email-classify-v2]
-verify_jwt = false
-
-[functions.kb-start-job]
-verify_jwt = false
-
-[functions.kb-discover-competitors]
-verify_jwt = false
-
-[functions.kb-mine-site]
-verify_jwt = false
-
-[functions.voice-learning]
-verify_jwt = false
-
-[functions.generate-response]
-verify_jwt = false
-
-[functions.learn-from-edit]
-verify_jwt = false
-
-[functions.classify-emails]
-verify_jwt = false
-
-[functions.classification-worker]
-verify_jwt = false
-
-[functions.save-classification-correction]
-verify_jwt = false
-
-[functions.competitor-places-discover]
-verify_jwt = false
-
-[functions.places-webhook]
-verify_jwt = false
-
-[functions.handle-discovery-complete]
-verify_jwt = false
-
-[functions.handle-scrape-complete]
-verify_jwt = false
-
-[functions.extract-competitor-faqs]
-verify_jwt = false
-
-[functions.refine-competitor-faqs]
-verify_jwt = false
-
-[functions.start-website-scrape]
-verify_jwt = false
-
-[functions.extract-website-faqs]
-verify_jwt = false
-
-[functions.start-own-website-scrape]
-verify_jwt = false
-
-[functions.process-own-website-scrape]
-verify_jwt = false
-
-[functions.handle-scrape-failed]
-verify_jwt = false
-
-[functions.resume-own-website-scrape]
-verify_jwt = false
-
-[functions.start-email-import]
-verify_jwt = false
-
-[functions.scan-worker]
-verify_jwt = false
-
-[functions.hydrate-worker]
-verify_jwt = false
-
-[functions.process-worker]
-verify_jwt = false
-
-[functions.competitor-scrape-start]
-verify_jwt = false
-
-[functions.validate-competitor-sites]
-verify_jwt = false
-
-[functions.competitor-discovery-start]
-verify_jwt = false
-
-[functions.competitor-webhooks]
-verify_jwt = false
-
-[functions.competitor-serp-discovery]
-verify_jwt = false
-
-[functions.competitor-hybrid-discovery]
-verify_jwt = false
-
-[functions.classify-emails-dispatcher]
-verify_jwt = false
-
-[functions.email-classify-bulk]
-verify_jwt = false
-
-[functions.consolidate-faqs]
-verify_jwt = false
-
-[functions.detect-style-drift]
-verify_jwt = false
-
-[functions.save-classification-correction]
-verify_jwt = false
-
-[functions.convert-emails-to-conversations]
-verify_jwt = false
-
-[functions.ai-enrich-conversation]
-verify_jwt = false
-

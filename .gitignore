@@ -26,3 +26,6 @@ dist-ssr
 
 # Database exports
 database_export.sql
+
+# Supabase secrets
+supabase/.env
