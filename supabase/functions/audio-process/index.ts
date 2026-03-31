@@ -125,9 +125,9 @@ serve(async (req) => {
     }
 
     // Analyze voicemail content with AI
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
     // Get business context
@@ -169,32 +169,30 @@ Return JSON:
   "suggested_response": "Professional response to send or talking points for callback"
 }`;
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-sonnet-4-6-20250514',
+        max_tokens: 1024,
+        system: 'You are an expert at analyzing voicemail messages for businesses. Extract actionable information. Return valid JSON only.',
         messages: [
-          { 
-            role: 'system', 
-            content: 'You are an expert at analyzing voicemail messages for businesses. Extract actionable information. Return valid JSON only.' 
-          },
           { role: 'user', content: analysisPrompt }
-        ],
-        temperature: 0.3
+        ]
       })
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText}`);
+      throw new Error(`Anthropic API error: ${aiResponse.status} - ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
-    const analysisText = aiData.choices?.[0]?.message?.content || '';
+    const analysisText = aiData.content?.[0]?.text || '';
 
     // Parse analysis
     let analysis;

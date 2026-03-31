@@ -35,7 +35,7 @@ const DELETED_FUNCTIONS = new Set([
   'recover-competitor-job', 'refine-competitor-faqs',
   'resume-own-website-scrape', 'save-classification-correction', 'scan-worker',
   'send-csat-request', 'send-scheduled-summary', 'send-summary-notifications',
-  'start-competitor-analysis', 'start-competitor-research', 'start-email-import',
+  'start-competitor-analysis', 'start-competitor-research',
   'start-own-website-scrape', 'start-website-scrape', 'sync-recent-emails',
   'test-conversation', 'test-integration',
   'validate-competitor-sites', 'voice-learn', 'voice-learning',
@@ -62,11 +62,11 @@ interface TriggerResult {
 const TRIGGERS: Trigger[] = [
   {
     name: 'Import Emails',
-    function: 'email-import-v2',
+    function: 'start-email-import',
     params: [
-      { name: 'import_mode', type: 'select', options: ['last_100', 'full', 'incremental'], default: 'last_100' },
+      { name: 'mode', type: 'select', options: ['onboarding', 'backfill'], default: 'onboarding' },
     ],
-    description: 'Import emails from connected account',
+    description: 'Trigger email import via unified pipeline',
   },
   {
     name: 'Classify Emails',

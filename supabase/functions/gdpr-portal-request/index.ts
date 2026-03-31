@@ -115,7 +115,7 @@ serve(async (req) => {
     const verificationToken = await createSignedToken(requestData, gdprSecret);
 
     // Build verification URL
-    const appUrl = Deno.env.get('APP_URL') || supabaseUrl.replace('.supabase.co', '.lovable.app');
+    const appUrl = Deno.env.get('APP_URL') || 'https://bizzybee.app';
     const verificationUrl = `${appUrl}/gdpr-portal?token=${encodeURIComponent(verificationToken)}&action=${request_type}`;
 
     // Send verification email

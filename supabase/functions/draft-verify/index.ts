@@ -117,10 +117,10 @@ Cancellation Policy: ${business.cancellation_policy || 'Not specified'}`
       `${f.category}: ${f.fact_key} = ${f.fact_value}`
     ).join('\n') || '';
 
-    // Verify with Gemini via Lovable AI Gateway
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    // Verify with Claude via Anthropic API
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
     const verificationPrompt = `You are a fact-checker for customer service emails. Your job is to verify that the draft response is accurate and doesn't contain hallucinations.
@@ -166,21 +166,20 @@ Respond with JSON only:
 
 If the draft is accurate and well-supported by the knowledge base, return status: "passed" with empty issues array.`;
 
-    console.log(`[${functionName}] Calling Lovable AI Gateway...`);
+    console.log(`[${functionName}] Calling Anthropic API...`);
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'claude-sonnet-4-6-20250514',
+        max_tokens: 1024,
+        system: 'You are a precise fact-checker. Only flag issues that are clearly wrong or unsupported. Be helpful, not overly critical. Respond with valid JSON only.',
         messages: [
-          { 
-            role: 'system', 
-            content: 'You are a precise fact-checker. Only flag issues that are clearly wrong or unsupported. Be helpful, not overly critical. Respond with valid JSON only.' 
-          },
           { role: 'user', content: verificationPrompt }
         ]
       })
@@ -194,11 +193,11 @@ If the draft is accurate and well-supported by the knowledge base, return status
         throw new Error('AI credits exhausted. Please add credits to your workspace.');
       }
       const errorText = await aiResponse.text();
-      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText}`);
+      throw new Error(`Anthropic API error: ${aiResponse.status} - ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
-    const verificationText = aiData.choices?.[0]?.message?.content || '';
+    const verificationText = aiData.content?.[0]?.text || '';
 
     // Parse verification result
     let verification;

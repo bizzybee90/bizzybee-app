@@ -1,4 +1,4 @@
-import { classifyBatchWithLovable, type ClassifyItemInput, type WorkspaceAiContext } from "../_shared/ai.ts";
+import { classifyBatch, type ClassifyItemInput, type WorkspaceAiContext } from "../_shared/ai.ts";
 import {
   assertWorkerToken,
   auditJob,
@@ -632,7 +632,7 @@ Deno.serve(async (req) => {
           recent_messages: row.recentMessages,
         }));
 
-        const classifications = await classifyBatchWithLovable({ items, context });
+        const classifications = await classifyBatch({ items, context });
 
         for (const row of group) {
           const job = row.record.message;

@@ -250,9 +250,9 @@ serve(async (req) => {
 
         const documentContent = chunks.map(c => c.content).join('\n\n');
 
-        // Extract FAQs with Gemini
-        const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-        if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
+        // Extract FAQs with Claude
+        const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+        if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
         const extractPrompt = `Extract FAQs from this document content. Create Q&A pairs for any information a customer might ask about.
 
@@ -272,26 +272,27 @@ Generate JSON array of FAQs:
 
 Extract 10-20 meaningful FAQs. Only use information actually in the document.`;
 
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'claude-sonnet-4-6-20250514',
+            max_tokens: 4096,
+            system: 'Extract FAQs from documents. Respond with valid JSON array only.',
             messages: [
-              { role: 'system', content: 'Extract FAQs from documents. Respond with valid JSON array only.' },
               { role: 'user', content: extractPrompt }
-            ],
-            temperature: 0.3
+            ]
           })
         });
 
         if (!aiResponse.ok) throw new Error('FAQ extraction failed');
 
         const aiData = await aiResponse.json();
-        const faqsText = aiData.choices?.[0]?.message?.content || '[]';
+        const faqsText = aiData.content?.[0]?.text || '[]';
         
         let faqs;
         try {

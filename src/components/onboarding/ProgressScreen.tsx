@@ -452,10 +452,10 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
             .maybeSingle() as unknown as { data: { id: string; sync_status: string } | null };
 
           if (emailConfig && emailConfig.sync_status === 'pending') {
-            console.log('[ProgressScreen] Email queue empty + config pending — triggering email-import-v2');
-            supabase.functions.invoke('email-import-v2', {
-              body: { config_id: emailConfig.id, workspace_id: workspaceId, speed_phase: true },
-            }).catch(err => console.error('[ProgressScreen] email-import-v2 trigger failed:', err));
+            console.log('[ProgressScreen] Email queue empty + config pending — triggering start-email-import');
+            supabase.functions.invoke('start-email-import', {
+              body: { config_id: emailConfig.id, workspace_id: workspaceId, mode: 'onboarding' },
+            }).catch(err => console.error('[ProgressScreen] start-email-import trigger failed:', err));
           }
         }
       } catch (err) {

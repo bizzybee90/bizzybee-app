@@ -44,18 +44,6 @@ verify_jwt = false
 [functions.refresh-aurinko-subscriptions]
 verify_jwt = false
 
-[functions.email-import-v2]
-verify_jwt = false
-
-[functions.email-classify-bulk]
-verify_jwt = false
-
-[functions.classify-emails-dispatcher]
-verify_jwt = false
-
-[functions.convert-emails-to-conversations]
-verify_jwt = false
-
 [functions.email-send]
 verify_jwt = false
 

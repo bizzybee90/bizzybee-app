@@ -25,6 +25,8 @@ const DEFAULT_CLASSIFICATION: ClassificationResult = {
   entities: {},
 };
 
+const DEFAULT_MODEL = "claude-sonnet-4-6-20250514";
+
 function normalizeClassification(value: unknown): ClassificationResult {
   const candidate = (value || {}) as Partial<ClassificationResult>;
   return {
@@ -85,7 +87,7 @@ function classificationSystemPrompt(context: WorkspaceAiContext): string {
   return parts.join("\n");
 }
 
-export async function classifyBatchWithLovable(params: {
+export async function classifyBatch(params: {
   items: ClassifyItemInput[];
   context: WorkspaceAiContext;
 }): Promise<Map<string, ClassificationResult>> {
@@ -93,48 +95,42 @@ export async function classifyBatchWithLovable(params: {
     return new Map();
   }
 
-  const endpoint = getRequiredEnv("LOVABLE_AI_GATEWAY_URL");
-  const model = getOptionalEnv("LOVABLE_CLASSIFY_MODEL", "gemini-2.5-flash");
-  const apiKey = getOptionalEnv("LOVABLE_AI_GATEWAY_KEY");
-
-  const payload = {
-    model,
-    temperature: 0,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: classificationSystemPrompt(params.context) },
-      {
-        role: "user",
-        content: JSON.stringify({ items: params.items }),
-      },
-    ],
-  };
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
+  const apiKey = getRequiredEnv("ANTHROPIC_API_KEY");
+  const model = getOptionalEnv("ANTHROPIC_CLASSIFY_MODEL", DEFAULT_MODEL);
+  const endpoint = getOptionalEnv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages");
 
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  }, 25_000);
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      temperature: 0,
+      system: classificationSystemPrompt(params.context),
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({ items: params.items }),
+        },
+      ],
+    }),
+  }, 30_000);
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Lovable classify request failed (${response.status}): ${text}`);
+    throw new Error(`Anthropic classify request failed (${response.status}): ${text}`);
   }
 
   const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content || data?.output_text || data?.content || "{}";
-  const contentText = typeof content === "string"
-    ? content
-    : Array.isArray(content)
-      ? content.map((part) => part?.text || "").join("\n")
-      : JSON.stringify(content);
+  const content = Array.isArray(data?.content) ? data.content : [];
+  const contentText = content
+    .map((part: { type?: string; text?: string }) => part?.type === "text" ? part.text || "" : "")
+    .join("\n")
+    .trim();
 
   const parsed = extractJsonFromText(contentText) as { results?: unknown[] } | null;
   const results = Array.isArray(parsed?.results) ? parsed.results : [];
@@ -165,7 +161,7 @@ export async function generateDraftWithAnthropic(params: {
   faqEntries: Array<Record<string, unknown>>;
 }): Promise<string> {
   const apiKey = getRequiredEnv("ANTHROPIC_API_KEY");
-  const model = getOptionalEnv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest");
+  const model = getOptionalEnv("ANTHROPIC_MODEL", DEFAULT_MODEL);
   const endpoint = getOptionalEnv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages");
 
   const systemPrompt = [

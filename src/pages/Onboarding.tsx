@@ -203,9 +203,19 @@ export default function Onboarding() {
           .single();
 
         if (userData?.workspace_id) {
-          supabase.functions.invoke('email-import-v2', {
-            body: { workspace_id: userData.workspace_id, speed_phase: false },
-          }).catch(err => console.error('Deep backfill trigger failed (non-blocking):', err));
+          // Look up the email provider config for this workspace
+          const { data: emailConfig } = await supabase
+            .from('email_provider_configs')
+            .select('id')
+            .eq('workspace_id', userData.workspace_id)
+            .limit(1)
+            .maybeSingle();
+
+          if (emailConfig?.id) {
+            supabase.functions.invoke('start-email-import', {
+              body: { workspace_id: userData.workspace_id, config_id: emailConfig.id, mode: 'backfill' },
+            }).catch(err => console.error('Deep backfill trigger failed (non-blocking):', err));
+          }
         }
       }
       navigate('/');

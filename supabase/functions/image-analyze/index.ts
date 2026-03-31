@@ -206,45 +206,65 @@ Return JSON:
     }
 
     // Analyze with vision model
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY not configured');
     }
 
-    console.log(`[${functionName}] Analyzing image with Gemini Vision...`);
+    console.log(`[${functionName}] Analyzing image with Claude Vision...`);
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Fetch the image and convert to base64 for Anthropic's Messages API
+    const imageResponse = await fetch(body.image_url);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+    }
+    const imageContentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const imageBase64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+
+    // Determine supported media type
+    const supportedMediaTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const mediaType = supportedMediaTypes.includes(imageContentType)
+      ? imageContentType
+      : 'image/jpeg';
+
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro', // Use Pro for vision tasks
+        model: 'claude-sonnet-4-6-20250514',
+        max_tokens: 1024,
+        system: 'You are an expert at analyzing images for business purposes. Be specific and practical. Return valid JSON only.',
         messages: [
-          { 
-            role: 'system', 
-            content: 'You are an expert at analyzing images for business purposes. Be specific and practical. Return valid JSON only.' 
-          },
-          { 
-            role: 'user', 
+          {
+            role: 'user',
             content: [
-              { type: 'text', text: analysisPrompt },
-              { type: 'image_url', image_url: { url: body.image_url } }
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: imageBase64
+                }
+              },
+              { type: 'text', text: analysisPrompt }
             ]
           }
-        ],
-        temperature: 0.3
+        ]
       })
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText}`);
+      throw new Error(`Anthropic API error: ${aiResponse.status} - ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
-    const analysisText = aiData.choices?.[0]?.message?.content || '';
+    const analysisText = aiData.content?.[0]?.text || '';
 
     // Parse analysis
     let analysis;
