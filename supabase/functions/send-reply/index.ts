@@ -355,8 +355,160 @@ Deno.serve(async (req) => {
         });
       }
 
+      case 'facebook':
+      case 'instagram': {
+        const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
+        if (!pageAccessToken) {
+          throw new Error('META_PAGE_ACCESS_TOKEN not configured.');
+        }
+
+        // Customer identifier is stored as fb:SENDER_ID or ig:SENDER_ID
+        const prefix = channel === 'facebook' ? 'fb:' : 'ig:';
+        const recipientId = customer.phone?.startsWith(prefix)
+          ? customer.phone.replace(prefix, '')
+          : customer.phone || (conversation.metadata as Record<string, unknown>)?.sender_id;
+
+        if (!recipientId) {
+          throw new Error(`No ${channel} recipient ID for customer in conversation ${conversationId}`);
+        }
+
+        const graphUrl = 'https://graph.facebook.com/v19.0/me/messages';
+        const metaResponse = await fetch(`${graphUrl}?access_token=${pageAccessToken}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipient: { id: recipientId },
+            message: { text: content },
+          }),
+        });
+
+        if (!metaResponse.ok) {
+          const errorBody = await metaResponse.text();
+          throw new Error(`Meta ${channel} API error ${metaResponse.status}: ${errorBody}`);
+        }
+
+        const metaData = await metaResponse.json();
+
+        // Save outbound message
+        const { data: metaMessage, error: metaMsgError } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            channel,
+            body: content,
+            actor_type: 'agent',
+            actor_name: channel === 'facebook' ? 'Facebook Page' : 'Instagram',
+            external_id: metaData.message_id || null,
+            is_ai_draft: false,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (metaMsgError) {
+          console.error(`[send-reply] Warning: Failed to save ${channel} message:`, metaMsgError);
+        }
+
+        // Update conversation status
+        await supabase
+          .from('conversations')
+          .update({
+            status: 'resolved',
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message_id: metaMessage?.id || null,
+          external_id: metaData.message_id || null,
+          duration_ms: Date.now() - startTime,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'google_business': {
+        const gbmApiKey = Deno.env.get('GOOGLE_BUSINESS_API_KEY');
+        if (!gbmApiKey) {
+          throw new Error('GOOGLE_BUSINESS_API_KEY not configured.');
+        }
+
+        // Customer identifier is stored as gbm:CONVERSATION_ID
+        const gbmConversationId = customer.phone?.startsWith('gbm:')
+          ? customer.phone.replace('gbm:', '')
+          : (conversation.metadata as Record<string, unknown>)?.gbm_conversation_id;
+
+        if (!gbmConversationId) {
+          throw new Error(`No Google Business conversation ID for customer in conversation ${conversationId}`);
+        }
+
+        // Send via Google Business Messages API
+        const gbmUrl = `https://businessmessages.googleapis.com/v1/conversations/${gbmConversationId}/messages`;
+        const gbmResponse = await fetch(`${gbmUrl}?key=${gbmApiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messageId: crypto.randomUUID(),
+            text: content,
+            representative: {
+              representativeType: 'BOT',
+            },
+          }),
+        });
+
+        if (!gbmResponse.ok) {
+          const errorBody = await gbmResponse.text();
+          throw new Error(`Google Business Messages error ${gbmResponse.status}: ${errorBody}`);
+        }
+
+        const gbmData = await gbmResponse.json();
+
+        // Save outbound message
+        const { data: gbmMessage, error: gbmMsgError } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            direction: 'outbound',
+            channel: 'google_business',
+            body: content,
+            actor_type: 'agent',
+            actor_name: 'Google Business',
+            external_id: gbmData.name || null,
+            is_ai_draft: false,
+            created_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (gbmMsgError) {
+          console.error('[send-reply] Warning: Failed to save Google Business message:', gbmMsgError);
+        }
+
+        // Update conversation status
+        await supabase
+          .from('conversations')
+          .update({
+            status: 'resolved',
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', conversationId);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message_id: gbmMessage?.id || null,
+          external_id: gbmData.name || null,
+          duration_ms: Date.now() - startTime,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       default:
-        throw new Error(`Unsupported channel: ${channel}. Supported: email, whatsapp, sms.`);
+        throw new Error(`Unsupported channel: ${channel}. Supported: email, whatsapp, sms, facebook, instagram, google_business.`);
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

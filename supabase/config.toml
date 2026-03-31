@@ -137,6 +137,23 @@ verify_jwt = false
 verify_jwt = false
 
 # =============================================================================
+# META — Facebook Messenger & Instagram DM webhooks
+# =============================================================================
+
+[functions.facebook-messenger-webhook]
+verify_jwt = false
+
+[functions.instagram-webhook]
+verify_jwt = false
+
+# =============================================================================
+# GOOGLE — Google My Business messaging webhook
+# =============================================================================
+
+[functions.google-business-webhook]
+verify_jwt = false
+
+# =============================================================================
 # ADMIN / UTILITY
 # =============================================================================
 
