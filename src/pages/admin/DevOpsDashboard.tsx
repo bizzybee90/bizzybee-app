@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HealthCards } from "@/components/admin/HealthCards";
 import { DataStats } from "@/components/admin/DataStats";
@@ -11,38 +10,17 @@ import { WorkspaceInspector } from "@/components/admin/WorkspaceInspector";
 import { QuotaMonitor } from "@/components/admin/QuotaMonitor";
 import { Shield, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUserRole } from "@/hooks/useUserRole";
 
 export default function DevOpsDashboard() {
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const { isAdmin, loading } = useUserRole();
   const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        setIsAdmin(false);
-        return;
-      }
-
-      // Allow any authenticated user who has a workspace (i.e. a real customer)
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      setIsAdmin(!!userProfile?.workspace_id);
-    };
-
-    checkAdmin();
-  }, []);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
   };
 
-  if (isAdmin === null) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">

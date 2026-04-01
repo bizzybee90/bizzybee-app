@@ -30,9 +30,34 @@ Deno.serve(async (req) => {
 
   // POST: Incoming Instagram DMs
   try {
-    const body = await req.json();
+    // Read raw body for signature verification before parsing as JSON
+    const rawBody = await req.text();
 
-    console.log('[instagram-webhook] Received webhook:', JSON.stringify(body).substring(0, 500));
+    // --- Meta X-Hub-Signature-256 verification ---
+    const metaAppSecret = Deno.env.get('META_APP_SECRET');
+    const hubSignature = req.headers.get('X-Hub-Signature-256');
+    if (metaAppSecret) {
+      if (!hubSignature || !hubSignature.startsWith('sha256=')) {
+        console.error('[instagram-webhook] Missing or malformed X-Hub-Signature-256 header');
+        return new Response('Invalid signature', { status: 403 });
+      }
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(metaAppSecret);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(rawBody));
+      const expectedHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const receivedHex = hubSignature.slice('sha256='.length);
+      if (expectedHex !== receivedHex) {
+        console.error('[instagram-webhook] Meta signature mismatch');
+        return new Response('Invalid signature', { status: 403 });
+      }
+    } else {
+      console.warn('[instagram-webhook] META_APP_SECRET not set — skipping signature verification');
+    }
+
+    const body = JSON.parse(rawBody);
 
     // Meta sends an object field to identify the platform
     if (body.object !== 'instagram') {
@@ -71,8 +96,9 @@ Deno.serve(async (req) => {
         const igIdentifier = `ig:${senderId}`;
         const hasAttachments = event.message?.attachments && event.message.attachments.length > 0;
 
+        const maskedSenderId = senderId.length > 4 ? `${senderId.slice(0, 4)}***` : '***';
         console.log('[instagram-webhook] Processing message:', {
-          senderId,
+          senderId: maskedSenderId,
           messageId,
           textLength: messageText.length,
           hasAttachments,
@@ -91,19 +117,9 @@ Deno.serve(async (req) => {
           .eq('enabled', true)
           .maybeSingle();
 
-        // Fallback: if no workspace_channels config, use the first workspace
-        let workspaceId = workspace?.workspace_id;
+        const workspaceId = workspace?.workspace_id;
         if (!workspaceId) {
-          const { data: firstWorkspace } = await supabase
-            .from('workspaces')
-            .select('id')
-            .limit(1)
-            .single();
-          workspaceId = firstWorkspace?.id;
-        }
-
-        if (!workspaceId) {
-          console.error('[instagram-webhook] No workspace found');
+          console.error('[instagram-webhook] No workspace_channels config found for Instagram');
           continue;
         }
 

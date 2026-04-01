@@ -515,7 +515,7 @@ Deno.serve(async (req) => {
     console.error('[send-reply] Error:', errorMessage);
     return new Response(JSON.stringify({
       success: false,
-      error: errorMessage,
+      error: 'Failed to send message. Please try again.',
       duration_ms: Date.now() - startTime,
     }), {
       status: 500,

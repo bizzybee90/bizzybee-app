@@ -1,5 +1,37 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const ALLOWED_ORIGINS = [
+  'https://bizzybee.app',
+  'https://app.bizzybee.co.uk',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+
+async function verifyStateSignature(signedState: string): Promise<string> {
+  const dotIndex = signedState.lastIndexOf('.');
+  if (dotIndex === -1) {
+    throw new Error('State parameter missing signature');
+  }
+  const payload = signedState.slice(0, dotIndex);
+  const receivedHmac = signedState.slice(dotIndex + 1);
+
+  const secret = Deno.env.get('OAUTH_STATE_SECRET') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  const expectedHmac = [...new Uint8Array(signature)].map(b => b.toString(16).padStart(2, '0')).join('');
+
+  if (receivedHmac !== expectedHmac) {
+    throw new Error('Invalid state signature');
+  }
+  return payload;
+}
+
 // Redirect helper that uses origin from state
 
 const redirectTo = (baseUrl: string, path: string, params?: Record<string, string>) => {
@@ -63,11 +95,13 @@ Deno.serve(async (req) => {
       let cancelOrigin = defaultOrigin;
       try {
         if (state) {
-          const stateData = JSON.parse(atob(state));
-          cancelOrigin = stateData.origin || defaultOrigin;
+          const payload = await verifyStateSignature(state);
+          const stateData = JSON.parse(atob(payload));
+          const candidateOrigin = stateData.origin || defaultOrigin;
+          cancelOrigin = ALLOWED_ORIGINS.includes(candidateOrigin) ? candidateOrigin : defaultOrigin;
         }
       } catch (e) {
-        // ignore
+        // ignore – use default origin
       }
       return redirectToApp(cancelOrigin, 'cancelled');
     }
@@ -87,17 +121,22 @@ Deno.serve(async (req) => {
       return redirectToApp(defaultOrigin, 'error', 'Missing state');
     }
 
-    // Decode state
+    // Decode and verify state signature
     let stateData;
     try {
-      stateData = JSON.parse(atob(state));
+      const payload = await verifyStateSignature(state);
+      stateData = JSON.parse(atob(payload));
     } catch (e) {
-      return redirectToApp(defaultOrigin, 'error', 'Invalid state');
+      console.error('State verification failed:', e);
+      return new Response(JSON.stringify({ error: 'Invalid state parameter' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const { workspaceId, importMode, provider, origin } = stateData;
-    // Use fixed published URL for consistent redirects
-    const appOrigin = origin || defaultOrigin;
+    // Validate origin against allowlist, fall back to default if not allowed
+    const appOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : defaultOrigin;
     console.log('Decoded state:', { workspaceId, importMode, provider, origin: appOrigin });
 
     const AURINKO_CLIENT_ID = Deno.env.get('AURINKO_CLIENT_ID');
@@ -125,7 +164,7 @@ Deno.serve(async (req) => {
     }
 
     const tokenData = await tokenResponse.json();
-    console.log('Token exchange successful:', JSON.stringify(tokenData));
+    console.log('Token exchange successful for account:', tokenData.accountId || 'unknown');
 
     // Extract email from token response
     let emailAddress = tokenData.email || tokenData.userEmail || 'unknown@email.com';

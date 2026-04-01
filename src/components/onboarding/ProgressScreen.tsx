@@ -442,7 +442,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         }
 
         // Email import recovery — fires regardless of email_import status
-        // Handles cases where email-import-v2 never ran (queue empty but config exists)
+        // Handles cases where start-email-import never ran (queue empty but config exists)
         // Also covers 'dispatched' status where classification ran on empty queue
         if ((emailQueueCount ?? 0) === 0) {
           const { data: emailConfig } = await supabase

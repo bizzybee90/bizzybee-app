@@ -14,6 +14,7 @@ import Escalations from "./pages/Escalations";
 import { EscalationHub } from "./pages/EscalationHub";
 import ConversationView from "./pages/ConversationView";
 import { AuthGuard } from "./components/AuthGuard";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Home from "./pages/Home";
 import Onboarding from "./pages/Onboarding";
 import ChannelsDashboard from "./pages/ChannelsDashboard";
@@ -327,7 +328,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <RouterContent />
+        <ErrorBoundary>
+          <RouterContent />
+        </ErrorBoundary>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

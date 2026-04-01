@@ -11,6 +11,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // --- Bearer token verification ---
+    const expectedToken = Deno.env.get('GOOGLE_BUSINESS_WEBHOOK_TOKEN');
+    if (expectedToken) {
+      const authHeader = req.headers.get('Authorization') || '';
+      const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
+      if (bearerToken !== expectedToken) {
+        console.error('[google-business-webhook] Invalid or missing bearer token');
+        return new Response('Forbidden', { status: 403 });
+      }
+    } else {
+      console.warn('[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set — skipping token verification');
+    }
+
     const payload = await req.json();
 
     const conversationId = payload.conversationId || '';
@@ -46,19 +59,9 @@ Deno.serve(async (req) => {
       .eq('enabled', true)
       .maybeSingle();
 
-    // Fallback: if no workspace_channels config, use the first workspace
-    let workspaceId = workspace?.workspace_id;
+    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
-      const { data: firstWorkspace } = await supabase
-        .from('workspaces')
-        .select('id')
-        .limit(1)
-        .single();
-      workspaceId = firstWorkspace?.id;
-    }
-
-    if (!workspaceId) {
-      console.error('[google-business-webhook] No workspace found');
+      console.error('[google-business-webhook] No workspace_channels config found for Google Business');
       return new Response(JSON.stringify({ status: 'ok' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

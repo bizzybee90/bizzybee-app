@@ -77,7 +77,8 @@ serve(async (req) => {
       );
     }
 
-    console.log('GDPR request received:', { email, request_type, workspace_slug });
+    const maskedEmail = email.replace(/^(.)(.*)(@.*)$/, (_, first, middle, domain) => `${first}${'*'.repeat(Math.min(middle.length, 5))}${domain}`);
+    console.log('GDPR request received:', { email: maskedEmail, request_type, workspace_slug });
 
     // Find workspace by slug (optional - for multi-tenant)
     let workspaceId: string | null = null;
@@ -165,7 +166,7 @@ serve(async (req) => {
         throw new Error('Failed to send verification email');
       }
 
-      console.log('Verification email sent to:', email);
+      console.log('Verification email sent to:', maskedEmail);
     } else {
       console.warn('POSTMARK_API_KEY not configured, skipping email');
       // In development, log the verification URL

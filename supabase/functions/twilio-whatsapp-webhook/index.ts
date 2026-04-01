@@ -11,23 +11,59 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Twilio sends form-urlencoded data
-    const formData = await req.formData();
-    const from = formData.get('From')?.toString() || '';
-    const to = formData.get('To')?.toString() || '';
-    const body = formData.get('Body')?.toString() || '';
-    const messageSid = formData.get('MessageSid')?.toString() || '';
-    const profileName = formData.get('ProfileName')?.toString() || '';
-    const numMedia = parseInt(formData.get('NumMedia')?.toString() || '0', 10);
+    // Read raw body for signature verification, then parse form data
+    const rawBody = await req.text();
+
+    // --- Twilio signature verification ---
+    const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+    const twilioSignature = req.headers.get('X-Twilio-Signature');
+    if (twilioAuthToken) {
+      if (!twilioSignature) {
+        console.error('[whatsapp-webhook] Missing X-Twilio-Signature header');
+        return new Response('Invalid signature', { status: 403 });
+      }
+      // Build the validation URL + sorted POST params string
+      const webhookUrl = new URL(req.url).toString();
+      const params = new URLSearchParams(rawBody);
+      const sortedKeys = [...params.keys()].sort();
+      let dataString = webhookUrl;
+      for (const key of sortedKeys) {
+        dataString += key + params.get(key);
+      }
+      // Compute HMAC-SHA1
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(twilioAuthToken);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
+      const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+      if (expectedSig !== twilioSignature) {
+        console.error('[whatsapp-webhook] Twilio signature mismatch');
+        return new Response('Invalid signature', { status: 403 });
+      }
+    } else {
+      console.warn('[whatsapp-webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification');
+    }
+
+    // Parse form-urlencoded data from the raw body
+    const formParams = new URLSearchParams(rawBody);
+    const from = formParams.get('From') || '';
+    const to = formParams.get('To') || '';
+    const body = formParams.get('Body') || '';
+    const messageSid = formParams.get('MessageSid') || '';
+    const profileName = formParams.get('ProfileName') || '';
+    const numMedia = parseInt(formParams.get('NumMedia') || '0', 10);
 
     // Strip whatsapp: prefix for storage
     const customerPhone = from.replace('whatsapp:', '');
     const businessPhone = to.replace('whatsapp:', '');
 
+    const maskedFrom = customerPhone.length > 3 ? `+44***${customerPhone.slice(-3)}` : '***';
+    const maskedTo = businessPhone.length > 3 ? `+44***${businessPhone.slice(-3)}` : '***';
     console.log('[whatsapp-webhook] Inbound message:', {
-      from: customerPhone,
-      to: businessPhone,
-      profileName,
+      from: maskedFrom,
+      to: maskedTo,
       bodyLength: body.length,
       numMedia,
       messageSid,
@@ -52,19 +88,9 @@ Deno.serve(async (req) => {
       .eq('enabled', true)
       .maybeSingle();
 
-    // Fallback: if no workspace_channels config, use the first workspace
-    let workspaceId = workspace?.workspace_id;
+    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
-      const { data: firstWorkspace } = await supabase
-        .from('workspaces')
-        .select('id')
-        .limit(1)
-        .single();
-      workspaceId = firstWorkspace?.id;
-    }
-
-    if (!workspaceId) {
-      console.error('[whatsapp-webhook] No workspace found for number:', businessPhone);
+      console.error('[whatsapp-webhook] No workspace_channels config found for WhatsApp. Number:', maskedTo);
       return new Response('<Response></Response>', {
         headers: { 'Content-Type': 'text/xml' },
       });

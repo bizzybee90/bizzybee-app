@@ -11,17 +11,54 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Twilio sends form-urlencoded data
-    const formData = await req.formData();
-    const from = formData.get('From')?.toString() || '';
-    const to = formData.get('To')?.toString() || '';
-    const body = formData.get('Body')?.toString() || '';
-    const messageSid = formData.get('MessageSid')?.toString() || '';
-    const numMedia = parseInt(formData.get('NumMedia')?.toString() || '0', 10);
+    // Read raw body for signature verification, then parse form data
+    const rawBody = await req.text();
 
+    // --- Twilio signature verification ---
+    const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+    const twilioSignature = req.headers.get('X-Twilio-Signature');
+    if (twilioAuthToken) {
+      if (!twilioSignature) {
+        console.error('[sms-webhook] Missing X-Twilio-Signature header');
+        return new Response('Invalid signature', { status: 403 });
+      }
+      // Build the validation URL + sorted POST params string
+      const webhookUrl = new URL(req.url).toString();
+      const params = new URLSearchParams(rawBody);
+      const sortedKeys = [...params.keys()].sort();
+      let dataString = webhookUrl;
+      for (const key of sortedKeys) {
+        dataString += key + params.get(key);
+      }
+      // Compute HMAC-SHA1
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(twilioAuthToken);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
+      const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+      if (expectedSig !== twilioSignature) {
+        console.error('[sms-webhook] Twilio signature mismatch');
+        return new Response('Invalid signature', { status: 403 });
+      }
+    } else {
+      console.warn('[sms-webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification');
+    }
+
+    // Parse form-urlencoded data from the raw body
+    const formParams = new URLSearchParams(rawBody);
+    const from = formParams.get('From') || '';
+    const to = formParams.get('To') || '';
+    const body = formParams.get('Body') || '';
+    const messageSid = formParams.get('MessageSid') || '';
+    const numMedia = parseInt(formParams.get('NumMedia') || '0', 10);
+
+    const maskedFrom = from.length > 3 ? `+44***${from.slice(-3)}` : '***';
+    const maskedTo = to.length > 3 ? `+44***${to.slice(-3)}` : '***';
     console.log('[sms-webhook] Inbound SMS:', {
-      from,
-      to,
+      from: maskedFrom,
+      to: maskedTo,
       bodyLength: body.length,
       numMedia,
       messageSid,
@@ -45,19 +82,9 @@ Deno.serve(async (req) => {
       .eq('enabled', true)
       .maybeSingle();
 
-    // Fallback: use first workspace
-    let workspaceId = workspace?.workspace_id;
+    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
-      const { data: firstWorkspace } = await supabase
-        .from('workspaces')
-        .select('id')
-        .limit(1)
-        .single();
-      workspaceId = firstWorkspace?.id;
-    }
-
-    if (!workspaceId) {
-      console.error('[sms-webhook] No workspace found for number:', to);
+      console.error('[sms-webhook] No workspace_channels config found for SMS. Number:', maskedTo);
       return new Response('<Response></Response>', {
         headers: { 'Content-Type': 'text/xml' },
       });

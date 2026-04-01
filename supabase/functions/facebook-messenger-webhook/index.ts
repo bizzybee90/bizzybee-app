@@ -30,7 +30,34 @@ Deno.serve(async (req) => {
 
   // POST — incoming messages
   try {
-    const body = await req.json();
+    // Read raw body for signature verification before parsing as JSON
+    const rawBody = await req.text();
+
+    // --- Meta X-Hub-Signature-256 verification ---
+    const metaAppSecret = Deno.env.get('META_APP_SECRET');
+    const hubSignature = req.headers.get('X-Hub-Signature-256');
+    if (metaAppSecret) {
+      if (!hubSignature || !hubSignature.startsWith('sha256=')) {
+        console.error('[facebook-messenger-webhook] Missing or malformed X-Hub-Signature-256 header');
+        return new Response('Invalid signature', { status: 403 });
+      }
+      const encoder = new TextEncoder();
+      const keyData = encoder.encode(metaAppSecret);
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+      );
+      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(rawBody));
+      const expectedHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const receivedHex = hubSignature.slice('sha256='.length);
+      if (expectedHex !== receivedHex) {
+        console.error('[facebook-messenger-webhook] Meta signature mismatch');
+        return new Response('Invalid signature', { status: 403 });
+      }
+    } else {
+      console.warn('[facebook-messenger-webhook] META_APP_SECRET not set — skipping signature verification');
+    }
+
+    const body = JSON.parse(rawBody);
 
     // Meta sends an object field to identify the platform
     if (body.object !== 'page') {
@@ -58,8 +85,9 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        const maskedSenderId = senderId.length > 4 ? `${senderId.slice(0, 4)}***` : '***';
         console.log('[facebook-messenger-webhook] Inbound message:', {
-          senderId,
+          senderId: maskedSenderId,
           bodyLength: messageText.length,
           messageId,
         });
@@ -72,19 +100,9 @@ Deno.serve(async (req) => {
           .eq('enabled', true)
           .maybeSingle();
 
-        // Fallback: if no workspace_channels config, use the first workspace
-        let workspaceId = workspace?.workspace_id;
+        const workspaceId = workspace?.workspace_id;
         if (!workspaceId) {
-          const { data: firstWorkspace } = await supabase
-            .from('workspaces')
-            .select('id')
-            .limit(1)
-            .single();
-          workspaceId = firstWorkspace?.id;
-        }
-
-        if (!workspaceId) {
-          console.error('[facebook-messenger-webhook] No workspace found');
+          console.error('[facebook-messenger-webhook] No workspace_channels config found for Facebook');
           continue;
         }
 
