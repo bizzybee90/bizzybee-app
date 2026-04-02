@@ -104,9 +104,21 @@ serve(async (req) => {
     const customerEmail = conversation.customer?.email || '';
     const businessName = workspace?.name || 'the business';
 
-    // 5. Build FAQ context for drafting
+    // 5. Fetch house rules
+    const { data: houseRules } = await supabase
+      .from('house_rules')
+      .select('rule_text')
+      .eq('workspace_id', workspace_id)
+      .eq('active', true)
+      .order('created_at', { ascending: true });
+
+    // 5b. Build FAQ context for drafting
     const faqContext = (faqs && faqs.length > 0)
       ? `\nRelevant FAQs for this business:\n${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
+      : '';
+
+    const rulesContext = (houseRules && houseRules.length > 0)
+      ? `\nBrand rules you must always follow — no exceptions:\n${houseRules.map((r: { rule_text: string }, i: number) => `${i + 1}. ${r.rule_text}`).join('\n')}`
       : '';
 
     // 6. Single AI call - Claude Haiku generates everything
@@ -124,7 +136,7 @@ serve(async (req) => {
 10. "customer_topics" - Array of 1-5 topic keywords discussed (e.g., ["window cleaning", "scheduling", "pricing"])
 11. "customer_tone" - The customer's communication tone: one of "formal", "casual", "friendly", "frustrated", "neutral"
 
-${faqContext}
+${faqContext}${rulesContext}
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no backticks, no explanation.`;
 

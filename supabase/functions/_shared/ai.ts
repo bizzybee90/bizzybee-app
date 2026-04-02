@@ -16,6 +16,7 @@ export interface WorkspaceAiContext {
   business_context: Record<string, unknown> | null;
   faq_entries: Array<Record<string, unknown>>;
   corrections: Array<Record<string, unknown>>;
+  house_rules?: Array<{ rule_text: string }>;
 }
 
 const DEFAULT_CLASSIFICATION: ClassificationResult = {
@@ -78,6 +79,10 @@ function classificationSystemPrompt(context: WorkspaceAiContext): string {
     `Business context: ${JSON.stringify(context.business_context || {})}`,
     `FAQ snippets: ${JSON.stringify(context.faq_entries.slice(0, 30))}`,
   ];
+
+  if (context.house_rules && context.house_rules.length > 0) {
+    parts.push(`\nBrand rules you must always follow — no exceptions:\n${context.house_rules.map((r, i) => `${i + 1}. ${r.rule_text}`).join('\n')}`);
+  }
 
   const correctionsSection = formatCorrections(context.corrections);
   if (correctionsSection) {
@@ -159,17 +164,24 @@ export async function generateDraftWithAnthropic(params: {
   recentMessages: Array<{ direction: string; body: string }>;
   businessContext: Record<string, unknown> | null;
   faqEntries: Array<Record<string, unknown>>;
+  houseRules?: Array<{ rule_text: string }>;
 }): Promise<string> {
   const apiKey = getRequiredEnv("ANTHROPIC_API_KEY");
   const model = getOptionalEnv("ANTHROPIC_MODEL", DEFAULT_MODEL);
   const endpoint = getOptionalEnv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages");
 
-  const systemPrompt = [
+  const promptParts = [
     "You write concise, professional customer support replies for UK SMBs.",
     "Follow UK English spelling and tone.",
     "Do not invent policy details. If uncertain, ask a clear clarifying question.",
     "Use context and FAQ when relevant.",
-  ].join("\n");
+  ];
+
+  if (params.houseRules && params.houseRules.length > 0) {
+    promptParts.push(`\nBrand rules you must always follow — no exceptions:\n${params.houseRules.map((r, i) => `${i + 1}. ${r.rule_text}`).join('\n')}`);
+  }
+
+  const systemPrompt = promptParts.join("\n");
 
   const userPrompt = JSON.stringify({
     conversation_id: params.conversationId,

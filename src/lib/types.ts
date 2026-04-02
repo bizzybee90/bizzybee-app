@@ -137,6 +137,29 @@ export interface Template {
   created_at: string;
 }
 
+// House Rules types
+export type RuleCategory =
+  | 'general'
+  | 'liability'
+  | 'service_standards'
+  | 'pricing'
+  | 'scope'
+  | 'escalation';
+
+export type RuleSource = 'manual' | 'suggested';
+
+export interface HouseRule {
+  id: string;
+  workspace_id: string;
+  rule_text: string;
+  category: RuleCategory;
+  active: boolean;
+  source: RuleSource;
+  source_context: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SLAConfig {
   id: string;
   workspace_id: string;

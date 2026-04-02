@@ -19,6 +19,7 @@ import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
 import { EmailSettingsPanel } from '@/components/settings/EmailSettingsPanel';
 import { BusinessContextPanel } from '@/components/settings/BusinessContextPanel';
 import { SenderRulesPanel } from '@/components/settings/SenderRulesPanel';
+import { HouseRulesPanel } from '@/components/settings/HouseRulesPanel';
 import { TriageLearningPanel } from '@/components/settings/TriageLearningPanel';
 import { LearningSystemPanel } from '@/components/settings/LearningSystemPanel';
 import { BehaviorStatsPanel } from '@/components/settings/BehaviorStatsPanel';
@@ -65,6 +66,9 @@ export default function Settings() {
               <AISettingsCard workspaceId={workspace.id} />
             </SettingsSection>
           )}
+          <SettingsSection title="Brand Rules" description="Rules your AI will always follow" defaultOpen={false}>
+            <HouseRulesPanel />
+          </SettingsSection>
           <SettingsSection title="Knowledge Base" description="FAQs, pricing, and business facts">
             <KnowledgeBasePanel />
           </SettingsSection>

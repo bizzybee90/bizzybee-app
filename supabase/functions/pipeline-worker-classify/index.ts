@@ -219,7 +219,22 @@ async function loadWorkspaceContext(workspaceId: string): Promise<WorkspaceAiCon
     console.warn("classification_corrections load error:", e);
   }
 
-  return { business_context: businessContext, faq_entries: faqEntries, corrections };
+  let houseRules: Array<{ rule_text: string }> = [];
+  try {
+    const res = await supabase
+      .from("house_rules")
+      .select("rule_text")
+      .eq("workspace_id", workspaceId)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+    if (!res.error) {
+      houseRules = (res.data || []) as Array<{ rule_text: string }>;
+    }
+  } catch (e) {
+    console.warn("house_rules load error:", e);
+  }
+
+  return { business_context: businessContext, faq_entries: faqEntries, corrections, house_rules: houseRules };
 }
 
 async function applyClassification(params: {

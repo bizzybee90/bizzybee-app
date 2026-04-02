@@ -21,6 +21,7 @@ const MAX_ATTEMPTS = 6;
 async function loadDraftContext(workspaceId: string): Promise<{
   businessContext: Record<string, unknown> | null;
   faqEntries: Array<Record<string, unknown>>;
+  houseRules: Array<{ rule_text: string }>;
 }> {
   const supabase = createServiceClient();
 
@@ -59,7 +60,22 @@ async function loadDraftContext(workspaceId: string): Promise<{
     console.warn("faq_database load error:", e);
   }
 
-  return { businessContext, faqEntries };
+  let houseRules: Array<{ rule_text: string }> = [];
+  try {
+    const res = await supabase
+      .from("house_rules")
+      .select("rule_text")
+      .eq("workspace_id", workspaceId)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+    if (!res.error) {
+      houseRules = (res.data || []) as Array<{ rule_text: string }>;
+    }
+  } catch (e) {
+    console.warn("house_rules load error:", e);
+  }
+
+  return { businessContext, faqEntries, houseRules };
 }
 
 Deno.serve(async (req) => {
@@ -190,6 +206,7 @@ Deno.serve(async (req) => {
           recentMessages: (recentMessages || []) as Array<{ direction: string; body: string }>,
           businessContext: draftContext.businessContext,
           faqEntries: draftContext.faqEntries,
+          houseRules: draftContext.houseRules,
         });
 
         const { error: updateConversationError } = await supabase
