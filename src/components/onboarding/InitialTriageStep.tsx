@@ -3,7 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronLeft, ChevronRight, Loader2, Sparkles, CheckCircle2, Mail, Bot } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Sparkles,
+  CheckCircle2,
+  Mail,
+  Bot,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 interface InitialTriageStepProps {
@@ -27,11 +35,11 @@ export function InitialTriageStep({ workspaceId, onComplete, onBack }: InitialTr
       // Call bulk-retriage in batches
       let totalProcessed = 0;
       let totalChanged = 0;
-      let batchSize = 50;
+      const batchSize = 50;
       let hasMore = true;
 
       while (hasMore && totalProcessed < 500) {
-        setProgress(Math.min(90, 10 + (totalProcessed / 5)));
+        setProgress(Math.min(90, 10 + totalProcessed / 5));
 
         const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
           body: {
@@ -56,8 +64,8 @@ export function InitialTriageStep({ workspaceId, onComplete, onBack }: InitialTr
 
       setProgress(100);
       setStatus('complete');
-      setResults({ 
-        processed: totalProcessed, 
+      setResults({
+        processed: totalProcessed,
         changed: totalChanged,
         autoHandled: Math.round(totalChanged * 0.7), // Estimate
       });
@@ -107,9 +115,7 @@ export function InitialTriageStep({ workspaceId, onComplete, onBack }: InitialTr
             <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
             <div className="space-y-2">
               <h3 className="font-semibold">Analyzing your inbox...</h3>
-              <p className="text-sm text-muted-foreground">
-                This may take a minute
-              </p>
+              <p className="text-sm text-muted-foreground">This may take a minute</p>
             </div>
             <Progress value={progress} className="h-2" />
           </div>
@@ -124,9 +130,7 @@ export function InitialTriageStep({ workspaceId, onComplete, onBack }: InitialTr
             </div>
             <div className="space-y-2">
               <h3 className="font-semibold text-lg">Analysis Complete!</h3>
-              <p className="text-sm text-muted-foreground">
-                BizzyBee has sorted your inbox
-              </p>
+              <p className="text-sm text-muted-foreground">BizzyBee has sorted your inbox</p>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -167,7 +171,11 @@ export function InitialTriageStep({ workspaceId, onComplete, onBack }: InitialTr
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
-          <Button variant="ghost" onClick={() => onComplete({ processed: 0, changed: 0 })} className="ml-auto">
+          <Button
+            variant="ghost"
+            onClick={() => onComplete({ processed: 0, changed: 0 })}
+            className="ml-auto"
+          >
             Skip this step
           </Button>
         </div>

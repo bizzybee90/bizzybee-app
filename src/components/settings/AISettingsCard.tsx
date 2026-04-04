@@ -30,20 +30,20 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
         .select('*')
         .eq('workspace_id', workspaceId)
         .maybeSingle();
-      
+
       if (data) {
         setSettings({
           auto_send_enabled: data.auto_send_enabled ?? false,
-          auto_send_threshold: Number(data.auto_send_threshold) ?? 0.95,
+          auto_send_threshold: Number(data.auto_send_threshold),
           default_to_drafts: data.default_to_drafts ?? true,
           always_verify: data.always_verify ?? true,
           notify_on_low_confidence: data.notify_on_low_confidence ?? true,
-          low_confidence_threshold: Number(data.low_confidence_threshold) ?? 0.7,
+          low_confidence_threshold: Number(data.low_confidence_threshold),
         });
       }
       setLoading(false);
     };
-    
+
     if (workspaceId) fetchSettings();
   }, [workspaceId]);
 
@@ -51,15 +51,16 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     setSaving(true);
-    
-    const { error } = await supabase
-      .from('automation_settings')
-      .upsert({ 
-        workspace_id: workspaceId, 
+
+    const { error } = await supabase.from('automation_settings').upsert(
+      {
+        workspace_id: workspaceId,
         ...newSettings,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'workspace_id' });
-    
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'workspace_id' },
+    );
+
     setSaving(false);
     if (error) {
       toast.error('Failed to save settings');
@@ -82,9 +83,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
           <Bot className="h-5 w-5 text-primary" />
           <CardTitle>AI Behavior</CardTitle>
         </div>
-        <CardDescription>
-          Configure how BizzyBee's AI handles your emails
-        </CardDescription>
+        <CardDescription>Configure how BizzyBee's AI handles your emails</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Default to drafts - RECOMMENDED */}
@@ -115,7 +114,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
             disabled={settings.default_to_drafts}
           />
         </div>
-        
+
         {/* Auto-send threshold slider */}
         {settings.auto_send_enabled && !settings.default_to_drafts && (
           <div className="space-y-3 pl-4 border-l-2 border-primary/20">

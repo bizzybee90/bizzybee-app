@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
       }>;
       try {
         // Strip markdown fences
-        let cleaned = responseText
+        const cleaned = responseText
           .replace(/```(?:json)?\s*/gi, '')
           .replace(/```/g, '')
           .trim();

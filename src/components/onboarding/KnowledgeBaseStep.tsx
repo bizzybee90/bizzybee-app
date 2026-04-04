@@ -88,7 +88,7 @@ export function KnowledgeBaseStep({
         }
 
         // Check for FAQs from website source
-        // @ts-ignore - Supabase types cause deep instantiation errors
+        // @ts-expect-error - Supabase types cause deep instantiation errors
         const faqResult = await supabase
           .from('faq_database')
           .select('id, generation_source')
@@ -144,7 +144,7 @@ export function KnowledgeBaseStep({
       // Derive pages scraped from distinct generation_source values (n8n stores page URL there)
       let pagesScraped = 0;
       try {
-        // @ts-ignore
+        // @ts-expect-error - Supabase types cause deep instantiation errors
         const { data: pageRows } = await supabase
           .from('faq_database')
           .select('generation_source')
@@ -206,7 +206,7 @@ export function KnowledgeBaseStep({
       const elapsed = pollingStartRef.current ? Date.now() - pollingStartRef.current : 0;
 
       try {
-        // @ts-ignore
+        // @ts-expect-error - Supabase types cause deep instantiation errors
         const { count } = await supabase
           .from('faq_database')
           .select('id', { count: 'exact', head: true })
