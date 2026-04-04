@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,23 +39,33 @@ Deno.serve(async (req) => {
     const hubSignature = req.headers.get('X-Hub-Signature-256');
     if (metaAppSecret) {
       if (!hubSignature || !hubSignature.startsWith('sha256=')) {
-        console.error('[facebook-messenger-webhook] Missing or malformed X-Hub-Signature-256 header');
+        console.error(
+          '[facebook-messenger-webhook] Missing or malformed X-Hub-Signature-256 header',
+        );
         return new Response('Invalid signature', { status: 403 });
       }
       const encoder = new TextEncoder();
       const keyData = encoder.encode(metaAppSecret);
       const cryptoKey = await crypto.subtle.importKey(
-        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
       );
       const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(rawBody));
-      const expectedHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const expectedHex = [...new Uint8Array(sigBytes)]
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
       const receivedHex = hubSignature.slice('sha256='.length);
       if (expectedHex !== receivedHex) {
         console.error('[facebook-messenger-webhook] Meta signature mismatch');
         return new Response('Invalid signature', { status: 403 });
       }
     } else {
-      console.warn('[facebook-messenger-webhook] META_APP_SECRET not set — skipping signature verification');
+      console.warn(
+        '[facebook-messenger-webhook] META_APP_SECRET not set — skipping signature verification',
+      );
     }
 
     const body = JSON.parse(rawBody);
@@ -92,17 +103,19 @@ Deno.serve(async (req) => {
           messageId,
         });
 
-        // Find workspace by Facebook channel config
-        const { data: workspace } = await supabase
-          .from('workspace_channels')
-          .select('workspace_id')
-          .eq('channel', 'facebook')
-          .eq('enabled', true)
-          .maybeSingle();
+        const workspaceId = await resolveWorkspaceIdForChannel(
+          supabase,
+          'facebook',
+          {
+            raw: [String(entry.id || ''), String(event.recipient?.id || '')],
+          },
+          '[facebook-messenger-webhook]',
+        );
 
-        const workspaceId = workspace?.workspace_id;
         if (!workspaceId) {
-          console.error('[facebook-messenger-webhook] No workspace_channels config found for Facebook');
+          console.error(
+            '[facebook-messenger-webhook] No workspace_channels config found for Facebook',
+          );
           continue;
         }
 
@@ -124,7 +137,7 @@ Deno.serve(async (req) => {
             const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
             if (pageAccessToken) {
               const profileRes = await fetch(
-                `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name&access_token=${pageAccessToken}`
+                `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name&access_token=${pageAccessToken}`,
               );
               if (profileRes.ok) {
                 const profile = await profileRes.json();
@@ -191,19 +204,17 @@ Deno.serve(async (req) => {
         }
 
         // Save the inbound message
-        const { error: msgError } = await supabase
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
-            direction: 'inbound',
-            channel: 'facebook',
-            body: messageText,
-            actor_type: 'customer',
-            actor_name: customer.name || customerPhone,
-            external_id: messageId,
-            is_internal: false,
-            created_at: new Date().toISOString(),
-          });
+        const { error: msgError } = await supabase.from('messages').insert({
+          conversation_id: conversation.id,
+          direction: 'inbound',
+          channel: 'facebook',
+          body: messageText,
+          actor_type: 'customer',
+          actor_name: customer.name || customerPhone,
+          external_id: messageId,
+          is_internal: false,
+          created_at: new Date().toISOString(),
+        });
 
         if (msgError) {
           console.error('[facebook-messenger-webhook] Failed to save message:', msgError);
@@ -225,7 +236,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            Authorization: `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({
             conversation_id: conversation.id,

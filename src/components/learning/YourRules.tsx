@@ -1,7 +1,13 @@
-import { useEffect, useState, forwardRef, useImperativeHandle, useRef } from 'react';
+import { useEffect, useState, forwardRef, useImperativeHandle, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/hooks/use-toast';
@@ -17,8 +23,15 @@ interface SenderRule {
 }
 
 const CLASSIFICATIONS = [
-  'supplier_invoice', 'spam', 'notification', 'customer_enquiry',
-  'booking_request', 'complaint', 'newsletter', 'internal', 'other',
+  'supplier_invoice',
+  'spam',
+  'notification',
+  'customer_enquiry',
+  'booking_request',
+  'complaint',
+  'newsletter',
+  'internal',
+  'other',
 ];
 
 const ACTIONS = [
@@ -28,7 +41,7 @@ const ACTIONS = [
 ];
 
 const formatClassification = (str: string) =>
-  str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  str.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 
 const classificationColor = (cls: string): string => {
   const map: Record<string, string> = {
@@ -72,7 +85,7 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
     },
   }));
 
-  const fetchRules = async () => {
+  const fetchRules = useCallback(async () => {
     if (!workspace?.id) return;
     const { data } = await supabase
       .from('sender_rules')
@@ -83,9 +96,11 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
       .limit(50);
     setRules((data as SenderRule[]) || []);
     setLoading(false);
-  };
+  }, [workspace?.id]);
 
-  useEffect(() => { fetchRules(); }, [workspace?.id]);
+  useEffect(() => {
+    void fetchRules();
+  }, [fetchRules]);
 
   const startEdit = (rule: SenderRule) => {
     setEditingId(rule.id);
@@ -95,9 +110,12 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    await supabase.from('sender_rules').update({
-      default_classification: editClassification,
-    }).eq('id', editingId);
+    await supabase
+      .from('sender_rules')
+      .update({
+        default_classification: editClassification,
+      })
+      .eq('id', editingId);
     setEditingId(null);
     toast({ title: 'Rule updated' });
     fetchRules();
@@ -146,46 +164,64 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
 
       {rules.length === 0 && !showAddForm ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <p className="text-sm text-slate-500">No rules yet. Review emails in the Teach queue to start teaching BizzyBee.</p>
+          <p className="text-sm text-slate-500">
+            No rules yet. Review emails in the Teach queue to start teaching BizzyBee.
+          </p>
         </div>
       ) : (
         <div className="flex-1 space-y-0.5">
-          {rules.map(rule => (
+          {rules.map((rule) => (
             <div
               key={rule.id}
-              ref={el => { rowRefs.current[rule.id] = el; }}
+              ref={(el) => {
+                rowRefs.current[rule.id] = el;
+              }}
               className={cn(
                 'rounded-lg px-3 py-2.5 transition-all cursor-pointer group',
                 highlightedId === rule.id
                   ? 'bg-amber-50 ring-1 ring-amber-200'
-                  : 'hover:bg-slate-50'
+                  : 'hover:bg-slate-50',
               )}
             >
               {editingId === rule.id ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-500">
-                    Emails from <span className="font-medium text-slate-900">{rule.sender_pattern}</span>
+                    Emails from{' '}
+                    <span className="font-medium text-slate-900">{rule.sender_pattern}</span>
                   </p>
                   <div className="flex gap-2">
                     <Select value={editClassification} onValueChange={setEditClassification}>
-                      <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {CLASSIFICATIONS.map(c => (
-                          <SelectItem key={c} value={c}>{formatClassification(c)}</SelectItem>
+                        {CLASSIFICATIONS.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {formatClassification(c)}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <Select value={editAction} onValueChange={setEditAction}>
-                      <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {ACTIONS.map(a => (
-                          <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                        {ACTIONS.map((a) => (
+                          <SelectItem key={a.value} value={a.value}>
+                            {a.label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="flex gap-1.5 justify-end">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingId(null)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setEditingId(null)}
+                    >
                       Cancel
                     </Button>
                     <Button size="sm" className="h-7 text-xs" onClick={saveEdit}>
@@ -197,10 +233,20 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-slate-700">Remove this rule?</p>
                   <div className="flex gap-1.5">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDeletingId(null)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setDeletingId(null)}
+                    >
                       Cancel
                     </Button>
-                    <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={() => confirmDelete(rule.id)}>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => confirmDelete(rule.id)}
+                    >
                       Remove
                     </Button>
                   </div>
@@ -208,18 +254,35 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
               ) : (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <Badge variant="outline" className={cn('text-xs shrink-0 border', classificationColor(rule.default_classification))}>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'text-xs shrink-0 border',
+                        classificationColor(rule.default_classification),
+                      )}
+                    >
                       {formatClassification(rule.default_classification)}
                     </Badge>
                     <p className="text-sm text-slate-700 truncate">
-                      Emails from <span className="font-medium text-slate-900">{rule.sender_pattern}</span>
+                      Emails from{' '}
+                      <span className="font-medium text-slate-900">{rule.sender_pattern}</span>
                     </p>
                   </div>
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(rule)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => startEdit(rule)}
+                    >
                       <Pencil className="h-3.5 w-3.5 text-slate-400" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeletingId(rule.id)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setDeletingId(rule.id)}
+                    >
                       <Trash2 className="h-3.5 w-3.5 text-slate-400" />
                     </Button>
                   </div>
@@ -236,32 +299,50 @@ export const YourRules = forwardRef<YourRulesHandle>((_, ref) => {
           <Input
             placeholder="e.g. @xero.com"
             value={newPattern}
-            onChange={e => setNewPattern(e.target.value)}
+            onChange={(e) => setNewPattern(e.target.value)}
             className="h-8 text-sm"
           />
           <div className="flex gap-2">
             <Select value={newClassification} onValueChange={setNewClassification}>
-              <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                {CLASSIFICATIONS.map(c => (
-                  <SelectItem key={c} value={c}>{formatClassification(c)}</SelectItem>
+                {CLASSIFICATIONS.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {formatClassification(c)}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={newAction} onValueChange={setNewAction}>
-              <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
-                {ACTIONS.map(a => (
-                  <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                {ACTIONS.map((a) => (
+                  <SelectItem key={a.value} value={a.value}>
+                    {a.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="flex gap-1.5 justify-end">
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowAddForm(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setShowAddForm(false)}
+            >
               Cancel
             </Button>
-            <Button size="sm" className="h-7 text-xs" onClick={addRule} disabled={!newPattern.trim()}>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={addRule}
+              disabled={!newPattern.trim()}
+            >
               <Plus className="h-3 w-3 mr-1" /> Add rule
             </Button>
           </div>

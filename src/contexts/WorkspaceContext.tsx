@@ -1,16 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
-
-interface WorkspaceContextValue {
-  workspace: Workspace | null;
-  loading: boolean;
-}
-
-const WorkspaceContext = createContext<WorkspaceContextValue>({
-  workspace: null,
-  loading: true,
-});
+import { WorkspaceContext } from './workspace-context';
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -20,10 +11,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const fetchWorkspace = async () => {
+      if (!cancelled) {
+        setLoading(true);
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
+      if (cancelled) return;
+
+      if (!user) {
+        setWorkspace(null);
+        setLoading(false);
+        return;
+      }
 
       const { data: userData } = await supabase
         .from('users')
@@ -33,17 +34,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
       if (cancelled) return;
 
-      if (userData?.workspace_id) {
-        const { data: workspaceData } = await supabase
-          .from('workspaces')
-          .select('*')
-          .eq('id', userData.workspace_id)
-          .single();
-
-        if (!cancelled) {
-          setWorkspace(workspaceData);
-        }
+      if (!userData?.workspace_id) {
+        setWorkspace(null);
+        setLoading(false);
+        return;
       }
+
+      const { data: workspaceData } = await supabase
+        .from('workspaces')
+        .select('*')
+        .eq('id', userData.workspace_id)
+        .single();
+
+      if (!cancelled) {
+        setWorkspace(workspaceData ?? null);
+      }
+
       if (!cancelled) {
         setLoading(false);
       }
@@ -69,12 +75,4 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   return (
     <WorkspaceContext.Provider value={{ workspace, loading }}>{children}</WorkspaceContext.Provider>
   );
-}
-
-/**
- * Returns the current workspace. Fetched once at app level and shared via Context.
- * Replaces the old useWorkspace() hook which re-fetched on every component mount.
- */
-export function useWorkspace() {
-  return useContext(WorkspaceContext);
 }

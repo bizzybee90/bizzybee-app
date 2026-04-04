@@ -20,7 +20,6 @@ import {
   Globe,
   Play,
 } from 'lucide-react';
-import { generateCompetitorResearchPDF } from '@/components/settings/knowledge-base/generateCompetitorResearchPDF';
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -805,6 +804,8 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
               onClick={async () => {
                 setDownloadingPDF(true);
                 try {
+                  const { generateCompetitorResearchPDF } =
+                    await import('@/components/settings/knowledge-base/generateCompetitorResearchPDF');
                   await generateCompetitorResearchPDF(workspaceId);
                   toast.success('Competitor Research PDF downloaded!');
                 } catch (err) {

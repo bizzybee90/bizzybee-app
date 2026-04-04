@@ -14,11 +14,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { 
-  CheckCircle2, 
-  Loader2, 
-  Circle, 
-  AlertCircle, 
+import {
+  CheckCircle2,
+  Loader2,
+  Circle,
+  AlertCircle,
   ArrowRight,
   RotateCcw,
   Globe,
@@ -29,7 +29,7 @@ import {
   Wand2,
   Users,
   RefreshCw,
-  Eye
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -49,7 +49,20 @@ interface CompetitorPipelineProgressProps {
   onRestartNow?: () => void;
 }
 
-type PipelinePhase = 'queued' | 'discovering' | 'filtering' | 'review_ready' | 'validating' | 'scraping' | 'extracting' | 'deduplicating' | 'refining' | 'embedding' | 'completed' | 'failed' | 'error';
+type PipelinePhase =
+  | 'queued'
+  | 'discovering'
+  | 'filtering'
+  | 'review_ready'
+  | 'validating'
+  | 'scraping'
+  | 'extracting'
+  | 'deduplicating'
+  | 'refining'
+  | 'embedding'
+  | 'completed'
+  | 'failed'
+  | 'error';
 
 interface PipelineStats {
   phase: PipelinePhase;
@@ -118,7 +131,7 @@ function StageCard({
         status === 'in_progress' && 'border-primary/50 bg-primary/5 shadow-sm',
         status === 'done' && 'border-success/30 bg-success/5',
         status === 'error' && 'border-destructive/30 bg-destructive/5',
-        status === 'pending' && 'border-border bg-muted/30 opacity-60'
+        status === 'pending' && 'border-border bg-muted/30 opacity-60',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -139,11 +152,7 @@ function StageCard({
             {config.badge}
           </span>
           <config.StatusIcon
-            className={cn(
-              'h-4 w-4',
-              config.iconClass,
-              status === 'in_progress' && 'animate-spin'
-            )}
+            className={cn('h-4 w-4', config.iconClass, status === 'in_progress' && 'animate-spin')}
           />
         </div>
       </div>
@@ -167,14 +176,14 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
                 index < currentStage
                   ? 'bg-success'
                   : index === currentStage
-                  ? 'bg-primary ring-2 ring-primary/30'
-                  : 'bg-muted'
+                    ? 'bg-primary ring-2 ring-primary/30'
+                    : 'bg-muted',
               )}
             />
             <span
               className={cn(
                 'text-[10px] mt-1 font-medium whitespace-nowrap',
-                index <= currentStage ? 'text-foreground' : 'text-muted-foreground'
+                index <= currentStage ? 'text-foreground' : 'text-muted-foreground',
               )}
             >
               {label}
@@ -184,7 +193,7 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
             <div
               className={cn(
                 'w-6 h-0.5 mx-0.5 mt-[-12px] transition-all duration-300',
-                index < currentStage ? 'bg-success' : 'bg-muted'
+                index < currentStage ? 'bg-success' : 'bg-muted',
               )}
             />
           )}
@@ -232,10 +241,10 @@ export function CompetitorPipelineProgress({
   const [isStale, setIsStale] = useState(false);
   const [extractionStartTime, setExtractionStartTime] = useState<number | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
-  
+
   // Fetch search queries from DB for resumed jobs
   const [storedSearchQueries, setStoredSearchQueries] = useState<string[]>([]);
-  
+
   useEffect(() => {
     const fetchJobQueries = async () => {
       const { data } = await supabase
@@ -243,19 +252,17 @@ export function CompetitorPipelineProgress({
         .select('search_queries')
         .eq('id', jobId)
         .maybeSingle();
-      
+
       if (data?.search_queries && Array.isArray(data.search_queries)) {
         setStoredSearchQueries(data.search_queries as string[]);
       }
     };
-    
+
     fetchJobQueries();
   }, [jobId]);
-  
+
   // Merge: prefer passed queries, fall back to stored from DB
-  const displayQueries = searchQueries?.length 
-    ? searchQueries 
-    : storedSearchQueries;
+  const displayQueries = searchQueries?.length ? searchQueries : storedSearchQueries;
 
   // Update elapsed time every second
   useEffect(() => {
@@ -283,25 +290,30 @@ export function CompetitorPipelineProgress({
         setIsStale(isJobStale);
 
         // Check for discovery timeout
-        const isDiscoveryTimeout = 
-          (data.status === 'discovering' || data.status === 'queued' || data.status === 'geocoding') &&
+        const isDiscoveryTimeout =
+          (data.status === 'discovering' ||
+            data.status === 'queued' ||
+            data.status === 'geocoding') &&
           Date.now() - startTime > DISCOVERY_TIMEOUT_MS &&
           data.sites_discovered === 0;
 
         // Map faqs_generated to faqsExtracted (they're synonymous in our simplified flow)
         const faqsTotal = data.faqs_generated || data.faqs_extracted || 0;
         const faqsFinal = data.faqs_added || faqsTotal;
-        
+
         // Track extraction start time
-        if ((data.status === 'extracting' || data.status === 'deduplicating') && !extractionStartTime) {
+        if (
+          (data.status === 'extracting' || data.status === 'deduplicating') &&
+          !extractionStartTime
+        ) {
           setExtractionStartTime(Date.now());
         } else if (data.status !== 'extracting' && data.status !== 'deduplicating') {
           setExtractionStartTime(null);
         }
-        
+
         // Use sites_approved for validated count (this is what we actually track)
         const validatedCount = data.sites_approved || data.sites_validated || 0;
-        
+
         setStats({
           phase: isDiscoveryTimeout ? 'error' : (data.status as PipelinePhase),
           sitesDiscovered: data.sites_discovered || 0,
@@ -313,9 +325,9 @@ export function CompetitorPipelineProgress({
           faqsRefined: faqsFinal,
           faqsAdded: faqsFinal,
           currentSite: data.current_scraping_domain || null,
-          errorMessage: isDiscoveryTimeout 
+          errorMessage: isDiscoveryTimeout
             ? 'Discovery is taking longer than expected. The external service may be busy. Try again or skip for now.'
-            : (data.error_message || null),
+            : data.error_message || null,
         });
       }
     };
@@ -324,13 +336,13 @@ export function CompetitorPipelineProgress({
     const interval = setInterval(fetchStats, 10000);
 
     return () => clearInterval(interval);
-  }, [jobId, startTime]);
+  }, [extractionStartTime, jobId, startTime]);
 
   // Derive stage statuses from phase
-  const getStageStatuses = (): { 
-    discover: StageStatus; 
-    validate: StageStatus; 
-    scrape: StageStatus; 
+  const getStageStatuses = (): {
+    discover: StageStatus;
+    validate: StageStatus;
+    scrape: StageStatus;
     extract: StageStatus;
     refine: StageStatus;
   } => {
@@ -339,42 +351,120 @@ export function CompetitorPipelineProgress({
     if (phase === 'error') {
       // Determine which stage errored
       if (stats.sitesDiscovered === 0) {
-        return { discover: 'error', validate: 'pending', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'error',
+          validate: 'pending',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
       }
       if (stats.sitesValidated === 0) {
-        return { discover: 'done', validate: 'error', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'error',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
       }
       if (stats.sitesScraped === 0) {
-        return { discover: 'done', validate: 'done', scrape: 'error', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'error',
+          extract: 'pending',
+          refine: 'pending',
+        };
       }
       if (stats.faqsExtracted === 0) {
-        return { discover: 'done', validate: 'done', scrape: 'done', extract: 'error', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'done',
+          extract: 'error',
+          refine: 'pending',
+        };
       }
-      return { discover: 'done', validate: 'done', scrape: 'done', extract: 'done', refine: 'error' };
+      return {
+        discover: 'done',
+        validate: 'done',
+        scrape: 'done',
+        extract: 'done',
+        refine: 'error',
+      };
     }
 
     switch (phase) {
       case 'queued':
       case 'discovering':
       case 'filtering':
-        return { discover: 'in_progress', validate: 'pending', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'in_progress',
+          validate: 'pending',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
       case 'review_ready':
         // Discovery done, waiting for user review before scraping
-        return { discover: 'done', validate: 'done', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
       case 'validating':
-        return { discover: 'done', validate: 'in_progress', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'in_progress',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
       case 'scraping':
-        return { discover: 'done', validate: 'done', scrape: 'in_progress', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'in_progress',
+          extract: 'pending',
+          refine: 'pending',
+        };
       case 'extracting':
       case 'deduplicating':
-        return { discover: 'done', validate: 'done', scrape: 'done', extract: 'in_progress', refine: 'pending' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'done',
+          extract: 'in_progress',
+          refine: 'pending',
+        };
       case 'refining':
       case 'embedding':
-        return { discover: 'done', validate: 'done', scrape: 'done', extract: 'done', refine: 'in_progress' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'done',
+          extract: 'done',
+          refine: 'in_progress',
+        };
       case 'completed':
-        return { discover: 'done', validate: 'done', scrape: 'done', extract: 'done', refine: 'done' };
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'done',
+          extract: 'done',
+          refine: 'done',
+        };
       default:
-        return { discover: 'pending', validate: 'pending', scrape: 'pending', extract: 'pending', refine: 'pending' };
+        return {
+          discover: 'pending',
+          validate: 'pending',
+          scrape: 'pending',
+          extract: 'pending',
+          refine: 'pending',
+        };
     }
   };
 
@@ -392,9 +482,7 @@ export function CompetitorPipelineProgress({
 
   // Calculate scrape progress
   const scrapePercent =
-    stats.sitesValidated > 0
-      ? Math.round((stats.sitesScraped / stats.sitesValidated) * 100)
-      : 0;
+    stats.sitesValidated > 0 ? Math.round((stats.sitesScraped / stats.sitesValidated) * 100) : 0;
 
   // Estimate time remaining
   const estimateTime = (): string => {
@@ -436,7 +524,7 @@ export function CompetitorPipelineProgress({
       setIsCancelling(false);
     }
   };
-  
+
   // Check if extraction is stalled.
   // Two paths:
   // 1) "Local" timer: user has been on this screen > 15 min
@@ -451,9 +539,9 @@ export function CompetitorPipelineProgress({
     setIsRecovering(true);
     try {
       const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery', jobId }
+        body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery', jobId },
       });
-      
+
       if (error) {
         toast.error('Recovery failed', { description: error.message });
       } else if (data?.success) {
@@ -529,16 +617,21 @@ export function CompetitorPipelineProgress({
           {stageStatuses.discover === 'done' && stats.sitesDiscovered > 0 && (
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <p className="text-sm text-success">{stats.sitesDiscovered} competitors found</p>
-              <CompetitorListDialog jobId={jobId} workspaceId={workspaceId} serviceArea={serviceArea} nicheQuery={nicheQuery} />
+              <CompetitorListDialog
+                jobId={jobId}
+                workspaceId={workspaceId}
+                serviceArea={serviceArea}
+                nicheQuery={nicheQuery}
+              />
             </div>
           )}
           {stageStatuses.discover === 'in_progress' && (
             <div className="space-y-3">
               {/* Always show progress bar with target count */}
               <div className="space-y-1.5">
-                <Progress 
-                  value={Math.min((stats.sitesDiscovered / targetCount) * 100, 100)} 
-                  className="h-2" 
+                <Progress
+                  value={Math.min((stats.sitesDiscovered / targetCount) * 100, 100)}
+                  className="h-2"
                 />
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
@@ -549,7 +642,7 @@ export function CompetitorPipelineProgress({
                   </span>
                 </div>
               </div>
-              
+
               {/* Status message with elapsed time */}
               <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
@@ -558,16 +651,17 @@ export function CompetitorPipelineProgress({
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                   </span>
                   <span>
-                    {stats.sitesDiscovered === 0 
-                      ? 'Searching Google Maps...' 
+                    {stats.sitesDiscovered === 0
+                      ? 'Searching Google Maps...'
                       : `Finding more businesses...`}
                   </span>
                 </div>
                 <span className="text-xs font-mono tabular-nums">
-                  {Math.floor(elapsedSeconds / 60)}:{(elapsedSeconds % 60).toString().padStart(2, '0')}
+                  {Math.floor(elapsedSeconds / 60)}:
+                  {(elapsedSeconds % 60).toString().padStart(2, '0')}
                 </span>
               </div>
-              
+
               {/* Search terms being used */}
               {displayQueries.length > 0 && (
                 <div className="p-3 bg-muted/30 rounded-lg border border-border/50">
@@ -579,22 +673,19 @@ export function CompetitorPipelineProgress({
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {displayQueries.map((query) => (
-                      <Badge 
-                        key={query} 
-                        variant="secondary" 
-                        className="font-mono text-xs"
-                      >
+                      <Badge key={query} variant="secondary" className="font-mono text-xs">
                         {query}
                       </Badge>
                     ))}
                   </div>
                 </div>
               )}
-              
+
               {/* Helpful tip after 30 seconds */}
               {elapsedSeconds > 30 && (
                 <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
-                  This step uses Google Maps to find real businesses. It typically takes 2-4 minutes to complete.
+                  This step uses Google Maps to find real businesses. It typically takes 2-4 minutes
+                  to complete.
                   {isStale && ' The service may be busy - please wait a bit longer.'}
                 </p>
               )}
@@ -610,16 +701,14 @@ export function CompetitorPipelineProgress({
             stageStatuses.validate === 'done'
               ? 'Checked which businesses have useful websites'
               : stageStatuses.validate === 'in_progress'
-              ? 'Checking which businesses have useful websites'
-              : 'Check which businesses have useful websites'
+                ? 'Checking which businesses have useful websites'
+                : 'Check which businesses have useful websites'
           }
           status={stageStatuses.validate}
           icon={Filter}
         >
           {stageStatuses.validate === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Waiting for discovery...
-            </p>
+            <p className="text-sm text-muted-foreground">Waiting for discovery...</p>
           )}
           {stageStatuses.validate === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -627,15 +716,11 @@ export function CompetitorPipelineProgress({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
               </span>
-              <span>
-                Validating websites... {stats.sitesValidated} valid
-              </span>
+              <span>Validating websites... {stats.sitesValidated} valid</span>
             </div>
           )}
           {stageStatuses.validate === 'done' && (
-            <p className="text-sm text-success">
-              {stats.sitesValidated} valid websites confirmed
-            </p>
+            <p className="text-sm text-success">{stats.sitesValidated} valid websites confirmed</p>
           )}
         </StageCard>
 
@@ -647,16 +732,14 @@ export function CompetitorPipelineProgress({
             stageStatuses.scrape === 'done'
               ? 'Downloaded FAQ and service pages'
               : stageStatuses.scrape === 'in_progress'
-              ? 'Reading FAQ and service pages'
-              : 'Read FAQ and service pages'
+                ? 'Reading FAQ and service pages'
+                : 'Read FAQ and service pages'
           }
           status={stageStatuses.scrape}
           icon={Globe}
         >
           {stageStatuses.scrape === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Waiting for validation...
-            </p>
+            <p className="text-sm text-muted-foreground">Waiting for validation...</p>
           )}
           {stageStatuses.scrape === 'in_progress' && (
             <div className="space-y-3">
@@ -691,16 +774,14 @@ export function CompetitorPipelineProgress({
             stageStatuses.extract === 'done'
               ? 'AI extracted and removed duplicates'
               : stageStatuses.extract === 'in_progress'
-              ? 'AI is extracting and removing duplicate FAQs'
-              : 'AI will extract and remove duplicate FAQs'
+                ? 'AI is extracting and removing duplicate FAQs'
+                : 'AI will extract and remove duplicate FAQs'
           }
           status={stageStatuses.extract}
           icon={FileText}
         >
           {stageStatuses.extract === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Waiting for scraping...
-            </p>
+            <p className="text-sm text-muted-foreground">Waiting for scraping...</p>
           )}
           {stageStatuses.extract === 'in_progress' && (
             <div className="space-y-3">
@@ -710,21 +791,26 @@ export function CompetitorPipelineProgress({
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 <span>
-                  {stats.faqsExtracted > 0 ? `${stats.faqsExtracted} FAQs extracted` : 'Processing content...'}
+                  {stats.faqsExtracted > 0
+                    ? `${stats.faqsExtracted} FAQs extracted`
+                    : 'Processing content...'}
                   {stats.faqsAfterDedup > 0 && `, ${stats.faqsAfterDedup} after dedup`}
                 </span>
               </div>
-              
+
               {/* Show elapsed time for extraction */}
               {extractionStartTime && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Elapsed:</span>
                   <span className="font-mono tabular-nums">
-                    {Math.floor((Date.now() - extractionStartTime) / 60000)}:{((Math.floor((Date.now() - extractionStartTime) / 1000)) % 60).toString().padStart(2, '0')}
+                    {Math.floor((Date.now() - extractionStartTime) / 60000)}:
+                    {(Math.floor((Date.now() - extractionStartTime) / 1000) % 60)
+                      .toString()
+                      .padStart(2, '0')}
                   </span>
                 </div>
               )}
-              
+
               {/* Show recovery button if stalled */}
               {isExtractionStalled && (
                 <div className="mt-3 p-3 bg-muted/50 border border-border rounded-lg space-y-2">
@@ -797,16 +883,14 @@ export function CompetitorPipelineProgress({
             stageStatuses.refine === 'done'
               ? 'Adapted competitor FAQs for your business'
               : stageStatuses.refine === 'in_progress'
-              ? 'Adapting competitor FAQs to match your services'
-              : 'Adapt competitor FAQs to match your services'
+                ? 'Adapting competitor FAQs to match your services'
+                : 'Adapt competitor FAQs to match your services'
           }
           status={stageStatuses.refine}
           icon={Wand2}
         >
           {stageStatuses.refine === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Coming next...
-            </p>
+            <p className="text-sm text-muted-foreground">Coming next...</p>
           )}
           {stageStatuses.refine === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -820,9 +904,7 @@ export function CompetitorPipelineProgress({
             </div>
           )}
           {stageStatuses.refine === 'done' && (
-            <p className="text-sm text-success">
-              {stats.faqsAdded} FAQs added to knowledge base
-            </p>
+            <p className="text-sm text-success">{stats.faqsAdded} FAQs added to knowledge base</p>
           )}
         </StageCard>
       </div>
@@ -853,7 +935,8 @@ export function CompetitorPipelineProgress({
           <CheckCircle2 className="h-6 w-6 text-success mx-auto mb-2" />
           <p className="text-sm font-medium text-success">Competitor Research Complete!</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {stats.faqsAdded} FAQs from {stats.sitesScraped} competitor websites added to your knowledge base.
+            {stats.faqsAdded} FAQs from {stats.sitesScraped} competitor websites added to your
+            knowledge base.
           </p>
         </div>
       )}
@@ -872,11 +955,7 @@ export function CompetitorPipelineProgress({
         {!isComplete && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={isCancelling}
-              >
+              <Button variant="outline" className="w-full" disabled={isCancelling}>
                 {isCancelling ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -891,8 +970,9 @@ export function CompetitorPipelineProgress({
               <AlertDialogHeader>
                 <AlertDialogTitle>Stop competitor research?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will mark the job as cancelled so the backend stops progressing it. Any already-running external
-                  work may still finish in the background, but it won’t continue the pipeline.
+                  This will mark the job as cancelled so the backend stops progressing it. Any
+                  already-running external work may still finish in the background, but it won’t
+                  continue the pipeline.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -902,7 +982,7 @@ export function CompetitorPipelineProgress({
             </AlertDialogContent>
           </AlertDialog>
         )}
-        
+
         {/* Restart Research button */}
         <AlertDialog>
           <AlertDialogTrigger asChild>
@@ -918,8 +998,8 @@ export function CompetitorPipelineProgress({
             <AlertDialogHeader>
               <AlertDialogTitle>Restart competitor research?</AlertDialogTitle>
               <AlertDialogDescription>
-                Choose whether to rerun discovery immediately (recommended if the current job is stuck) or go back to
-                the setup screen.
+                Choose whether to rerun discovery immediately (recommended if the current job is
+                stuck) or go back to the setup screen.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -938,7 +1018,7 @@ export function CompetitorPipelineProgress({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        
+
         {!isComplete && (
           <p className="text-xs text-center text-muted-foreground">
             You can continue while this runs in the background (~{estimateTime()})

@@ -2,20 +2,19 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { 
-  CheckCircle2, 
-  Loader2, 
-  Circle, 
-  AlertCircle, 
+import {
+  CheckCircle2,
+  Loader2,
+  Circle,
+  AlertCircle,
   ArrowRight,
   RotateCcw,
   Globe,
   FileText,
   Sparkles,
-  Search
+  Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { generateKnowledgeBasePDF } from '@/components/settings/knowledge-base/generateKnowledgeBasePDF';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
 
@@ -95,7 +94,7 @@ function StageCard({
         status === 'in_progress' && 'border-primary/50 bg-primary/5 shadow-sm',
         status === 'done' && 'border-success/30 bg-success/5',
         status === 'error' && 'border-destructive/30 bg-destructive/5',
-        status === 'pending' && 'border-border bg-muted/30 opacity-60'
+        status === 'pending' && 'border-border bg-muted/30 opacity-60',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -116,11 +115,7 @@ function StageCard({
             {config.badge}
           </span>
           <config.StatusIcon
-            className={cn(
-              'h-4 w-4',
-              config.iconClass,
-              status === 'in_progress' && 'animate-spin'
-            )}
+            className={cn('h-4 w-4', config.iconClass, status === 'in_progress' && 'animate-spin')}
           />
         </div>
       </div>
@@ -144,14 +139,14 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
                 index < currentStage
                   ? 'bg-success'
                   : index === currentStage
-                  ? 'bg-primary ring-2 ring-primary/30'
-                  : 'bg-muted'
+                    ? 'bg-primary ring-2 ring-primary/30'
+                    : 'bg-muted',
               )}
             />
             <span
               className={cn(
                 'text-xs mt-1 font-medium',
-                index <= currentStage ? 'text-foreground' : 'text-muted-foreground'
+                index <= currentStage ? 'text-foreground' : 'text-muted-foreground',
               )}
             >
               {label}
@@ -161,7 +156,7 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
             <div
               className={cn(
                 'w-12 h-0.5 mx-1 mt-[-12px] transition-all duration-300',
-                index < currentStage ? 'bg-success' : 'bg-muted'
+                index < currentStage ? 'bg-success' : 'bg-muted',
               )}
             />
           )}
@@ -190,16 +185,18 @@ export function WebsitePipelineProgress({
     errorMessage: null,
   });
 
-  const [didAutoResume, setDidAutoResume] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const handleDownloadPDF = async () => {
     setDownloadingPdf(true);
     try {
+      const { generateKnowledgeBasePDF } =
+        await import('@/components/settings/knowledge-base/generateKnowledgeBasePDF');
       await generateKnowledgeBasePDF(workspaceId);
       toast.success('PDF downloaded!');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to generate PDF');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate PDF';
+      toast.error(message);
     } finally {
       setDownloadingPdf(false);
     }
@@ -210,11 +207,7 @@ export function WebsitePipelineProgress({
     if (!jobId) return;
 
     const fetchStats = async () => {
-      const { data } = await supabase
-        .from('scraping_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
+      const { data } = await supabase.from('scraping_jobs').select('*').eq('id', jobId).single();
 
       if (data) {
         setStats({
@@ -244,7 +237,7 @@ export function WebsitePipelineProgress({
         },
         () => {
           fetchStats();
-        }
+        },
       )
       .subscribe();
 
@@ -258,7 +251,11 @@ export function WebsitePipelineProgress({
   }, [jobId]);
 
   // Derive stage statuses from phase and data
-  const getStageStatuses = (): { discover: StageStatus; scrape: StageStatus; extract: StageStatus } => {
+  const getStageStatuses = (): {
+    discover: StageStatus;
+    scrape: StageStatus;
+    extract: StageStatus;
+  } => {
     const { phase, pagesFound, pagesScraped, faqsExtracted } = stats;
 
     if (phase === 'failed') {
@@ -306,9 +303,7 @@ export function WebsitePipelineProgress({
 
   // Calculate scrape progress
   const scrapePercent =
-    stats.pagesFound > 0
-      ? Math.round((stats.pagesScraped / stats.pagesFound) * 100)
-      : 0;
+    stats.pagesFound > 0 ? Math.round((stats.pagesScraped / stats.pagesFound) * 100) : 0;
 
   const isError = stats.phase === 'failed';
   const isComplete = stats.phase === 'completed';
@@ -332,14 +327,6 @@ export function WebsitePipelineProgress({
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
   }, [elapsedSeconds]);
 
-  // Auto-retry disabled: n8n handles scraping internally and never updates
-  // scraping_jobs.total_pages_found, so pagesFound is always 0. The old
-  // Firecrawl fallback was causing duplicate n8n executions. KnowledgeBaseStep
-  // now polls faq_database directly and no longer uses this component for the
-  // own-website-scrape flow.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  void didAutoResume;
-
   const handleContinue = () => {
     onComplete({
       faqsExtracted: stats.faqsExtracted,
@@ -359,7 +346,8 @@ export function WebsitePipelineProgress({
         </p>
         {stats.phase === 'scraping' && stats.pagesFound === 0 && (
           <p className="text-xs text-muted-foreground">
-            Crawler running{elapsedLabel ? ` (${elapsedLabel} elapsed)` : ''} — page counts update when the crawl completes.
+            Crawler running{elapsedLabel ? ` (${elapsedLabel} elapsed)` : ''} — page counts update
+            when the crawl completes.
           </p>
         )}
       </div>
@@ -379,9 +367,7 @@ export function WebsitePipelineProgress({
           icon={Search}
         >
           {stageStatuses.discover === 'done' && stats.pagesFound > 0 && (
-            <p className="text-sm text-success">
-              ✓ {stats.pagesFound} pages discovered
-            </p>
+            <p className="text-sm text-success">✓ {stats.pagesFound} pages discovered</p>
           )}
           {stageStatuses.discover === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -402,16 +388,14 @@ export function WebsitePipelineProgress({
             stageStatuses.scrape === 'done'
               ? 'Downloaded page content'
               : stageStatuses.scrape === 'in_progress'
-              ? 'Reading and downloading page content'
-              : 'Read and download page content'
+                ? 'Reading and downloading page content'
+                : 'Read and download page content'
           }
           status={stageStatuses.scrape}
           icon={Globe}
         >
           {stageStatuses.scrape === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Waiting for discovery to complete...
-            </p>
+            <p className="text-sm text-muted-foreground">Waiting for discovery to complete...</p>
           )}
           {stageStatuses.scrape === 'in_progress' && stats.pagesFound > 0 && (
             <div className="space-y-3">
@@ -427,9 +411,7 @@ export function WebsitePipelineProgress({
             </div>
           )}
           {stageStatuses.scrape === 'done' && (
-            <p className="text-sm text-success">
-              ✓ {stats.pagesScraped} pages scraped
-            </p>
+            <p className="text-sm text-success">✓ {stats.pagesScraped} pages scraped</p>
           )}
         </StageCard>
 
@@ -441,16 +423,14 @@ export function WebsitePipelineProgress({
             stageStatuses.extract === 'done'
               ? 'AI extracted FAQs and business facts'
               : stageStatuses.extract === 'in_progress'
-              ? 'AI is extracting FAQs, pricing, and business facts'
-              : 'AI will extract FAQs, pricing, and business facts'
+                ? 'AI is extracting FAQs, pricing, and business facts'
+                : 'AI will extract FAQs, pricing, and business facts'
           }
           status={stageStatuses.extract}
           icon={Sparkles}
         >
           {stageStatuses.extract === 'pending' && (
-            <p className="text-sm text-muted-foreground">
-              Coming next... (~30 seconds)
-            </p>
+            <p className="text-sm text-muted-foreground">Coming next... (~30 seconds)</p>
           )}
           {stageStatuses.extract === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -493,7 +473,12 @@ export function WebsitePipelineProgress({
               <p className="text-xs text-muted-foreground mt-1">{stats.errorMessage}</p>
             </div>
           </div>
-          <Button onClick={() => onRetry()} size="sm" variant="outline" className="mt-3 w-full gap-2">
+          <Button
+            onClick={() => onRetry()}
+            size="sm"
+            variant="outline"
+            className="mt-3 w-full gap-2"
+          >
             <RotateCcw className="h-4 w-4" />
             Retry
           </Button>

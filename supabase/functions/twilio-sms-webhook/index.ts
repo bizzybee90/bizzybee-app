@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -34,7 +35,11 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const keyData = encoder.encode(twilioAuthToken);
       const cryptoKey = await crypto.subtle.importKey(
-        'raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-1' },
+        false,
+        ['sign'],
       );
       const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
       const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
@@ -74,15 +79,13 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find workspace by SMS channel config
-    const { data: workspace } = await supabase
-      .from('workspace_channels')
-      .select('workspace_id')
-      .eq('channel', 'sms')
-      .eq('enabled', true)
-      .maybeSingle();
+    const workspaceId = await resolveWorkspaceIdForChannel(
+      supabase,
+      'sms',
+      { raw: [to], phone: [to] },
+      '[sms-webhook]',
+    );
 
-    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
       console.error('[sms-webhook] No workspace_channels config found for SMS. Number:', maskedTo);
       return new Response('<Response></Response>', {
@@ -151,19 +154,17 @@ Deno.serve(async (req) => {
     }
 
     // Save the inbound message
-    const { error: msgError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        direction: 'inbound',
-        channel: 'sms',
-        body: body || `[Media received (${numMedia} file${numMedia > 1 ? 's' : ''})]`,
-        actor_type: 'customer',
-        actor_name: from,
-        external_id: messageSid,
-        is_internal: false,
-        created_at: new Date().toISOString(),
-      });
+    const { error: msgError } = await supabase.from('messages').insert({
+      conversation_id: conversation.id,
+      direction: 'inbound',
+      channel: 'sms',
+      body: body || `[Media received (${numMedia} file${numMedia > 1 ? 's' : ''})]`,
+      actor_type: 'customer',
+      actor_name: from,
+      external_id: messageSid,
+      is_internal: false,
+      created_at: new Date().toISOString(),
+    });
 
     if (msgError) {
       console.error('[sms-webhook] Failed to save message:', msgError);
@@ -185,7 +186,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseKey}`,
+        Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
         conversation_id: conversation.id,

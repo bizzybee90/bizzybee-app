@@ -508,7 +508,7 @@ export function CompetitorResearchStep({
       setError(err instanceof Error ? err.message : 'Failed to start competitor research');
       toast.error('Failed to start research');
     }
-  }, [nicheQuery, serviceArea, workspaceId]);
+  }, [nicheQuery, searchQueries, serviceArea, workspaceId]);
 
   const handleStart = startResearch;
 

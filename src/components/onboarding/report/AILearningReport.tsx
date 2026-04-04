@@ -4,7 +4,6 @@ import { ClassificationBreakdown } from './ClassificationBreakdown';
 import { VoiceDNASummary } from './VoiceDNASummary';
 import { ResponsePlaybook } from './ResponsePlaybook';
 import { ConfidenceAssessment } from './ConfidenceAssessment';
-import { generateLearningReportPDF } from './generatePDF';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Brain, Download } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,6 +23,7 @@ export function AILearningReport({ workspaceId, onNext, onBack }: AILearningRepo
   const handleDownloadPDF = async () => {
     setDownloading(true);
     try {
+      const { generateLearningReportPDF } = await import('./generatePDF');
       await generateLearningReportPDF(workspaceId, companyName);
       toast.success('Report downloaded!');
     } catch (err) {
@@ -50,7 +50,7 @@ export function AILearningReport({ workspaceId, onNext, onBack }: AILearningRepo
           .select('company_name')
           .eq('workspace_id', workspaceId)
           .single();
-        
+
         if (context?.company_name) {
           setCompanyName(context.company_name);
         }
@@ -93,8 +93,8 @@ export function AILearningReport({ workspaceId, onNext, onBack }: AILearningRepo
           <div className="space-y-2">
             <h2 className="text-xl font-semibold">Learning In Progress</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
-              BizzyBee is still analyzing your emails. This usually takes a few minutes 
-              after connecting your inbox.
+              BizzyBee is still analyzing your emails. This usually takes a few minutes after
+              connecting your inbox.
             </p>
           </div>
         </div>

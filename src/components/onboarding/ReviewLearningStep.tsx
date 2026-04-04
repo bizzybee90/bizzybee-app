@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,11 +66,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
   const [newPhrase, setNewPhrase] = useState('');
   const [newTone, setNewTone] = useState('');
 
-  useEffect(() => {
-    loadLearningData();
-  }, [workspaceId]);
-
-  const loadLearningData = async () => {
+  const loadLearningData = useCallback(async () => {
     setLoading(true);
     try {
       // Load voice profile
@@ -146,7 +142,11 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void loadLearningData();
+  }, [loadLearningData]);
 
   const saveVoiceProfile = async () => {
     if (!voiceProfile) return;

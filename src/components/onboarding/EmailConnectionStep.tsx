@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -151,10 +151,62 @@ export function EmailConnectionStep({
   const toastedEmailRef = useRef<string | null>(null);
   const pollIntervalRef = useRef<number | undefined>(undefined);
 
+  const checkEmailConnection = useCallback(
+    async (isInitialLoad = false) => {
+      try {
+        const [configResult, progressResult] = await Promise.all([
+          supabase
+            .from('email_provider_configs')
+            .select('id, import_mode, email_address, sync_status')
+            .eq('workspace_id', workspaceId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('email_import_progress')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .maybeSingle(),
+        ]);
+
+        if (!progressResult.error && progressResult.data) {
+          const mapped = mapImportProgressRowToMakeProgress(progressResult.data);
+          setProgress(mapped);
+          if (mapped.status && mapped.status !== 'idle') {
+            setImportStarted(true);
+          } else {
+            setImportStarted(false);
+          }
+        } else {
+          // No progress record exists - reset state
+          setProgress(null);
+          setImportStarted(false);
+        }
+
+        if (!configResult.error && configResult.data?.email_address) {
+          const email = configResult.data.email_address;
+          setConnectedEmail(email);
+          onEmailConnected(email);
+
+          if (toastedEmailRef.current !== email && !isInitialLoad) {
+            toastedEmailRef.current = email;
+            toast.success(`Connected to ${email}`);
+          }
+        }
+      } catch (error) {
+        logger.error('Error checking connection', error);
+      } finally {
+        setInitialLoading(false);
+        setIsConnecting(false);
+      }
+    },
+    [onEmailConnected, workspaceId],
+  );
+
   // Check for existing connection on mount
   useEffect(() => {
-    checkEmailConnection(true);
-  }, [workspaceId]);
+    void checkEmailConnection(true);
+  }, [checkEmailConnection, workspaceId]);
 
   // Poll email_import_progress when import is started (new pipeline)
   useEffect(() => {
@@ -206,7 +258,7 @@ export function EmailConnectionStep({
       params.delete('message');
       const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
       window.history.replaceState({}, '', newUrl);
-      checkEmailConnection();
+      void checkEmailConnection();
     } else if (aurinko === 'error') {
       const errorMessage = params.get('message') || 'Email connection failed';
       toast.error(errorMessage, { duration: 8000 });
@@ -216,56 +268,7 @@ export function EmailConnectionStep({
       window.history.replaceState({}, '', newUrl);
       setIsConnecting(false);
     }
-  }, []);
-
-  const checkEmailConnection = async (isInitialLoad = false) => {
-    try {
-      const [configResult, progressResult] = await Promise.all([
-        supabase
-          .from('email_provider_configs')
-          .select('id, import_mode, email_address, sync_status')
-          .eq('workspace_id', workspaceId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from('email_import_progress')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .maybeSingle(),
-      ]);
-
-      if (!progressResult.error && progressResult.data) {
-        const mapped = mapImportProgressRowToMakeProgress(progressResult.data);
-        setProgress(mapped);
-        if (mapped.status && mapped.status !== 'idle') {
-          setImportStarted(true);
-        } else {
-          setImportStarted(false);
-        }
-      } else {
-        // No progress record exists - reset state
-        setProgress(null);
-        setImportStarted(false);
-      }
-
-      if (!configResult.error && configResult.data?.email_address) {
-        const email = configResult.data.email_address;
-        setConnectedEmail(email);
-        onEmailConnected(email);
-
-        if (toastedEmailRef.current !== email && !isInitialLoad) {
-          toastedEmailRef.current = email;
-          toast.success(`Connected to ${email}`);
-        }
-      }
-    } catch (error) {
-      logger.error('Error checking connection', error);
-    } finally {
-      setInitialLoading(false);
-      setIsConnecting(false);
-    }
-  };
+  }, [checkEmailConnection]);
 
   const handleConnect = async (provider: Provider) => {
     setIsConnecting(true);

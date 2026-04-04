@@ -1,13 +1,29 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Building2, User, Mail, MessageSquare, HelpCircle, Mic, CheckCircle, XCircle } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  RefreshCw,
+  Building2,
+  User,
+  Mail,
+  MessageSquare,
+  HelpCircle,
+  Mic,
+  CheckCircle,
+  XCircle,
+} from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface WorkspaceData {
   profile: Record<string, unknown> | null;
@@ -33,27 +49,9 @@ export function WorkspaceInspector() {
     fetchWorkspaces();
   }, []);
 
-  useEffect(() => {
-    if (selectedWorkspace) {
-      fetchWorkspaceData();
-    }
-  }, [selectedWorkspace]);
-
-  const fetchWorkspaces = async () => {
-    const { data } = await supabase
-      .from('workspaces')
-      .select('id, name')
-      .order('name');
-    
-    setWorkspaces(data || []);
-    if (data && data.length > 0) {
-      setSelectedWorkspace(data[0].id);
-    }
-  };
-
-  const fetchWorkspaceData = async () => {
+  const fetchWorkspaceData = useCallback(async () => {
     if (!selectedWorkspace) return;
-    
+
     setLoading(true);
     try {
       const [
@@ -67,15 +65,47 @@ export function WorkspaceInspector() {
         recentConversationsRes,
         userRes,
       ] = await Promise.all([
-        supabase.from('business_profile').select('*').eq('workspace_id', selectedWorkspace).maybeSingle(),
-        supabase.from('email_provider_configs').select('id, provider, email_address, created_at').eq('workspace_id', selectedWorkspace),
-        supabase.from('voice_profiles').select('*').eq('workspace_id', selectedWorkspace).maybeSingle(),
-        supabase.from('faq_database').select('id', { count: 'exact', head: true }).eq('workspace_id', selectedWorkspace),
-        supabase.from('customers').select('id', { count: 'exact', head: true }).eq('workspace_id', selectedWorkspace),
-        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', selectedWorkspace),
-        supabase.from('raw_emails').select('id', { count: 'exact', head: true }).eq('workspace_id', selectedWorkspace),
-        supabase.from('conversations').select('id, title, status, created_at, email_classification').eq('workspace_id', selectedWorkspace).order('created_at', { ascending: false }).limit(10),
-        supabase.from('users').select('onboarding_completed, onboarding_step').eq('workspace_id', selectedWorkspace).maybeSingle(),
+        supabase
+          .from('business_profile')
+          .select('*')
+          .eq('workspace_id', selectedWorkspace)
+          .maybeSingle(),
+        supabase
+          .from('email_provider_configs')
+          .select('id, provider, email_address, created_at')
+          .eq('workspace_id', selectedWorkspace),
+        supabase
+          .from('voice_profiles')
+          .select('*')
+          .eq('workspace_id', selectedWorkspace)
+          .maybeSingle(),
+        supabase
+          .from('faq_database')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', selectedWorkspace),
+        supabase
+          .from('customers')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', selectedWorkspace),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', selectedWorkspace),
+        supabase
+          .from('raw_emails')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', selectedWorkspace),
+        supabase
+          .from('conversations')
+          .select('id, title, status, created_at, email_classification')
+          .eq('workspace_id', selectedWorkspace)
+          .order('created_at', { ascending: false })
+          .limit(10),
+        supabase
+          .from('users')
+          .select('onboarding_completed, onboarding_step')
+          .eq('workspace_id', selectedWorkspace)
+          .maybeSingle(),
       ]);
 
       setData({
@@ -95,6 +125,21 @@ export function WorkspaceInspector() {
       console.error('Error fetching workspace data:', error);
     } finally {
       setLoading(false);
+    }
+  }, [selectedWorkspace]);
+
+  useEffect(() => {
+    if (selectedWorkspace) {
+      void fetchWorkspaceData();
+    }
+  }, [fetchWorkspaceData, selectedWorkspace]);
+
+  const fetchWorkspaces = async () => {
+    const { data } = await supabase.from('workspaces').select('id, name').order('name');
+
+    setWorkspaces(data || []);
+    if (data && data.length > 0) {
+      setSelectedWorkspace(data[0].id);
     }
   };
 
@@ -118,7 +163,7 @@ export function WorkspaceInspector() {
                 <SelectValue placeholder="Select workspace" />
               </SelectTrigger>
               <SelectContent>
-                {workspaces.map(ws => (
+                {workspaces.map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>
                     {ws.name || ws.id.slice(0, 8)}
                   </SelectItem>
@@ -205,9 +250,7 @@ export function WorkspaceInspector() {
               </TabsList>
 
               <TabsContent value="profile" className="mt-4">
-                <ScrollArea className="h-[300px]">
-                  {renderJson(data.profile)}
-                </ScrollArea>
+                <ScrollArea className="h-[300px]">{renderJson(data.profile)}</ScrollArea>
               </TabsContent>
 
               <TabsContent value="email" className="mt-4">
@@ -219,7 +262,9 @@ export function WorkspaceInspector() {
                           <CardContent className="p-3">
                             <div className="flex items-center gap-2">
                               <Mail className="h-4 w-4" />
-                              <span className="font-medium">{String(config.email_address) || 'Unknown'}</span>
+                              <span className="font-medium">
+                                {String(config.email_address) || 'Unknown'}
+                              </span>
                               <Badge variant="outline">{String(config.provider)}</Badge>
                             </div>
                           </CardContent>
@@ -258,8 +303,12 @@ export function WorkspaceInspector() {
                           <CardContent className="p-3">
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-medium text-sm line-clamp-1">{String(conv.title) || 'Untitled'}</p>
-                                <p className="text-xs text-muted-foreground">{String(conv.email_classification) || 'Unclassified'}</p>
+                                <p className="font-medium text-sm line-clamp-1">
+                                  {String(conv.title) || 'Untitled'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {String(conv.email_classification) || 'Unclassified'}
+                                </p>
                               </div>
                               <Badge variant="outline">{String(conv.status)}</Badge>
                             </div>

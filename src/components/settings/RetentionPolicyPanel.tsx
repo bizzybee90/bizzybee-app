@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,13 +19,7 @@ export const RetentionPolicyPanel = () => {
   const { isAdmin } = useUserRole();
   const { workspace } = useWorkspace();
 
-  useEffect(() => {
-    if (workspace?.id) {
-      loadPolicy();
-    }
-  }, [workspace]);
-
-  const loadPolicy = async () => {
+  const loadPolicy = useCallback(async () => {
     if (!workspace?.id) return;
 
     setLoading(true);
@@ -49,7 +43,13 @@ export const RetentionPolicyPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (workspace?.id) {
+      void loadPolicy();
+    }
+  }, [loadPolicy, workspace?.id]);
 
   const handleSave = async () => {
     if (!workspace?.id) {
@@ -68,14 +68,9 @@ export const RetentionPolicyPanel = () => {
       };
 
       if (policy) {
-        await supabase
-          .from('data_retention_policies')
-          .update(policyData)
-          .eq('id', policy.id);
+        await supabase.from('data_retention_policies').update(policyData).eq('id', policy.id);
       } else {
-        await supabase
-          .from('data_retention_policies')
-          .insert(policyData);
+        await supabase.from('data_retention_policies').insert(policyData);
       }
 
       toast.success('Retention policy saved successfully');
@@ -90,7 +85,9 @@ export const RetentionPolicyPanel = () => {
   if (!isAdmin) {
     return (
       <Card className="p-6">
-        <p className="text-center text-muted-foreground">Admin access required to manage retention policies</p>
+        <p className="text-center text-muted-foreground">
+          Admin access required to manage retention policies
+        </p>
       </Card>
     );
   }
@@ -101,7 +98,8 @@ export const RetentionPolicyPanel = () => {
         <div>
           <h3 className="text-lg font-semibold mb-2">Data Retention Policy</h3>
           <p className="text-sm text-muted-foreground">
-            GDPR compliance: Configure how long customer data is retained (Storage Limitation - Article 5)
+            GDPR compliance: Configure how long customer data is retained (Storage Limitation -
+            Article 5)
           </p>
         </div>
 

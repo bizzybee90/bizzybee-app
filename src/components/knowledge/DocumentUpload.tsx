@@ -1,10 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Upload, FileText, Loader2, Trash2, CheckCircle, AlertCircle, File, RefreshCw } from 'lucide-react';
+import {
+  Upload,
+  FileText,
+  Loader2,
+  Trash2,
+  CheckCircle,
+  AlertCircle,
+  File,
+  RefreshCw,
+} from 'lucide-react';
 
 interface DocumentUploadProps {
   workspaceId: string;
@@ -29,11 +38,7 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, [workspaceId]);
-
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('documents')
@@ -48,7 +53,11 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void fetchDocuments();
+  }, [fetchDocuments]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,7 +68,7 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
       'text/plain',
       'text/markdown',
       'text/csv',
-      'application/json'
+      'application/json',
     ];
     const allowedExtensions = ['pdf', 'txt', 'md', 'csv', 'json'];
     const fileExt = file.name.split('.').pop()?.toLowerCase();
@@ -69,7 +78,8 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      // 10MB limit
       toast.error('File size must be under 10MB');
       return;
     }
@@ -92,7 +102,7 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
           name: file.name,
           file_path: filePath,
           file_type: fileExt || file.type.split('/').pop() || 'unknown',
-          file_size: file.size
+          file_size: file.size,
         })
         .select()
         .single();
@@ -100,16 +110,15 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
       if (insertError) throw insertError;
 
       toast.success('Document uploaded! Processing...');
-      setDocuments(prev => [doc as Document, ...prev]);
-      
+      setDocuments((prev) => [doc as Document, ...prev]);
+
       // Trigger processing
       await processDocument(doc.id);
-      
+
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      
     } catch (e: any) {
       toast.error(e.message || 'Upload failed');
     } finally {
@@ -121,16 +130,22 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
     setProcessing(documentId);
     try {
       // Process document (chunk and embed)
-      const { data: processData, error: processError } = await supabase.functions.invoke('document-process', {
-        body: { workspace_id: workspaceId, document_id: documentId, action: 'process' }
-      });
+      const { data: processData, error: processError } = await supabase.functions.invoke(
+        'document-process',
+        {
+          body: { workspace_id: workspaceId, document_id: documentId, action: 'process' },
+        },
+      );
 
       if (processError) throw processError;
 
       // Extract FAQs
-      const { data: faqData, error: faqError } = await supabase.functions.invoke('document-process', {
-        body: { workspace_id: workspaceId, document_id: documentId, action: 'extract_faqs' }
-      });
+      const { data: faqData, error: faqError } = await supabase.functions.invoke(
+        'document-process',
+        {
+          body: { workspace_id: workspaceId, document_id: documentId, action: 'extract_faqs' },
+        },
+      );
 
       if (faqError) {
         console.warn('FAQ extraction failed:', faqError);
@@ -139,7 +154,6 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
       toast.success(`Document processed! ${faqData?.faqs_extracted || 0} FAQs extracted.`);
       onDocumentProcessed?.();
       fetchDocuments();
-
     } catch (e: any) {
       toast.error(e.message || 'Processing failed');
       // Update status to failed
@@ -156,13 +170,13 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
   const deleteDocument = async (documentId: string) => {
     try {
       const { error } = await supabase.functions.invoke('document-process', {
-        body: { workspace_id: workspaceId, document_id: documentId, action: 'delete' }
+        body: { workspace_id: workspaceId, document_id: documentId, action: 'delete' },
       });
 
       if (error) throw error;
 
       toast.success('Document deleted');
-      setDocuments(prev => prev.filter(d => d.id !== documentId));
+      setDocuments((prev) => prev.filter((d) => d.id !== documentId));
     } catch (e: any) {
       toast.error(e.message || 'Delete failed');
     }
@@ -199,11 +213,7 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
           </Badge>
         );
       default:
-        return (
-          <Badge variant="secondary">
-            Pending
-          </Badge>
-        );
+        return <Badge variant="secondary">Pending</Badge>;
     }
   };
 
@@ -255,7 +265,10 @@ export const DocumentUpload = ({ workspaceId, onDocumentProcessed }: DocumentUpl
             </p>
             <div className="divide-y rounded-lg border">
               {documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between p-3 hover:bg-muted/50">
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between p-3 hover:bg-muted/50"
+                >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <File className="h-5 w-5 text-muted-foreground shrink-0" />
                     <div className="min-w-0">

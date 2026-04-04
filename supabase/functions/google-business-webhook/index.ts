@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,13 +16,17 @@ Deno.serve(async (req) => {
     const expectedToken = Deno.env.get('GOOGLE_BUSINESS_WEBHOOK_TOKEN');
     if (expectedToken) {
       const authHeader = req.headers.get('Authorization') || '';
-      const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
+      const bearerToken = authHeader.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length)
+        : '';
       if (bearerToken !== expectedToken) {
         console.error('[google-business-webhook] Invalid or missing bearer token');
         return new Response('Forbidden', { status: 403 });
       }
     } else {
-      console.warn('[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set — skipping token verification');
+      console.warn(
+        '[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set — skipping token verification',
+      );
     }
 
     const payload = await req.json();
@@ -51,17 +56,19 @@ Deno.serve(async (req) => {
     // Store conversationId with gbm: prefix in phone field
     const customerPhone = `gbm:${conversationId}`;
 
-    // Find workspace by Google Business channel config
-    const { data: workspace } = await supabase
-      .from('workspace_channels')
-      .select('workspace_id')
-      .eq('channel', 'google_business')
-      .eq('enabled', true)
-      .maybeSingle();
+    const workspaceId = await resolveWorkspaceIdForChannel(
+      supabase,
+      'google_business',
+      {
+        raw: [conversationId, String(payload.agent || ''), String(payload.context?.placeId || '')],
+      },
+      '[google-business-webhook]',
+    );
 
-    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
-      console.error('[google-business-webhook] No workspace_channels config found for Google Business');
+      console.error(
+        '[google-business-webhook] No workspace_channels config found for Google Business',
+      );
       return new Response(JSON.stringify({ status: 'ok' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -130,19 +137,17 @@ Deno.serve(async (req) => {
     }
 
     // Save the inbound message
-    const { error: msgError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        direction: 'inbound',
-        channel: 'google_business',
-        body: messageText,
-        actor_type: 'customer',
-        actor_name: displayName || customerPhone,
-        external_id: messageId,
-        is_internal: false,
-        created_at: new Date().toISOString(),
-      });
+    const { error: msgError } = await supabase.from('messages').insert({
+      conversation_id: conversation.id,
+      direction: 'inbound',
+      channel: 'google_business',
+      body: messageText,
+      actor_type: 'customer',
+      actor_name: displayName || customerPhone,
+      external_id: messageId,
+      is_internal: false,
+      created_at: new Date().toISOString(),
+    });
 
     if (msgError) {
       console.error('[google-business-webhook] Failed to save message:', msgError);
@@ -164,7 +169,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseKey}`,
+        Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
         conversation_id: conversation.id,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,7 +30,7 @@ export function KnowledgeBaseViewer({ workspaceId }: KnowledgeBaseViewerProps) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'user_website' | 'competitor'>('all');
 
-  const loadFaqs = async () => {
+  const loadFaqs = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -56,22 +56,19 @@ export function KnowledgeBaseViewer({ workspaceId }: KnowledgeBaseViewerProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, workspaceId]);
 
   useEffect(() => {
-    loadFaqs();
-  }, [workspaceId, filter]);
+    void loadFaqs();
+  }, [loadFaqs]);
 
   const handleDelete = async (faqId: string) => {
     try {
-      const { error } = await supabase
-        .from('knowledge_base_faqs')
-        .delete()
-        .eq('id', faqId);
+      const { error } = await supabase.from('knowledge_base_faqs').delete().eq('id', faqId);
 
       if (error) throw error;
 
-      setFaqs(prev => prev.filter(f => f.id !== faqId));
+      setFaqs((prev) => prev.filter((f) => f.id !== faqId));
       toast.success('FAQ deleted');
     } catch (err) {
       console.error('Delete error:', err);
@@ -79,8 +76,8 @@ export function KnowledgeBaseViewer({ workspaceId }: KnowledgeBaseViewerProps) {
     }
   };
 
-  const userWebsiteCount = faqs.filter(f => f.source === 'user_website').length;
-  const competitorCount = faqs.filter(f => f.source === 'competitor').length;
+  const userWebsiteCount = faqs.filter((f) => f.source === 'user_website').length;
+  const competitorCount = faqs.filter((f) => f.source === 'competitor').length;
 
   const getSourceIcon = (source: string) => {
     switch (source) {
@@ -123,7 +120,7 @@ export function KnowledgeBaseViewer({ workspaceId }: KnowledgeBaseViewerProps) {
 
       {loading ? (
         <div className="space-y-2">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-4">
                 <div className="h-4 bg-muted rounded w-3/4 mb-2" />
@@ -141,15 +138,13 @@ export function KnowledgeBaseViewer({ workspaceId }: KnowledgeBaseViewerProps) {
       ) : (
         <ScrollArea className="h-[400px]">
           <div className="space-y-2 pr-4">
-            {faqs.map(faq => (
+            {faqs.map((faq) => (
               <Card key={faq.id} className="group">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm mb-1">{faq.question}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {faq.answer}
-                      </p>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{faq.answer}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <Badge variant={getPriorityColor(faq.priority)} className="text-xs">

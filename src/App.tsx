@@ -1,12 +1,10 @@
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import React, { Suspense } from 'react';
-import { AuthGuard } from './components/AuthGuard';
 import ErrorBoundary from './components/ErrorBoundary';
-import { RouteErrorBoundary } from './components/RouteErrorBoundary';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 
 // Lazy-loaded pages — each becomes its own chunk
@@ -43,15 +41,6 @@ const PageLoader = () => (
   </div>
 );
 
-const queryClient = new QueryClient();
-
-/** Wraps a page with AuthGuard + per-route error boundary */
-const Protected = ({ children }: { children: React.ReactNode }) => (
-  <Protected>
-    <RouteErrorBoundary>{children}</RouteErrorBoundary>
-  </Protected>
-);
-
 const RouterContent = () => {
   return (
     <Routes>
@@ -64,9 +53,9 @@ const RouterContent = () => {
       <Route
         path="/"
         element={
-          <Protected>
+          <ProtectedRoute>
             <Home />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -74,9 +63,9 @@ const RouterContent = () => {
       <Route
         path="/inbox"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="all-open" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -87,9 +76,9 @@ const RouterContent = () => {
       <Route
         path="/needs-action"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="needs-me" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -101,9 +90,9 @@ const RouterContent = () => {
       <Route
         path="/done"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="cleared" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -114,9 +103,9 @@ const RouterContent = () => {
       <Route
         path="/review"
         element={
-          <Protected>
+          <ProtectedRoute>
             <Review />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -124,9 +113,9 @@ const RouterContent = () => {
       <Route
         path="/snoozed"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="snoozed" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -134,9 +123,9 @@ const RouterContent = () => {
       <Route
         path="/unread"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="unread" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -144,9 +133,9 @@ const RouterContent = () => {
       <Route
         path="/drafts"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="drafts-ready" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -154,9 +143,9 @@ const RouterContent = () => {
       <Route
         path="/sent"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="sent" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -166,89 +155,89 @@ const RouterContent = () => {
       <Route
         path="/my-tickets"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="my-tickets" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/unassigned"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="unassigned" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/sla-risk"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="sla-risk" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/awaiting-reply"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="awaiting-reply" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/triaged"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="triaged" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/high-priority"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="high-priority" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/vip-customers"
         element={
-          <Protected>
+          <ProtectedRoute>
             <EscalationHub filter="vip-customers" />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/escalations"
         element={
-          <Protected>
+          <ProtectedRoute>
             <Escalations />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/channels"
         element={
-          <Protected>
+          <ProtectedRoute>
             <ChannelsDashboard />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/channel/:channel"
         element={
-          <Protected>
+          <ProtectedRoute>
             <ChannelConversations />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/analytics"
         element={
-          <Protected>
+          <ProtectedRoute>
             <AnalyticsDashboard />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -256,9 +245,9 @@ const RouterContent = () => {
       <Route
         path="/activity"
         element={
-          <Protected>
+          <ProtectedRoute>
             <ActivityPage />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -266,35 +255,35 @@ const RouterContent = () => {
       <Route
         path="/learning"
         element={
-          <Protected>
+          <ProtectedRoute>
             <LearningPage />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/conversation/:id"
         element={
-          <Protected>
+          <ProtectedRoute>
             <ConversationView />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/settings"
         element={
-          <Protected>
+          <ProtectedRoute>
             <Settings />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/webhooks"
         element={
-          <Protected>
+          <ProtectedRoute>
             <WebhookLogs />
-          </Protected>
+          </ProtectedRoute>
         }
       />
       <Route path="/privacy" element={<Privacy />} />
@@ -307,9 +296,9 @@ const RouterContent = () => {
       <Route
         path="/diagnostics"
         element={
-          <Protected>
+          <ProtectedRoute>
             <Diagnostics />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -317,9 +306,9 @@ const RouterContent = () => {
       <Route
         path="/knowledge-base"
         element={
-          <Protected>
+          <ProtectedRoute>
             <KnowledgeBase />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -327,9 +316,9 @@ const RouterContent = () => {
       <Route
         path="/admin/devops"
         element={
-          <Protected>
+          <ProtectedRoute>
             <DevOpsDashboard />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -337,9 +326,9 @@ const RouterContent = () => {
       <Route
         path="/ai-phone"
         element={
-          <Protected>
+          <ProtectedRoute>
             <AiPhone />
-          </Protected>
+          </ProtectedRoute>
         }
       />
 
@@ -351,21 +340,19 @@ const RouterContent = () => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <ErrorBoundary>
-          <WorkspaceProvider>
-            <Suspense fallback={<PageLoader />}>
-              <RouterContent />
-            </Suspense>
-          </WorkspaceProvider>
-        </ErrorBoundary>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <TooltipProvider>
+    <Toaster />
+    <Sonner />
+    <BrowserRouter>
+      <ErrorBoundary>
+        <WorkspaceProvider>
+          <Suspense fallback={<PageLoader />}>
+            <RouterContent />
+          </Suspense>
+        </WorkspaceProvider>
+      </ErrorBoundary>
+    </BrowserRouter>
+  </TooltipProvider>
 );
 
 export default App;

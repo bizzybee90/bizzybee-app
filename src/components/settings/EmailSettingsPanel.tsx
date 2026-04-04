@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,13 +47,7 @@ export function EmailSettingsPanel() {
   const [useCustomHtml, setUseCustomHtml] = useState(false);
   const [customHtml, setCustomHtml] = useState('');
 
-  useEffect(() => {
-    if (workspaceId) {
-      fetchSettings();
-    }
-  }, [workspaceId]);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('email_settings')
@@ -74,7 +68,13 @@ export function EmailSettingsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      void fetchSettings();
+    }
+  }, [fetchSettings, workspaceId]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

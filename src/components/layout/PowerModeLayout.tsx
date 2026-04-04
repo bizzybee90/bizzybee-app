@@ -75,10 +75,10 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
   useEffect(() => {
     setSelectedConversation(null);
     setCustomerPanelOpen(false);
-    const newParams = new URLSearchParams(searchParams);
+    const newParams = new URLSearchParams(window.location.search);
     newParams.delete('conversation');
     setSearchParams(newParams, { replace: true });
-  }, [filter, channelFilter]);
+  }, [filter, channelFilter, setSearchParams]);
 
   // Handle conversation query parameter to auto-select
   useEffect(() => {
@@ -217,6 +217,8 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
                 filter={filter}
                 selectedId={selectedConversation?.id}
                 onSelect={handleSelectConversation}
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
                 hideHeader
               />
             </main>
@@ -238,6 +240,8 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
                 filter={filter}
                 selectedId={selectedConversation?.id}
                 onSelect={handleSelectConversation}
+                searchValue={searchQuery}
+                onSearchChange={setSearchQuery}
                 hideHeader
               />
             </div>

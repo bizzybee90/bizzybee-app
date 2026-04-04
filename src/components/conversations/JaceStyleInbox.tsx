@@ -19,6 +19,8 @@ import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 interface JaceStyleInboxProps {
   onSelect: (conversation: Conversation) => void;
   selectedId?: string | null;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
   filter?:
     | 'my-tickets'
     | 'unassigned'
@@ -49,13 +51,15 @@ interface GroupedConversations {
 export const JaceStyleInbox = ({
   onSelect,
   selectedId,
+  searchValue,
+  onSearchChange,
   filter = 'needs-me',
   hideHeader = false,
 }: JaceStyleInboxProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const subFilter = searchParams.get('filter'); // 'at-risk', 'to-reply', 'drafts'
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [correctionOpen, setCorrectionOpen] = useState(false);
@@ -64,6 +68,8 @@ export const JaceStyleInbox = ({
   const isMobile = useIsMobile();
   const [keyboardIndex, setKeyboardIndex] = useState(0);
   const PAGE_SIZE = 50;
+  const searchQuery = searchValue ?? internalSearchQuery;
+  const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
 
   // Debounce search to avoid spamming requests while typing
   useEffect(() => {

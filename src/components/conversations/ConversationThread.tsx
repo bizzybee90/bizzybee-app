@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { sendReply } from '@/lib/api/sendReply';
 
 interface ConversationThreadProps {
   conversation: Conversation;
@@ -67,7 +68,7 @@ export const ConversationThread = ({
       setCustomer((data as import('@/lib/types').Customer | null) || conversation.customer || null);
     };
     fetchCustomer();
-  }, [conversation.id, conversation.customer_id]);
+  }, [conversation.customer, conversation.customer_id, conversation.id]);
 
   useEffect(() => {
     const fetchMessages = async () => {
@@ -107,115 +108,57 @@ export const ConversationThread = ({
   }, [conversation.id]);
 
   const handleReply = async (body: string, isInternal: boolean) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      if (isInternal) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
 
-    const { data: userData } = await supabase
-      .from('users')
-      .select('name')
-      .eq('id', user.id)
-      .single();
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', user.id)
+          .single();
 
-    const { data: newMessage, error: insertError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        actor_type: isInternal ? 'system' : 'human_agent',
-        actor_id: user.id,
-        actor_name: userData?.name || 'Agent',
-        direction: 'outbound',
-        channel: conversation.channel,
-        body,
-        is_internal: isInternal,
-      })
-      .select()
-      .single();
+        const { error: insertError } = await supabase.from('messages').insert({
+          conversation_id: conversation.id,
+          actor_type: 'system',
+          actor_id: user.id,
+          actor_name: userData?.name || 'Agent',
+          direction: 'outbound',
+          channel: conversation.channel,
+          body,
+          is_internal: true,
+        });
 
-    if (insertError) {
-      console.error('Error sending message:', insertError);
+        if (insertError) {
+          throw insertError;
+        }
+      } else {
+        await sendReply({
+          conversationId: conversation.id,
+          workspaceId: conversation.workspace_id,
+          content: body,
+          statusAfterSend: 'waiting_customer',
+        });
+      }
+
+      localStorage.removeItem(`draft-${conversation.id}`);
       toast({
-        title: 'Error sending message',
-        description: insertError.message,
+        title: isInternal ? 'Note added' : 'Message sent',
+        description: isInternal ? 'Internal note saved' : 'Your reply has been sent successfully',
+      });
+      onUpdate();
+    } catch (error) {
+      const description = error instanceof Error ? error.message : 'Please try again.';
+      toast({
+        title: isInternal ? 'Error saving note' : 'Send failed',
+        description,
         variant: 'destructive',
       });
-      return;
+      throw error;
     }
-
-    if (!isInternal) {
-      try {
-        let customerData = conversation.customer;
-        if (!customerData && conversation.customer_id) {
-          const { data: fetched } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('id', conversation.customer_id)
-            .single();
-          customerData = fetched as typeof conversation.customer;
-        }
-
-        if (customerData) {
-          let recipient = '';
-          if (conversation.channel === 'email') {
-            recipient = customerData.email || '';
-          } else if (conversation.channel === 'sms' || conversation.channel === 'whatsapp') {
-            recipient = customerData.phone || '';
-          }
-
-          if (recipient) {
-            const { error: sendError } = await supabase.functions.invoke('email-send', {
-              body: {
-                conversationId: conversation.id,
-                channel: conversation.channel,
-                to: recipient,
-                message: body,
-                skipMessageLog: true,
-                metadata: {
-                  actorType: 'human_agent',
-                  actorName: userData?.name || 'Agent',
-                  actorId: user.id,
-                },
-              },
-            });
-
-            if (sendError) {
-              toast({
-                title: 'Delivery failed',
-                description: sendError.message,
-                variant: 'destructive',
-              });
-            }
-          } else {
-            toast({
-              title: 'No recipient',
-              description: `No ${conversation.channel === 'email' ? 'email' : 'phone'} for customer`,
-              variant: 'destructive',
-            });
-          }
-        }
-      } catch (error: any) {
-        toast({ title: 'Send failed', description: error.message, variant: 'destructive' });
-      }
-    }
-
-    if (!isInternal) {
-      const updateData: Record<string, string> = {
-        updated_at: new Date().toISOString(),
-        status: 'waiting_customer',
-      };
-      if (!conversation.first_response_at) {
-        updateData.first_response_at = new Date().toISOString();
-      }
-      await supabase.from('conversations').update(updateData).eq('id', conversation.id);
-    }
-
-    localStorage.removeItem(`draft-${conversation.id}`);
-    toast({
-      title: isInternal ? 'Note added' : 'Message sent',
-      description: isInternal ? 'Internal note saved' : 'Your reply has been sent successfully',
-    });
-    onUpdate();
   };
 
   const handleReopen = async () => {

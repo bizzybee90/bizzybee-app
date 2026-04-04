@@ -16,7 +16,6 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
-import { generateKnowledgeBasePDF } from '@/components/settings/knowledge-base/generateKnowledgeBasePDF';
 import { toast } from 'sonner';
 import bizzybeeLogoSrc from '@/assets/bizzybee-logo.png';
 
@@ -397,6 +396,8 @@ export function KnowledgeBaseStep({
           onClick={async () => {
             setDownloadingPDF(true);
             try {
+              const { generateKnowledgeBasePDF } =
+                await import('@/components/settings/knowledge-base/generateKnowledgeBasePDF');
               await generateKnowledgeBasePDF(workspaceId, businessContext.companyName);
               toast.success('Knowledge Base PDF downloaded!');
             } catch (err) {

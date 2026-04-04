@@ -186,7 +186,7 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [isReset, navigate]);
 
   const handleComplete = async () => {
     try {

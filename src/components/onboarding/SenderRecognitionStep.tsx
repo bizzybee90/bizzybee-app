@@ -1,9 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronLeft, ChevronRight, Loader2, Check, Eye, AlertTriangle, SkipForward } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Check,
+  Eye,
+  AlertTriangle,
+  SkipForward,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { ChannelIcon } from '@/components/shared/ChannelIcon';
 
@@ -25,28 +33,31 @@ interface SampleEmail {
 
 type Decision = 'auto_handled' | 'quick_win' | 'act_now';
 
-export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onBack }: SenderRecognitionStepProps) {
+export function SenderRecognitionStep({
+  workspaceId,
+  onRulesCreated,
+  onNext,
+  onBack,
+}: SenderRecognitionStepProps) {
   const [samples, setSamples] = useState<SampleEmail[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    fetchSamples();
-  }, [workspaceId]);
-
-  const fetchSamples = async () => {
+  const fetchSamples = useCallback(async () => {
     try {
       // Get distinct sender domains with sample emails
       const { data } = await supabase
         .from('conversations')
-        .select(`
+        .select(
+          `
           id,
           title,
           channel,
           customer:customers(email, name)
-        `)
+        `,
+        )
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -76,7 +87,11 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void fetchSamples();
+  }, [fetchSamples]);
 
   const handleDecision = (decision: Decision) => {
     const sample = samples[currentIndex];
@@ -117,7 +132,8 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
           await supabase.from('sender_rules').insert({
             workspace_id: workspaceId,
             sender_pattern: `@${domain}`,
-            default_classification: decision === 'auto_handled' ? 'automated_notification' : 'customer_inquiry',
+            default_classification:
+              decision === 'auto_handled' ? 'automated_notification' : 'customer_inquiry',
             default_requires_reply: decision !== 'auto_handled',
             is_active: true,
           });
@@ -153,9 +169,7 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
       <div className="space-y-6">
         <div className="text-center space-y-2">
           <h2 className="text-xl font-semibold">No emails to review</h2>
-          <p className="text-sm text-muted-foreground">
-            We'll learn as emails come in
-          </p>
+          <p className="text-sm text-muted-foreground">We'll learn as emails come in</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={onBack} className="flex-1">
@@ -179,9 +193,9 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
           Quick-swipe through sample emails. {currentIndex + 1} of {samples.length}
         </p>
         <div className="w-full bg-muted rounded-full h-2">
-          <div 
-            className="bg-primary h-2 rounded-full transition-all" 
-            style={{ width: `${progress}%` }} 
+          <div
+            className="bg-primary h-2 rounded-full transition-all"
+            style={{ width: `${progress}%` }}
           />
         </div>
       </div>
@@ -200,9 +214,7 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
               <p className="text-sm text-muted-foreground truncate">{currentSample.senderEmail}</p>
             </div>
           </div>
-          <p className="text-sm bg-muted/50 rounded-lg p-3 line-clamp-2">
-            {currentSample.subject}
-          </p>
+          <p className="text-sm bg-muted/50 rounded-lg p-3 line-clamp-2">{currentSample.subject}</p>
 
           <div className="grid grid-cols-3 gap-3 mt-6">
             <Button
@@ -270,8 +282,8 @@ export function SenderRecognitionStep({ workspaceId, onRulesCreated, onNext, onB
             Back
           </Button>
           <Button variant="ghost" onClick={handleFinish} disabled={isSaving} className="ml-auto">
-            {Object.keys(decisions).length > 0 
-              ? `Finish with ${Object.keys(decisions).length} rules` 
+            {Object.keys(decisions).length > 0
+              ? `Finish with ${Object.keys(decisions).length} rules`
               : 'Skip this step'}
           </Button>
         </div>

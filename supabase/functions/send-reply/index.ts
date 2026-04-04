@@ -1,9 +1,19 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+interface SendReplyRequest {
+  conversation_id?: string;
+  content?: string;
+  workspace_id?: string;
+  status_after_send?: string;
+  actor_type?: string;
+  actor_name?: string;
+  actor_id?: string | null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,14 +25,16 @@ Deno.serve(async (req) => {
   try {
     // --- Auth validation ---
     const { validateAuth, AuthError, authErrorResponse } = await import('../_shared/auth.ts');
-    let body: { conversation_id?: string; content?: string; workspace_id?: string };
+    let body: SendReplyRequest;
     try {
       body = await req.clone().json();
     } catch {
       body = {};
     }
+
+    let auth;
     try {
-      await validateAuth(req, body.workspace_id);
+      auth = await validateAuth(req, body.workspace_id);
     } catch (authErr: unknown) {
       if (authErr instanceof AuthError) return authErrorResponse(authErr);
       throw authErr;
@@ -32,10 +44,13 @@ Deno.serve(async (req) => {
     const conversationId = body.conversation_id;
     const content = body.content;
     const workspaceId = body.workspace_id;
+    const statusAfterSend = body.status_after_send?.trim() || 'resolved';
+    const actorType = body.actor_type?.trim() || 'human_agent';
 
     if (!conversationId) throw new Error('conversation_id is required');
     if (!workspaceId) throw new Error('workspace_id is required');
-    if (!content || content.trim().length === 0) throw new Error('content is required and cannot be empty');
+    if (!content || content.trim().length === 0)
+      throw new Error('content is required and cannot be empty');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -44,10 +59,12 @@ Deno.serve(async (req) => {
     // --- Fetch conversation with customer ---
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select(`
-        id, title, status, channel, workspace_id, external_conversation_id, metadata,
+      .select(
+        `
+        id, title, status, channel, workspace_id, external_conversation_id, metadata, first_response_at,
         customer:customers(id, email, name)
-      `)
+      `,
+      )
       .eq('id', conversationId)
       .eq('workspace_id', workspaceId)
       .single();
@@ -57,9 +74,51 @@ Deno.serve(async (req) => {
     }
 
     const channel = conversation.channel || 'email';
-    const customer = Array.isArray(conversation.customer) ? conversation.customer[0] : conversation.customer;
+    const customer = Array.isArray(conversation.customer)
+      ? conversation.customer[0]
+      : conversation.customer;
+    const actorId = body.actor_id ?? (auth.userId === 'service_role' ? null : auth.userId);
+    let actorName = body.actor_name?.trim() || null;
 
     if (!customer) throw new Error(`No customer associated with conversation ${conversationId}`);
+
+    if (!actorName && auth.userId !== 'service_role') {
+      const { data: user } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', auth.userId)
+        .maybeSingle();
+
+      actorName = user?.name?.trim() || null;
+    }
+
+    const updateConversationAfterSend = async () => {
+      const timestamp = new Date().toISOString();
+      const updates: Record<string, string> = {
+        status: statusAfterSend,
+        last_message_at: timestamp,
+        updated_at: timestamp,
+      };
+
+      if (!conversation.first_response_at) {
+        updates.first_response_at = timestamp;
+      }
+
+      await supabase.from('conversations').update(updates).eq('id', conversationId);
+    };
+
+    const successResponse = (messageId: string | null, externalId: string | null) =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          message_id: messageId,
+          external_id: externalId,
+          duration_ms: Date.now() - startTime,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
 
     // --- Channel-specific send ---
     switch (channel) {
@@ -80,8 +139,10 @@ Deno.serve(async (req) => {
         }
 
         // Get access token
-        const { data: accessToken, error: tokenError } = await supabase
-          .rpc('get_decrypted_access_token', { config_id: emailConfig.id });
+        const { data: accessToken, error: tokenError } = await supabase.rpc(
+          'get_decrypted_access_token',
+          { config_id: emailConfig.id },
+        );
 
         if (tokenError || !accessToken) {
           throw new Error('Email access token missing. Please reconnect your email.');
@@ -106,9 +167,10 @@ Deno.serve(async (req) => {
         };
 
         // Thread into the existing conversation
-        const threadId = latestInbound?.external_thread_id
-          || conversation.external_conversation_id
-          || (conversation.metadata as Record<string, unknown>)?.aurinko_thread_id;
+        const threadId =
+          latestInbound?.external_thread_id ||
+          conversation.external_conversation_id ||
+          (conversation.metadata as Record<string, unknown>)?.aurinko_thread_id;
 
         if (threadId) {
           emailPayload.threadId = threadId;
@@ -123,7 +185,7 @@ Deno.serve(async (req) => {
         const aurinkoResponse = await fetch('https://api.aurinko.io/v1/email/messages', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(emailPayload),
@@ -148,14 +210,16 @@ Deno.serve(async (req) => {
             direction: 'outbound',
             channel: 'email',
             body: content,
-            actor_type: 'agent',
-            actor_name: emailConfig.email_address,
+            actor_id: actorId,
+            actor_type: actorType,
+            actor_name: actorName || emailConfig.email_address,
             from_email: emailConfig.email_address,
             to_email: customer.email,
             external_id: externalMessageId ? String(externalMessageId) : null,
             external_thread_id: threadId ? String(threadId) : null,
             config_id: emailConfig.id,
             is_ai_draft: false,
+            is_internal: false,
             created_at: new Date().toISOString(),
           })
           .select('id')
@@ -165,34 +229,19 @@ Deno.serve(async (req) => {
           console.error('[send-reply] Warning: Failed to save message:', messageError);
         }
 
-        // Update conversation status to resolved
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'resolved',
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversationId);
+        await updateConversationAfterSend();
 
         // Fire-and-forget: mark email as read in Gmail
         fetch(`${supabaseUrl}/functions/v1/mark-email-read`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            Authorization: `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({ conversationId, markAsRead: true }),
         }).catch((e) => console.warn('[send-reply] mark-email-read failed:', e));
 
-        return new Response(JSON.stringify({
-          success: true,
-          message_id: savedMessage?.id || null,
-          external_id: externalMessageId || null,
-          duration_ms: Date.now() - startTime,
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return successResponse(savedMessage?.id || null, externalMessageId || null);
       }
 
       case 'whatsapp': {
@@ -201,10 +250,13 @@ Deno.serve(async (req) => {
         const whatsappNumber = Deno.env.get('TWILIO_WHATSAPP_NUMBER');
 
         if (!accountSid || !authToken || !whatsappNumber) {
-          throw new Error('Twilio WhatsApp credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_NUMBER.');
+          throw new Error(
+            'Twilio WhatsApp credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_NUMBER.',
+          );
         }
 
-        const customerPhone = customer.phone || (conversation.metadata as Record<string, unknown>)?.whatsapp_number;
+        const customerPhone =
+          customer.phone || (conversation.metadata as Record<string, unknown>)?.whatsapp_number;
         if (!customerPhone) {
           throw new Error(`No phone number for customer in conversation ${conversationId}`);
         }
@@ -221,7 +273,7 @@ Deno.serve(async (req) => {
         const twilioResponse = await fetch(twilioUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Basic ${twilioAuth}`,
+            Authorization: `Basic ${twilioAuth}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: twilioBody.toString(),
@@ -242,10 +294,12 @@ Deno.serve(async (req) => {
             direction: 'outbound',
             channel: 'whatsapp',
             body: content,
-            actor_type: 'agent',
-            actor_name: whatsappNumber,
+            actor_id: actorId,
+            actor_type: actorType,
+            actor_name: actorName || whatsappNumber,
             external_id: twilioData.sid || null,
             is_ai_draft: false,
+            is_internal: false,
             created_at: new Date().toISOString(),
           })
           .select('id')
@@ -255,36 +309,25 @@ Deno.serve(async (req) => {
           console.error('[send-reply] Warning: Failed to save WhatsApp message:', whatsappMsgError);
         }
 
-        // Update conversation status
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'resolved',
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversationId);
+        await updateConversationAfterSend();
 
-        return new Response(JSON.stringify({
-          success: true,
-          message_id: whatsappMessage?.id || null,
-          external_id: twilioData.sid || null,
-          duration_ms: Date.now() - startTime,
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return successResponse(whatsappMessage?.id || null, twilioData.sid || null);
       }
 
       case 'sms': {
         const smsAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
         const smsAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
-        const smsFromNumber = Deno.env.get('TWILIO_SMS_NUMBER') || Deno.env.get('TWILIO_WHATSAPP_NUMBER');
+        const smsFromNumber =
+          Deno.env.get('TWILIO_SMS_NUMBER') || Deno.env.get('TWILIO_WHATSAPP_NUMBER');
 
         if (!smsAccountSid || !smsAuthToken || !smsFromNumber) {
-          throw new Error('Twilio SMS credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_NUMBER.');
+          throw new Error(
+            'Twilio SMS credentials not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_SMS_NUMBER.',
+          );
         }
 
-        const smsCustomerPhone = customer.phone || (conversation.metadata as Record<string, unknown>)?.phone_number;
+        const smsCustomerPhone =
+          customer.phone || (conversation.metadata as Record<string, unknown>)?.phone_number;
         if (!smsCustomerPhone) {
           throw new Error(`No phone number for customer in conversation ${conversationId}`);
         }
@@ -301,7 +344,7 @@ Deno.serve(async (req) => {
         const smsResponse = await fetch(smsTwilioUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Basic ${smsTwilioAuth}`,
+            Authorization: `Basic ${smsTwilioAuth}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
           body: smsBody.toString(),
@@ -322,10 +365,12 @@ Deno.serve(async (req) => {
             direction: 'outbound',
             channel: 'sms',
             body: content,
-            actor_type: 'agent',
-            actor_name: smsFromNumber,
+            actor_id: actorId,
+            actor_type: actorType,
+            actor_name: actorName || smsFromNumber,
             external_id: smsData.sid || null,
             is_ai_draft: false,
+            is_internal: false,
             created_at: new Date().toISOString(),
           })
           .select('id')
@@ -335,24 +380,9 @@ Deno.serve(async (req) => {
           console.error('[send-reply] Warning: Failed to save SMS message:', smsMsgError);
         }
 
-        // Update conversation status
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'resolved',
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversationId);
+        await updateConversationAfterSend();
 
-        return new Response(JSON.stringify({
-          success: true,
-          message_id: smsMessage?.id || null,
-          external_id: smsData.sid || null,
-          duration_ms: Date.now() - startTime,
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return successResponse(smsMessage?.id || null, smsData.sid || null);
       }
 
       case 'facebook':
@@ -369,7 +399,9 @@ Deno.serve(async (req) => {
           : customer.phone || (conversation.metadata as Record<string, unknown>)?.sender_id;
 
         if (!recipientId) {
-          throw new Error(`No ${channel} recipient ID for customer in conversation ${conversationId}`);
+          throw new Error(
+            `No ${channel} recipient ID for customer in conversation ${conversationId}`,
+          );
         }
 
         const graphUrl = 'https://graph.facebook.com/v19.0/me/messages';
@@ -397,10 +429,12 @@ Deno.serve(async (req) => {
             direction: 'outbound',
             channel,
             body: content,
-            actor_type: 'agent',
-            actor_name: channel === 'facebook' ? 'Facebook Page' : 'Instagram',
+            actor_id: actorId,
+            actor_type: actorType,
+            actor_name: actorName || (channel === 'facebook' ? 'Facebook Page' : 'Instagram'),
             external_id: metaData.message_id || null,
             is_ai_draft: false,
+            is_internal: false,
             created_at: new Date().toISOString(),
           })
           .select('id')
@@ -410,24 +444,9 @@ Deno.serve(async (req) => {
           console.error(`[send-reply] Warning: Failed to save ${channel} message:`, metaMsgError);
         }
 
-        // Update conversation status
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'resolved',
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversationId);
+        await updateConversationAfterSend();
 
-        return new Response(JSON.stringify({
-          success: true,
-          message_id: metaMessage?.id || null,
-          external_id: metaData.message_id || null,
-          duration_ms: Date.now() - startTime,
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return successResponse(metaMessage?.id || null, metaData.message_id || null);
       }
 
       case 'google_business': {
@@ -442,7 +461,9 @@ Deno.serve(async (req) => {
           : (conversation.metadata as Record<string, unknown>)?.gbm_conversation_id;
 
         if (!gbmConversationId) {
-          throw new Error(`No Google Business conversation ID for customer in conversation ${conversationId}`);
+          throw new Error(
+            `No Google Business conversation ID for customer in conversation ${conversationId}`,
+          );
         }
 
         // Send via Google Business Messages API
@@ -474,52 +495,47 @@ Deno.serve(async (req) => {
             direction: 'outbound',
             channel: 'google_business',
             body: content,
-            actor_type: 'agent',
-            actor_name: 'Google Business',
+            actor_id: actorId,
+            actor_type: actorType,
+            actor_name: actorName || 'Google Business',
             external_id: gbmData.name || null,
             is_ai_draft: false,
+            is_internal: false,
             created_at: new Date().toISOString(),
           })
           .select('id')
           .single();
 
         if (gbmMsgError) {
-          console.error('[send-reply] Warning: Failed to save Google Business message:', gbmMsgError);
+          console.error(
+            '[send-reply] Warning: Failed to save Google Business message:',
+            gbmMsgError,
+          );
         }
 
-        // Update conversation status
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'resolved',
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversationId);
+        await updateConversationAfterSend();
 
-        return new Response(JSON.stringify({
-          success: true,
-          message_id: gbmMessage?.id || null,
-          external_id: gbmData.name || null,
-          duration_ms: Date.now() - startTime,
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return successResponse(gbmMessage?.id || null, gbmData.name || null);
       }
 
       default:
-        throw new Error(`Unsupported channel: ${channel}. Supported: email, whatsapp, sms, facebook, instagram, google_business.`);
+        throw new Error(
+          `Unsupported channel: ${channel}. Supported: email, whatsapp, sms, facebook, instagram, google_business.`,
+        );
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[send-reply] Error:', errorMessage);
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'Failed to send message. Please try again.',
-      duration_ms: Date.now() - startTime,
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Failed to send message. Please try again.',
+        duration_ms: Date.now() - startTime,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   }
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,13 +21,7 @@ export const GDPRDashboard = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (workspace?.id) {
-      loadStats();
-    }
-  }, [workspace]);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     if (!workspace?.id) return;
 
     setLoading(true);
@@ -102,7 +96,13 @@ export const GDPRDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (workspace?.id) {
+      void loadStats();
+    }
+  }, [loadStats, workspace?.id]);
 
   const runManualCleanup = async () => {
     // cleanup-old-data edge function has been removed

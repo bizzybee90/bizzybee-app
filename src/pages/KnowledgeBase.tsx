@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
@@ -165,13 +165,7 @@ export default function KnowledgeBase() {
   const [editAnswer, setEditAnswer] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => {
-    if (workspace?.id) {
-      fetchFaqs();
-    }
-  }, [workspace?.id]);
-
-  const fetchFaqs = async () => {
+  const fetchFaqs = useCallback(async () => {
     if (!workspace?.id) return;
     setFetchError(null);
 
@@ -190,7 +184,13 @@ export default function KnowledgeBase() {
 
     setFaqs(data || []);
     setLoading(false);
-  };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (workspace?.id) {
+      void fetchFaqs();
+    }
+  }, [fetchFaqs, workspace?.id]);
 
   const handleEditFaq = (faq: FAQ) => {
     setEditingFaq(faq);

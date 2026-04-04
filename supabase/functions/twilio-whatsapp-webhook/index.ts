@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,7 +35,11 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const keyData = encoder.encode(twilioAuthToken);
       const cryptoKey = await crypto.subtle.importKey(
-        'raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-1' },
+        false,
+        ['sign'],
       );
       const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
       const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
@@ -43,7 +48,9 @@ Deno.serve(async (req) => {
         return new Response('Invalid signature', { status: 403 });
       }
     } else {
-      console.warn('[whatsapp-webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification');
+      console.warn(
+        '[whatsapp-webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification',
+      );
     }
 
     // Parse form-urlencoded data from the raw body
@@ -80,17 +87,18 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find workspace by WhatsApp channel config
-    const { data: workspace } = await supabase
-      .from('workspace_channels')
-      .select('workspace_id')
-      .eq('channel', 'whatsapp')
-      .eq('enabled', true)
-      .maybeSingle();
+    const workspaceId = await resolveWorkspaceIdForChannel(
+      supabase,
+      'whatsapp',
+      { raw: [to, businessPhone], phone: [to, businessPhone] },
+      '[whatsapp-webhook]',
+    );
 
-    const workspaceId = workspace?.workspace_id;
     if (!workspaceId) {
-      console.error('[whatsapp-webhook] No workspace_channels config found for WhatsApp. Number:', maskedTo);
+      console.error(
+        '[whatsapp-webhook] No workspace_channels config found for WhatsApp. Number:',
+        maskedTo,
+      );
       return new Response('<Response></Response>', {
         headers: { 'Content-Type': 'text/xml' },
       });
@@ -159,23 +167,22 @@ Deno.serve(async (req) => {
     }
 
     // Save the inbound message
-    const messageBody = numMedia > 0 && !body
-      ? `[Media attachment received (${numMedia} file${numMedia > 1 ? 's' : ''})]`
-      : body;
+    const messageBody =
+      numMedia > 0 && !body
+        ? `[Media attachment received (${numMedia} file${numMedia > 1 ? 's' : ''})]`
+        : body;
 
-    const { error: msgError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversation.id,
-        direction: 'inbound',
-        channel: 'whatsapp',
-        body: messageBody,
-        actor_type: 'customer',
-        actor_name: profileName || customerPhone,
-        external_id: messageSid,
-        is_internal: false,
-        created_at: new Date().toISOString(),
-      });
+    const { error: msgError } = await supabase.from('messages').insert({
+      conversation_id: conversation.id,
+      direction: 'inbound',
+      channel: 'whatsapp',
+      body: messageBody,
+      actor_type: 'customer',
+      actor_name: profileName || customerPhone,
+      external_id: messageSid,
+      is_internal: false,
+      created_at: new Date().toISOString(),
+    });
 
     if (msgError) {
       console.error('[whatsapp-webhook] Failed to save message:', msgError);
@@ -197,7 +204,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseKey}`,
+        Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
         conversation_id: conversation.id,

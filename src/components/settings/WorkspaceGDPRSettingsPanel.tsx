@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,13 +56,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
     location: '',
   });
 
-  useEffect(() => {
-    if (workspace?.id) {
-      loadSettings();
-    }
-  }, [workspace]);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     if (!workspace?.id) return;
 
     setLoading(true);
@@ -103,7 +97,13 @@ export const WorkspaceGDPRSettingsPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (workspace?.id) {
+      void loadSettings();
+    }
+  }, [loadSettings, workspace?.id]);
 
   const saveSettings = async () => {
     if (!settings || !workspace?.id) return;

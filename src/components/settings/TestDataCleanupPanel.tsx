@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { Card } from '@/components/ui/card';
@@ -72,7 +72,7 @@ export const TestDataCleanupPanel = () => {
   );
 
   // Fetch existing business context
-  const fetchBusinessContext = async () => {
+  const fetchBusinessContext = useCallback(async () => {
     if (!workspace?.id) return;
 
     const { data } = await supabase
@@ -85,11 +85,11 @@ export const TestDataCleanupPanel = () => {
       const flags = data.custom_flags as Record<string, unknown>;
       setCompanyName((flags.company_name as string) || '');
     }
-  };
+  }, [workspace?.id]);
 
   useEffect(() => {
-    fetchBusinessContext();
-  }, [workspace?.id]);
+    void fetchBusinessContext();
+  }, [fetchBusinessContext]);
 
   const saveCompanyName = async () => {
     if (!workspace?.id || !companyName.trim()) return;

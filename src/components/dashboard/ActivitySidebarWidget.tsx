@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,10 +18,10 @@ export const ActivitySidebarWidget = () => {
   const [stats, setStats] = useState<QuickStats>({
     aiHandled: 0,
     escalated: 0,
-    resolved: 0
+    resolved: 0,
   });
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (!workspace?.id) return;
 
     try {
@@ -36,19 +36,21 @@ export const ActivitySidebarWidget = () => {
         .gte('created_at', todayStr);
 
       if (conversations) {
-        const escalated = conversations.filter(c => c.is_escalated).length;
-        const aiHandled = conversations.filter(c => !c.is_escalated && c.conversation_type === 'ai_handled').length;
-        const resolved = conversations.filter(c => c.status === 'resolved').length;
+        const escalated = conversations.filter((c) => c.is_escalated).length;
+        const aiHandled = conversations.filter(
+          (c) => !c.is_escalated && c.conversation_type === 'ai_handled',
+        ).length;
+        const resolved = conversations.filter((c) => c.status === 'resolved').length;
 
         setStats({ aiHandled, escalated, resolved });
       }
     } catch (error) {
       console.error('Error fetching quick stats:', error);
     }
-  };
+  }, [workspace?.id]);
 
   useEffect(() => {
-    fetchStats();
+    void fetchStats();
 
     // Realtime updates
     const channel = supabase
@@ -59,18 +61,18 @@ export const ActivitySidebarWidget = () => {
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
         () => {
-          fetchStats();
-        }
+          void fetchStats();
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workspace?.id]);
+  }, [fetchStats, workspace?.id]);
 
   return (
     <Card className="p-4">
@@ -84,7 +86,7 @@ export const ActivitySidebarWidget = () => {
           Live
         </Badge>
       </div>
-      
+
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -94,7 +96,7 @@ export const ActivitySidebarWidget = () => {
           <span className="text-lg font-bold text-green-600">{stats.aiHandled}</span>
         </div>
 
-        <div 
+        <div
           className="flex items-center justify-between cursor-pointer hover:bg-accent/50 -mx-2 px-2 py-1 rounded transition-colors"
           onClick={() => navigate('/escalations')}
         >

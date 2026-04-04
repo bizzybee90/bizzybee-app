@@ -54,7 +54,6 @@ export async function generateLearningReportPDF(
     const pageSize = 1000;
     let from = 0;
     const rows: T[] = [];
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       let q: unknown = (supabase as unknown as { from: (t: string) => unknown }).from(table);
       q = (q as { select: (s: string) => unknown }).select(select);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
@@ -87,7 +87,7 @@ export default function ChannelsDashboard() {
   const [hiddenChannels, setHiddenChannels] = useState<Record<string, boolean>>({});
   const [showSettings, setShowSettings] = useState(false);
 
-  const fetchChannelStats = async () => {
+  const fetchChannelStats = useCallback(async () => {
     if (!workspace?.id) return;
     setFetchError(null);
 
@@ -149,7 +149,24 @@ export default function ChannelsDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.id]);
+
+  const fetchEnabledChannels = useCallback(async () => {
+    if (!workspace?.id) return;
+
+    const { data } = await supabase
+      .from('workspace_channels')
+      .select('channel, enabled')
+      .eq('workspace_id', workspace.id);
+
+    if (data) {
+      const enabled: Record<string, boolean> = {};
+      data.forEach((ch) => {
+        enabled[ch.channel] = ch.enabled || false;
+      });
+      setEnabledChannels(enabled);
+    }
+  }, [workspace?.id]);
 
   useEffect(() => {
     if (!workspace?.id) return;
@@ -184,24 +201,7 @@ export default function ChannelsDashboard() {
       realtimeChannel.unsubscribe();
       supabase.removeChannel(realtimeChannel);
     };
-  }, [workspace?.id]);
-
-  const fetchEnabledChannels = async () => {
-    if (!workspace?.id) return;
-
-    const { data } = await supabase
-      .from('workspace_channels')
-      .select('channel, enabled')
-      .eq('workspace_id', workspace.id);
-
-    if (data) {
-      const enabled: Record<string, boolean> = {};
-      data.forEach((ch) => {
-        enabled[ch.channel] = ch.enabled || false;
-      });
-      setEnabledChannels(enabled);
-    }
-  };
+  }, [fetchChannelStats, fetchEnabledChannels, workspace?.id]);
 
   const toggleChannelVisibility = (channel: string) => {
     const updated = { ...hiddenChannels, [channel]: !hiddenChannels[channel] };

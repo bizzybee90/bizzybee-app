@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,12 @@ interface EmailListProps {
   onSelectEmail: (email: InboxEmail) => void;
 }
 
-export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEmail }: EmailListProps) => {
+export const EmailList = ({
+  folder,
+  categoryFilter,
+  selectedEmailId,
+  onSelectEmail,
+}: EmailListProps) => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -27,10 +32,17 @@ export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEma
   }, [search]);
 
   // Reset page on filter change
-  useEffect(() => { setPage(0); }, [folder, categoryFilter, debouncedSearch]);
+  useEffect(() => {
+    setPage(0);
+  }, [folder, categoryFilter, debouncedSearch]);
 
-  const { data, isLoading } = useInboxEmails({ folder, categoryFilter, search: debouncedSearch, page });
-  const emails = data?.emails || [];
+  const { data, isLoading } = useInboxEmails({
+    folder,
+    categoryFilter,
+    search: debouncedSearch,
+    page,
+  });
+  const emails = useMemo(() => data?.emails ?? [], [data?.emails]);
   const total = data?.total || 0;
   const hasMore = (page + 1) * 50 < total;
 
@@ -45,7 +57,7 @@ export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEma
         return;
       }
 
-      const currentIdx = emails.findIndex(em => em.id === selectedEmailId);
+      const currentIdx = emails.findIndex((em) => em.id === selectedEmailId);
       if (e.key === 'j' || e.key === 'ArrowDown') {
         e.preventDefault();
         const next = currentIdx < emails.length - 1 ? currentIdx + 1 : 0;
@@ -71,7 +83,7 @@ export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEma
             ref={searchRef}
             placeholder="Search emails... (press /)"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-8 text-sm bg-background"
           />
         </div>
@@ -93,12 +105,10 @@ export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEma
             ))}
           </div>
         ) : emails.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            No emails found
-          </div>
+          <div className="p-6 text-center text-sm text-muted-foreground">No emails found</div>
         ) : (
           <>
-            {emails.map(email => (
+            {emails.map((email) => (
               <EmailListItem
                 key={email.id}
                 email={email}
@@ -112,7 +122,7 @@ export const EmailList = ({ folder, categoryFilter, selectedEmailId, onSelectEma
                   variant="ghost"
                   size="sm"
                   className="w-full text-xs"
-                  onClick={() => setPage(p => p + 1)}
+                  onClick={() => setPage((p) => p + 1)}
                 >
                   Load more ({total - (page + 1) * 50} remaining)
                 </Button>

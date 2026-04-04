@@ -9,17 +9,29 @@ interface LearningPhase {
 }
 
 const LEARNING_PHASES: LearningPhase[] = [
-  { id: 'pairing', label: 'Matching conversations', description: 'Finding your replies to customer emails' },
-  { id: 'voice_dna', label: 'Extracting voice profile', description: 'Learning your greeting style, tone, and patterns' },
-  { id: 'embeddings', label: 'Building memory bank', description: 'Creating searchable examples for future responses' },
-  { id: 'complete', label: 'Complete', description: 'Your digital clone is ready!' }
+  {
+    id: 'pairing',
+    label: 'Matching conversations',
+    description: 'Finding your replies to customer emails',
+  },
+  {
+    id: 'voice_dna',
+    label: 'Extracting voice profile',
+    description: 'Learning your greeting style, tone, and patterns',
+  },
+  {
+    id: 'embeddings',
+    label: 'Building memory bank',
+    description: 'Creating searchable examples for future responses',
+  },
+  { id: 'complete', label: 'Complete', description: 'Your digital clone is ready!' },
 ];
 
 // Processing rates based on benchmarks
 const RATES = {
-  pairing: 500,      // emails per second (simple DB operations)
-  voice_dna: 100,    // emails per second (Claude analysis of 100 pairs)
-  embeddings: 10     // examples per second (OpenAI embeddings)
+  pairing: 500, // emails per second (simple DB operations)
+  voice_dna: 100, // emails per second (Claude analysis of 100 pairs)
+  embeddings: 10, // examples per second (OpenAI embeddings)
 };
 
 interface LearningProgress {
@@ -35,18 +47,28 @@ interface LearningProgress {
   lastUpdatedAt: string | null;
 }
 
+interface EmailImportProgressRow {
+  emails_received?: number | null;
+  pairs_analyzed?: number | null;
+  voice_profile_complete?: boolean | null;
+  updated_at?: string | null;
+  phase1_status?: string | null;
+  phase2_status?: string | null;
+  current_phase?: string | null;
+}
+
 export function useLearningProgress(workspaceId: string | null) {
   const [progress, setProgress] = useState<LearningProgress | null>(null);
   const [hasNotified, setHasNotified] = useState(false);
 
-  const calculateProgress = useCallback((data: any): LearningProgress => {
+  const calculateProgress = useCallback((data: EmailImportProgressRow): LearningProgress => {
     const emailCount = data.emails_received || 0;
     const pairsAnalyzed = data.pairs_analyzed || 0;
     const voiceComplete = data.voice_profile_complete || false;
     const lastUpdatedAt = (data.updated_at ?? null) as string | null;
     const phase1Status = data.phase1_status || 'pending';
     const phase2Status = data.phase2_status || 'pending';
-    
+
     // Determine current phase based on backend phase statuses (more reliable than booleans)
     let phaseIndex = 0;
     let estimatedSeconds: number | null = null;
@@ -59,7 +81,10 @@ export function useLearningProgress(workspaceId: string | null) {
     if (phase1Done && phase2Done && voiceComplete) {
       phaseIndex = 3; // complete
       estimatedSeconds = 0;
-    } else if (phase1Done && (phase2Running || phase2Status === 'pending' || phase2Status === 'error')) {
+    } else if (
+      phase1Done &&
+      (phase2Running || phase2Status === 'pending' || phase2Status === 'error')
+    ) {
       // Memory bank phase
       phaseIndex = 2;
       // We intentionally avoid showing a fake ETA here; it's highly variable.
@@ -73,7 +98,7 @@ export function useLearningProgress(workspaceId: string | null) {
       phaseIndex = 0;
       estimatedSeconds = null;
     }
-    
+
     return {
       currentPhase: LEARNING_PHASES[phaseIndex],
       phaseIndex,
@@ -98,7 +123,7 @@ export function useLearningProgress(workspaceId: string | null) {
         .select('*')
         .eq('workspace_id', workspaceId)
         .single();
-      
+
       if (data) {
         setProgress(calculateProgress(data));
       }
@@ -119,21 +144,21 @@ export function useLearningProgress(workspaceId: string | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'email_import_progress',
-          filter: `workspace_id=eq.${workspaceId}`
+          filter: `workspace_id=eq.${workspaceId}`,
         },
         (payload) => {
           const newProgress = calculateProgress(payload.new);
           setProgress(newProgress);
-          
+
           // Toast on completion
           if (newProgress.isComplete && !hasNotified) {
             setHasNotified(true);
             toast.success('Voice profile ready!', {
               description: `Analyzed ${newProgress.emailsImported.toLocaleString()} emails. BizzyBee now knows your communication style.`,
-              duration: 8000
+              duration: 8000,
             });
           }
-        }
+        },
       )
       .subscribe();
 

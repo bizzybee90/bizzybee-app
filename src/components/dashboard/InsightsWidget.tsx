@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { Lightbulb, TrendingUp, AlertTriangle, Info, X, Sparkles } from 'lucide-react';
@@ -24,15 +24,13 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (workspaceId) fetchInsights();
-  }, [workspaceId]);
-
-  const fetchInsights = async () => {
+  const fetchInsights = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('inbox_insights')
-        .select('id, insight_type, title, description, severity, is_actionable, is_read, created_at, metrics')
+        .select(
+          'id, insight_type, title, description, severity, is_actionable, is_read, created_at, metrics',
+        )
         .eq('workspace_id', workspaceId)
         .eq('is_read', false)
         .order('created_at', { ascending: false })
@@ -43,18 +41,26 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      void fetchInsights();
+    }
+  }, [fetchInsights, workspaceId]);
 
   const markAsRead = async (id: string) => {
     await supabase.from('inbox_insights').update({ is_read: true }).eq('id', id);
-    setInsights(insights.filter(i => i.id !== id));
+    setInsights(insights.filter((i) => i.id !== id));
   };
 
   const getIcon = (type: string | null, severity: string | null) => {
     if (severity === 'critical') return <AlertTriangle className="h-4 w-4 text-red-500" />;
     if (severity === 'warning') return <AlertTriangle className="h-4 w-4 text-amber-500" />;
-    if (type === 'trend' || type === 'category_trend') return <TrendingUp className="h-4 w-4 text-blue-500" />;
-    if (type === 'opportunity' || type === 'automation_opportunity') return <Lightbulb className="h-4 w-4 text-yellow-500" />;
+    if (type === 'trend' || type === 'category_trend')
+      return <TrendingUp className="h-4 w-4 text-blue-500" />;
+    if (type === 'opportunity' || type === 'automation_opportunity')
+      return <Lightbulb className="h-4 w-4 text-yellow-500" />;
     if (type === 'summary') return <Sparkles className="h-4 w-4 text-indigo-500" />;
     return <Info className="h-4 w-4 text-slate-400" />;
   };
@@ -91,7 +97,7 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
         </div>
       ) : (
         <div className="divide-y divide-slate-100">
-          {insights.map(insight => (
+          {insights.map((insight) => (
             <div
               key={insight.id}
               className="p-3 hover:bg-slate-50/80 transition-colors cursor-pointer flex items-start gap-2.5 first:pt-0 last:pb-0 relative group"
@@ -100,12 +106,8 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
                 {getIcon(insight.insight_type, insight.severity)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm text-slate-900 leading-tight">
-                  {insight.title}
-                </p>
-                <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                  {insight.description}
-                </p>
+                <p className="font-medium text-sm text-slate-900 leading-tight">{insight.title}</p>
+                <p className="text-xs text-slate-500 mt-1 line-clamp-2">{insight.description}</p>
                 {insight.is_actionable && (
                   <Badge variant="outline" className="mt-2 text-xs">
                     Action needed
@@ -113,7 +115,10 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
                 )}
               </div>
               <button
-                onClick={(e) => { e.stopPropagation(); markAsRead(insight.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markAsRead(insight.id);
+                }}
                 className="p-1 rounded-full hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
                 aria-label="Dismiss"
               >

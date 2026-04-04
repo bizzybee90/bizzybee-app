@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
@@ -64,26 +64,6 @@ export const ChannelManagementPanel = () => {
   const [selectedProvider, setSelectedProvider] = useState<string>('gmail');
   const [selectedImportMode, setSelectedImportMode] = useState<string>('all_historical_90_days');
 
-  // Handle email_connected redirect from OAuth callback
-  useEffect(() => {
-    const emailConnected = searchParams.get('email_connected');
-    const connectedEmail = searchParams.get('email');
-
-    if (emailConnected === 'true') {
-      toast({
-        title: 'Email connected successfully!',
-        description: connectedEmail ? `${connectedEmail} is now connected.` : undefined,
-      });
-      // Remove the query params
-      searchParams.delete('email_connected');
-      searchParams.delete('email');
-      searchParams.delete('tab');
-      setSearchParams(searchParams, { replace: true });
-      // Refresh email configs
-      fetchEmailConfigs();
-    }
-  }, [searchParams]);
-
   const importModeLabels: Record<string, string> = {
     new_only: 'New emails only',
     unread_only: 'Unread emails + new',
@@ -123,36 +103,7 @@ export const ChannelManagementPanel = () => {
     imap: 'Other (IMAP)',
   };
 
-  useEffect(() => {
-    fetchChannels();
-    fetchEmailConfigs();
-
-    // Set up realtime subscription for email configs
-    if (!workspace?.id) return;
-
-    const channel = supabase
-      .channel('email-configs-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'email_provider_configs',
-          filter: `workspace_id=eq.${workspace.id}`,
-        },
-        (payload) => {
-          logger.debug('Email config change detected');
-          fetchEmailConfigs();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [workspace?.id]);
-
-  const fetchChannels = async () => {
+  const fetchChannels = useCallback(async () => {
     if (!workspace?.id) return;
 
     try {
@@ -169,9 +120,9 @@ export const ChannelManagementPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchEmailConfigs = async () => {
+  const fetchEmailConfigs = useCallback(async () => {
     if (!workspace?.id) return;
 
     try {
@@ -187,7 +138,57 @@ export const ChannelManagementPanel = () => {
     } catch (error) {
       logger.error('Error fetching email configs', error);
     }
-  };
+  }, [workspace?.id]);
+
+  // Handle email_connected redirect from OAuth callback
+  useEffect(() => {
+    const emailConnected = searchParams.get('email_connected');
+    const connectedEmail = searchParams.get('email');
+
+    if (emailConnected === 'true') {
+      toast({
+        title: 'Email connected successfully!',
+        description: connectedEmail ? `${connectedEmail} is now connected.` : undefined,
+      });
+      // Remove the query params
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('email_connected');
+      nextParams.delete('email');
+      nextParams.delete('tab');
+      setSearchParams(nextParams, { replace: true });
+      // Refresh email configs
+      void fetchEmailConfigs();
+    }
+  }, [fetchEmailConfigs, searchParams, setSearchParams, toast]);
+
+  useEffect(() => {
+    void fetchChannels();
+    void fetchEmailConfigs();
+
+    // Set up realtime subscription for email configs
+    if (!workspace?.id) return;
+
+    const channel = supabase
+      .channel('email-configs-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'email_provider_configs',
+          filter: `workspace_id=eq.${workspace.id}`,
+        },
+        (payload) => {
+          logger.debug('Email config change detected');
+          void fetchEmailConfigs();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchChannels, fetchEmailConfigs, workspace?.id]);
 
   const handleConnectEmail = async () => {
     logger.debug('handleConnectEmail called', {

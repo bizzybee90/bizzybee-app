@@ -327,7 +327,7 @@ export default function Review() {
       const senderDomain = senderEmail?.split('@')[1];
 
       // Mark as reviewed
-      const updates: Record<string, any> = {
+      const updates: Record<string, string | boolean> = {
         training_reviewed: true,
         training_reviewed_at: new Date().toISOString(),
         reviewed_at: new Date().toISOString(),
@@ -475,6 +475,27 @@ export default function Review() {
     },
   });
 
+  const handleConfirm = useCallback(() => {
+    if (!currentConversation) return;
+    confirmMutation.mutate({ conversationId: currentConversation.id });
+  }, [currentConversation, confirmMutation]);
+
+  const handleChange = useCallback(() => {
+    if (!currentConversation || !selectedChangeCategory) return;
+    confirmMutation.mutate({
+      conversationId: currentConversation.id,
+      newCategory: selectedChangeCategory,
+      reason: changeReason,
+    });
+  }, [currentConversation, selectedChangeCategory, changeReason, confirmMutation]);
+
+  const handleSkip = useCallback(() => {
+    if (currentIndex < unreviewedQueue.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+      setShowChangePicker(false);
+    }
+  }, [currentIndex, unreviewedQueue.length]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -520,28 +541,7 @@ export default function Review() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [unreviewedQueue.length, showChangePicker, currentIndex, currentConversation]);
-
-  const handleConfirm = useCallback(() => {
-    if (!currentConversation) return;
-    confirmMutation.mutate({ conversationId: currentConversation.id });
-  }, [currentConversation, confirmMutation]);
-
-  const handleChange = useCallback(() => {
-    if (!currentConversation || !selectedChangeCategory) return;
-    confirmMutation.mutate({
-      conversationId: currentConversation.id,
-      newCategory: selectedChangeCategory,
-      reason: changeReason,
-    });
-  }, [currentConversation, selectedChangeCategory, changeReason, confirmMutation]);
-
-  const handleSkip = useCallback(() => {
-    if (currentIndex < unreviewedQueue.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
-      setShowChangePicker(false);
-    }
-  }, [currentIndex, unreviewedQueue.length]);
+  }, [currentConversation, handleConfirm, handleSkip, showChangePicker, unreviewedQueue.length]);
 
   // Sender patterns for selected conversation
   const selectedSenderDomain = currentConversation?.customer?.email?.split('@')[1];

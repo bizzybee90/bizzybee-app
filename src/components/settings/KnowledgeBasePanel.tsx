@@ -7,8 +7,6 @@ import { FAQManager } from './knowledge-base/FAQManager';
 import { BusinessFactsManager } from './knowledge-base/BusinessFactsManager';
 import { PricingManager } from './knowledge-base/PricingManager';
 import { DocumentUpload } from '@/components/knowledge/DocumentUpload';
-import { generateKnowledgeBasePDF } from './knowledge-base/generateKnowledgeBasePDF';
-import { generateCompetitorResearchPDF } from './knowledge-base/generateCompetitorResearchPDF';
 import {
   HelpCircle,
   BookOpen,
@@ -33,6 +31,8 @@ export function KnowledgeBasePanel() {
     if (!workspace?.id) return;
     setDownloading(true);
     try {
+      const { generateKnowledgeBasePDF } =
+        await import('./knowledge-base/generateKnowledgeBasePDF');
       await generateKnowledgeBasePDF(workspace.id, workspace.name || undefined);
       toast.success('Knowledge Base PDF downloaded!');
     } catch (err) {
@@ -47,6 +47,8 @@ export function KnowledgeBasePanel() {
     if (!workspace?.id) return;
     setDownloadingCompetitor(true);
     try {
+      const { generateCompetitorResearchPDF } =
+        await import('./knowledge-base/generateCompetitorResearchPDF');
       await generateCompetitorResearchPDF(workspace.id, workspace.name || undefined);
       toast.success('Competitor Research PDF downloaded!');
     } catch (err) {

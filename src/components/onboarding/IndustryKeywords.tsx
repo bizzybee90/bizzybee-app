@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -18,11 +18,7 @@ export const IndustryKeywords = ({ workspaceId, onComplete }: IndustryKeywordsPr
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    generateKeywords();
-  }, []);
-
-  const generateKeywords = async () => {
+  const generateKeywords = useCallback(async () => {
     setLoading(true);
     try {
       const { data: ctx } = await supabase
@@ -37,7 +33,11 @@ export const IndustryKeywords = ({ workspaceId, onComplete }: IndustryKeywordsPr
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void generateKeywords();
+  }, [generateKeywords]);
 
   const addKeyword = () => {
     const kw = newKeyword.trim().toLowerCase();
@@ -48,7 +48,7 @@ export const IndustryKeywords = ({ workspaceId, onComplete }: IndustryKeywordsPr
   };
 
   const removeKeyword = (kw: string) => {
-    setKeywords(keywords.filter(k => k !== kw));
+    setKeywords(keywords.filter((k) => k !== kw));
   };
 
   const saveAndContinue = async () => {

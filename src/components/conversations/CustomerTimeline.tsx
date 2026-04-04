@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -45,11 +45,7 @@ export const CustomerTimeline = ({ customerId, currentConversationId }: Customer
   const [view, setView] = useState<'timeline' | 'conversations'>('timeline');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchTimeline();
-  }, [customerId]);
-
-  const fetchTimeline = async () => {
+  const fetchTimeline = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch conversations
@@ -160,7 +156,11 @@ export const CustomerTimeline = ({ customerId, currentConversationId }: Customer
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    void fetchTimeline();
+  }, [fetchTimeline]);
 
   const getEventIcon = (event: TimelineEvent) => {
     switch (event.type) {

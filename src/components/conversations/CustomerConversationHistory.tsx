@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Conversation } from '@/lib/types';
 import { Tables } from '@/integrations/supabase/types';
@@ -15,19 +15,15 @@ interface CustomerConversationHistoryProps {
   currentConversationId?: string;
 }
 
-export const CustomerConversationHistory = ({ 
-  customerId, 
-  currentConversationId 
+export const CustomerConversationHistory = ({
+  customerId,
+  currentConversationId,
 }: CustomerConversationHistoryProps) => {
   const [conversations, setConversations] = useState<Tables<'conversations'>[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchConversations();
-  }, [customerId]);
-
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       // Fetch ALL conversations (both escalated and AI-handled)
       const { data, error } = await supabase
@@ -44,7 +40,11 @@ export const CustomerConversationHistory = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    void fetchConversations();
+  }, [fetchConversations]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -94,7 +94,7 @@ export const CustomerConversationHistory = ({
   }
 
   // Filter out current conversation
-  const pastConversations = conversations.filter(c => c.id !== currentConversationId);
+  const pastConversations = conversations.filter((c) => c.id !== currentConversationId);
 
   if (pastConversations.length === 0) {
     return (
@@ -126,16 +126,22 @@ export const CustomerConversationHistory = ({
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {/* AI vs Escalated badge */}
                   {conversation.is_escalated ? (
-                    <Badge variant="secondary" className="text-xs bg-warning/10 text-warning hover:bg-warning/20">
+                    <Badge
+                      variant="secondary"
+                      className="text-xs bg-warning/10 text-warning hover:bg-warning/20"
+                    >
                       🧑 Escalated
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="text-xs bg-success/10 text-success hover:bg-success/20">
+                    <Badge
+                      variant="secondary"
+                      className="text-xs bg-success/10 text-success hover:bg-success/20"
+                    >
                       🤖 AI
                     </Badge>
                   )}
-                  <Badge 
-                    variant="secondary" 
+                  <Badge
+                    variant="secondary"
                     className={`text-xs ${getStatusColor(conversation.status || 'new')}`}
                   >
                     {conversation.status}
@@ -147,7 +153,11 @@ export const CustomerConversationHistory = ({
               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                 <div className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  <span>{formatDistanceToNow(new Date(conversation.created_at || ''), { addSuffix: true })}</span>
+                  <span>
+                    {formatDistanceToNow(new Date(conversation.created_at || ''), {
+                      addSuffix: true,
+                    })}
+                  </span>
                 </div>
                 {conversation.priority && (
                   <span className={`font-medium ${getPriorityColor(conversation.priority)}`}>
@@ -163,7 +173,9 @@ export const CustomerConversationHistory = ({
                 {conversation.message_count > 0 && (
                   <div className="flex items-center gap-1">
                     <MessageSquare className="h-3 w-3" />
-                    <span>{conversation.message_count} msg{conversation.message_count !== 1 ? 's' : ''}</span>
+                    <span>
+                      {conversation.message_count} msg{conversation.message_count !== 1 ? 's' : ''}
+                    </span>
                     {conversation.ai_message_count > 0 && (
                       <span className="text-success">({conversation.ai_message_count} AI)</span>
                     )}

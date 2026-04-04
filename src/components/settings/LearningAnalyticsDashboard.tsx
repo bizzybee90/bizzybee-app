@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,26 +112,7 @@ export function LearningAnalyticsDashboard() {
     Array<{ from: string; to: string; count: number }>
   >([]);
 
-  useEffect(() => {
-    if (workspace?.id) {
-      fetchAllData();
-    }
-  }, [workspace?.id]);
-
-  const fetchAllData = async () => {
-    setLoading(true);
-    await Promise.all([
-      fetchPerformanceMetrics(),
-      fetchClassificationBreakdown(),
-      fetchSenderInsights(),
-      fetchRuleEffectiveness(),
-      fetchTrendData(),
-      fetchCorrectionHeatmap(),
-    ]);
-    setLoading(false);
-  };
-
-  const fetchPerformanceMetrics = async () => {
+  const fetchPerformanceMetrics = useCallback(async () => {
     try {
       // Get total conversations
       const { count: totalCount } = await supabase
@@ -180,9 +161,9 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching metrics', error);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchClassificationBreakdown = async () => {
+  const fetchClassificationBreakdown = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('conversations')
@@ -209,9 +190,9 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching classification breakdown', error);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchSenderInsights = async () => {
+  const fetchSenderInsights = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('sender_behaviour_stats')
@@ -232,9 +213,9 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching sender insights', error);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchRuleEffectiveness = async () => {
+  const fetchRuleEffectiveness = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('sender_rules')
@@ -254,9 +235,9 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching rule effectiveness', error);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchTrendData = async () => {
+  const fetchTrendData = useCallback(async () => {
     try {
       // Get corrections by date
       const { data: corrections } = await supabase
@@ -316,9 +297,9 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching trend data', error);
     }
-  };
+  }, [workspace?.id]);
 
-  const fetchCorrectionHeatmap = async () => {
+  const fetchCorrectionHeatmap = useCallback(async () => {
     try {
       const { data } = await supabase
         .from('triage_corrections')
@@ -346,7 +327,34 @@ export function LearningAnalyticsDashboard() {
     } catch (error) {
       logger.error('Error fetching correction heatmap', error);
     }
-  };
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    if (!workspace?.id) return;
+
+    const load = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchPerformanceMetrics(),
+        fetchClassificationBreakdown(),
+        fetchSenderInsights(),
+        fetchRuleEffectiveness(),
+        fetchTrendData(),
+        fetchCorrectionHeatmap(),
+      ]);
+      setLoading(false);
+    };
+
+    void load();
+  }, [
+    fetchClassificationBreakdown,
+    fetchCorrectionHeatmap,
+    fetchPerformanceMetrics,
+    fetchRuleEffectiveness,
+    fetchSenderInsights,
+    fetchTrendData,
+    workspace?.id,
+  ]);
 
   if (loading) {
     return (

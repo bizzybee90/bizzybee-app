@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -69,7 +69,7 @@ export const ReplyArea = ({
       setDraftUsed(true);
       setTimeout(() => adjustTextareaHeight(replyTextareaRef.current), 0);
     }
-  }, [externalDraftText]);
+  }, [draftUsed, externalDraftText, replyBody]);
 
   // Adjust textarea height when content changes
   useEffect(() => {
@@ -79,21 +79,6 @@ export const ReplyArea = ({
   useEffect(() => {
     adjustTextareaHeight(noteTextareaRef.current);
   }, [noteBody]);
-
-  // Keyboard shortcuts for sending
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (replyBody.trim()) {
-          handleSendReply();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [replyBody]);
 
   const handleUseDraft = () => {
     if (aiDraftResponse) {
@@ -123,7 +108,7 @@ export const ReplyArea = ({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const uploadAttachments = async () => {
+  const uploadAttachments = useCallback(async () => {
     if (attachments.length === 0) return [];
 
     setUploading(true);
@@ -155,9 +140,9 @@ export const ReplyArea = ({
     }
 
     return uploadedFiles;
-  };
+  }, [attachments, conversationId, toast]);
 
-  const handleSendReply = async () => {
+  const handleSendReply = useCallback(async () => {
     if (!replyBody.trim() && attachments.length === 0) {
       toast({
         title: 'Error',
@@ -166,6 +151,16 @@ export const ReplyArea = ({
       });
       return;
     }
+
+    if (attachments.length > 0) {
+      toast({
+        title: 'Attachments not supported yet',
+        description: 'Remove attachments before sending. Delivery is text-only for now.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSending(true);
     try {
       await uploadAttachments();
@@ -175,20 +170,43 @@ export const ReplyArea = ({
       setDraftUsed(false);
       localStorage.removeItem(`draft-${conversationId}`);
       onDraftTextCleared?.();
-      toast({ title: 'Reply sent' });
-    } catch (error) {
-      toast({ title: 'Failed to send', variant: 'destructive' });
     } finally {
       setSending(false);
     }
-  };
+  }, [
+    attachments.length,
+    conversationId,
+    onDraftTextCleared,
+    onSend,
+    replyBody,
+    toast,
+    uploadAttachments,
+  ]);
+
+  // Keyboard shortcuts for sending
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (replyBody.trim()) {
+          void handleSendReply();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSendReply, replyBody]);
 
   const handleSendNote = async () => {
     if (!noteBody.trim()) return;
     setSending(true);
-    await onSend(noteBody, true);
-    setNoteBody('');
-    setSending(false);
+    try {
+      await onSend(noteBody, true);
+      setNoteBody('');
+    } finally {
+      setSending(false);
+    }
   };
 
   // Use mobile styling for both mobile and tablet

@@ -5,7 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { getCategoryInfo, isOutbound } from '@/lib/emailDirection';
-import { useEmailDetail, useEmailThread, useFetchEmailBody, type InboxEmail } from '@/hooks/useInboxEmails';
+import {
+  useEmailDetail,
+  useEmailThread,
+  useFetchEmailBody,
+  type InboxEmail,
+} from '@/hooks/useInboxEmails';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { QuickActionsBar } from './QuickActionsBar';
 import DOMPurify from 'dompurify';
@@ -20,8 +25,57 @@ interface ReadingPaneProps {
 
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['table', 'tr', 'td', 'th', 'tbody', 'thead', 'div', 'span', 'img', 'a', 'b', 'i', 'strong', 'em', 'br', 'p', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'font', 'center', 'u', 's', 'small', 'style'],
-    ALLOWED_ATTR: ['style', 'class', 'href', 'src', 'alt', 'width', 'height', 'align', 'valign', 'bgcolor', 'color', 'target'],
+    ALLOWED_TAGS: [
+      'table',
+      'tr',
+      'td',
+      'th',
+      'tbody',
+      'thead',
+      'div',
+      'span',
+      'img',
+      'a',
+      'b',
+      'i',
+      'strong',
+      'em',
+      'br',
+      'p',
+      'hr',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'pre',
+      'code',
+      'font',
+      'center',
+      'u',
+      's',
+      'small',
+      'style',
+    ],
+    ALLOWED_ATTR: [
+      'style',
+      'class',
+      'href',
+      'src',
+      'alt',
+      'width',
+      'height',
+      'align',
+      'valign',
+      'bgcolor',
+      'color',
+      'target',
+    ],
     FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick'],
   });
@@ -29,7 +83,7 @@ const sanitizeHtml = (html: string): string => {
 
 const EmailBody = ({ email, fetchedHtml }: { email: InboxEmail; fetchedHtml?: string | null }) => {
   const html = fetchedHtml || email.body_html;
-  
+
   if (html) {
     const sanitized = sanitizeHtml(html);
     const styledHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -56,18 +110,28 @@ const EmailBody = ({ email, fetchedHtml }: { email: InboxEmail; fetchedHtml?: st
   );
 };
 
-const ThreadEmail = ({ email, isExpanded, fetchedHtml }: { email: InboxEmail; isExpanded: boolean; fetchedHtml?: string | null }) => {
+const ThreadEmail = ({
+  email,
+  isExpanded,
+  fetchedHtml,
+}: {
+  email: InboxEmail;
+  isExpanded: boolean;
+  fetchedHtml?: string | null;
+}) => {
   const [open, setOpen] = useState(isExpanded);
   const outbound = isOutbound(email.from_email);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className={cn(
-          'w-full text-left px-4 py-3 border-b border-border/50 transition-colors',
-          outbound ? 'bg-primary/5' : 'bg-card',
-          'hover:bg-accent/30'
-        )}>
+        <button
+          className={cn(
+            'w-full text-left px-4 py-3 border-b border-border/50 transition-colors',
+            outbound ? 'bg-primary/5' : 'bg-card',
+            'hover:bg-accent/30',
+          )}
+        >
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground truncate">
               {email.from_name || email.from_email}
@@ -110,7 +174,7 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
   // Auto-fetch HTML body if not available
   useEffect(() => {
     if (!email || email.body_html || fetchedHtml || fetchingBody) return;
-    
+
     setFetchingBody(true);
     fetchBody(email.id)
       .then((html) => {
@@ -124,7 +188,7 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
         console.error('Failed to fetch email body:', err);
       })
       .finally(() => setFetchingBody(false));
-  }, [email?.id, email?.body_html, fetchedHtml, fetchingBody]);
+  }, [email, fetchedHtml, fetchingBody, fetchBody, queryClient]);
 
   if (!selectedEmailId) {
     return (
@@ -132,7 +196,10 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
         <div className="text-center">
           <Mail className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
           <p className="text-sm">Select an email to read</p>
-          <p className="text-xs mt-1">Use <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono">j</kbd> / <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono">k</kbd> to navigate</p>
+          <p className="text-xs mt-1">
+            Use <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono">j</kbd> /{' '}
+            <kbd className="px-1 py-0.5 bg-muted rounded text-[10px] font-mono">k</kbd> to navigate
+          </p>
         </div>
       </div>
     );
@@ -163,7 +230,9 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{email.from_name || email.from_email}</span>
+            <span className="font-medium text-foreground">
+              {email.from_name || email.from_email}
+            </span>
             {email.from_name && <span className="ml-1">&lt;{email.from_email}&gt;</span>}
           </span>
           <span className="text-xs text-muted-foreground">→</span>
@@ -174,15 +243,24 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
             {email.received_at ? format(new Date(email.received_at), 'EEE, d MMM yyyy, HH:mm') : ''}
           </span>
           {email.category && (
-            <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0', catInfo.bg, catInfo.text)}>
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] px-1.5 py-0', catInfo.bg, catInfo.text)}
+            >
               {catInfo.label}
             </Badge>
           )}
           {email.confidence != null && (
-            <span className={cn('text-[10px] font-medium',
-              email.confidence >= 0.9 ? 'text-emerald-600' :
-              email.confidence >= 0.7 ? 'text-amber-600' : 'text-red-500'
-            )}>
+            <span
+              className={cn(
+                'text-[10px] font-medium',
+                email.confidence >= 0.9
+                  ? 'text-emerald-600'
+                  : email.confidence >= 0.7
+                    ? 'text-amber-600'
+                    : 'text-red-500',
+              )}
+            >
               {Math.round(email.confidence * 100)}%
             </span>
           )}
@@ -210,7 +288,7 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
               <ThreadEmail
                 key={te.id}
                 email={te}
-                isExpanded={i === (threadEmails.length - 1)}
+                isExpanded={i === threadEmails.length - 1}
                 fetchedHtml={te.id === email.id ? fetchedHtml : undefined}
               />
             ))}
@@ -221,9 +299,7 @@ export const ReadingPane = ({ selectedEmailId, onBack }: ReadingPaneProps) => {
       </div>
 
       {/* Quick Actions */}
-      {workspace?.id && (
-        <QuickActionsBar emailId={email.id} workspaceId={workspace.id} />
-      )}
+      {workspace?.id && <QuickActionsBar emailId={email.id} workspaceId={workspace.id} />}
 
       {/* Universal Reply Pill */}
       <div className="sticky bottom-4 mx-4 mt-auto pt-4 z-20">

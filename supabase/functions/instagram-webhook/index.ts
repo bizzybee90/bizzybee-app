@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,10 +45,16 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const keyData = encoder.encode(metaAppSecret);
       const cryptoKey = await crypto.subtle.importKey(
-        'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
       );
       const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(rawBody));
-      const expectedHex = [...new Uint8Array(sigBytes)].map(b => b.toString(16).padStart(2, '0')).join('');
+      const expectedHex = [...new Uint8Array(sigBytes)]
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
       const receivedHex = hubSignature.slice('sha256='.length);
       if (expectedHex !== receivedHex) {
         console.error('[instagram-webhook] Meta signature mismatch');
@@ -109,15 +116,15 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Find workspace by Instagram channel config
-        const { data: workspace } = await supabase
-          .from('workspace_channels')
-          .select('workspace_id')
-          .eq('channel', 'instagram')
-          .eq('enabled', true)
-          .maybeSingle();
+        const workspaceId = await resolveWorkspaceIdForChannel(
+          supabase,
+          'instagram',
+          {
+            raw: [String(entry.id || ''), String(event.recipient?.id || '')],
+          },
+          '[instagram-webhook]',
+        );
 
-        const workspaceId = workspace?.workspace_id;
         if (!workspaceId) {
           console.error('[instagram-webhook] No workspace_channels config found for Instagram');
           continue;
@@ -138,7 +145,7 @@ Deno.serve(async (req) => {
           if (pageAccessToken) {
             try {
               const profileRes = await fetch(
-                `https://graph.instagram.com/v21.0/${senderId}?fields=name,username&access_token=${pageAccessToken}`
+                `https://graph.instagram.com/v21.0/${senderId}?fields=name,username&access_token=${pageAccessToken}`,
               );
               if (profileRes.ok) {
                 const profileData = await profileRes.json();
@@ -203,23 +210,22 @@ Deno.serve(async (req) => {
         }
 
         // Save the inbound message
-        const messageBody = hasAttachments && !messageText
-          ? `[Media attachment received (${event.message.attachments.length} file${event.message.attachments.length > 1 ? 's' : ''})]`
-          : messageText;
+        const messageBody =
+          hasAttachments && !messageText
+            ? `[Media attachment received (${event.message.attachments.length} file${event.message.attachments.length > 1 ? 's' : ''})]`
+            : messageText;
 
-        const { error: msgError } = await supabase
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
-            direction: 'inbound',
-            channel: 'instagram',
-            body: messageBody,
-            actor_type: 'customer',
-            actor_name: customer.name || igIdentifier,
-            external_id: messageId,
-            is_internal: false,
-            created_at: new Date().toISOString(),
-          });
+        const { error: msgError } = await supabase.from('messages').insert({
+          conversation_id: conversation.id,
+          direction: 'inbound',
+          channel: 'instagram',
+          body: messageBody,
+          actor_type: 'customer',
+          actor_name: customer.name || igIdentifier,
+          external_id: messageId,
+          is_internal: false,
+          created_at: new Date().toISOString(),
+        });
 
         if (msgError) {
           console.error('[instagram-webhook] Failed to save message:', msgError);
@@ -241,7 +247,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            Authorization: `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({
             conversation_id: conversation.id,

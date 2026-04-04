@@ -1,7 +1,16 @@
 export type AppRole = 'admin' | 'manager' | 'reviewer';
 
 export type Priority = 'high' | 'medium' | 'low';
-export type ConversationStatus = 'new' | 'open' | 'waiting_customer' | 'waiting_internal' | 'resolved' | 'closed' | 'ai_handling' | 'escalated' | 'pending_review';
+export type ConversationStatus =
+  | 'new'
+  | 'open'
+  | 'waiting_customer'
+  | 'waiting_internal'
+  | 'resolved'
+  | 'closed'
+  | 'ai_handling'
+  | 'escalated'
+  | 'pending_review';
 export type Channel = 'sms' | 'whatsapp' | 'email' | 'web_chat';
 export type SLAStatus = 'safe' | 'warning' | 'breached';
 export type CustomerTier = 'vip' | 'regular' | 'trial' | 'prospect' | 'at_risk';
@@ -11,6 +20,14 @@ export type UserStatus = 'available' | 'away' | 'busy';
 export type DecisionBucket = 'act_now' | 'quick_win' | 'auto_handled' | 'wait';
 export type CognitiveLoad = 'high' | 'low';
 export type RiskLevel = 'financial' | 'retention' | 'reputation' | 'legal' | 'none';
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
+export type JsonObject = Record<string, JsonValue>;
 
 export interface Workspace {
   id: string;
@@ -50,7 +67,7 @@ export interface Customer {
   preferred_channel: string | null;
   tier: CustomerTier;
   notes: string | null;
-  custom_fields: Record<string, any>;
+  custom_fields: JsonObject;
   created_at: string;
   updated_at: string;
 }
@@ -78,7 +95,7 @@ export interface Conversation {
   customer_satisfaction: number | null;
   csat_requested_at: string | null;
   csat_responded_at: string | null;
-  metadata: Record<string, any>;
+  metadata: JsonObject;
   created_at: string;
   updated_at: string;
   customer?: Customer;
@@ -94,10 +111,10 @@ export interface Conversation {
   // Triage agent fields (secondary)
   urgency?: 'high' | 'medium' | 'low' | null;
   urgency_reason?: string | null;
-  extracted_entities?: Record<string, any> | null;
+  extracted_entities?: JsonObject | null;
   suggested_actions?: string[] | null;
   triage_reasoning?: string | null;
-  thread_context?: Record<string, any> | null;
+  thread_context?: JsonObject | null;
   triage_confidence?: number | null;
   email_classification?: string | null;
   requires_reply?: boolean | null;
@@ -120,7 +137,7 @@ export interface Message {
     type: string;
     size: number;
   }> | null;
-  raw_payload: Record<string, any> | null;
+  raw_payload: JsonObject | null;
   created_at: string;
   external_id?: string | null;
   verification_status?: string | null;
@@ -240,7 +257,14 @@ export interface AiPhoneCallLog {
   topics: string[] | null;
   success_evaluation: boolean | null;
   call_type: 'emergency' | 'booking' | 'enquiry' | 'callback_request' | 'general' | null;
-  outcome: 'resolved' | 'booking_made' | 'message_taken' | 'transferred' | 'abandoned' | 'error' | null;
+  outcome:
+    | 'resolved'
+    | 'booking_made'
+    | 'message_taken'
+    | 'transferred'
+    | 'abandoned'
+    | 'error'
+    | null;
   actions_taken: Record<string, unknown>;
   requires_followup: boolean;
   cost_cents: number;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '@/lib/logger';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,13 +70,7 @@ export function TriageLearningPanel() {
   const [retriageLimit, setRetriageLimit] = useState(100);
   const [retriageAll, setRetriageAll] = useState(false);
 
-  useEffect(() => {
-    fetchCorrections();
-    fetchSuggestions();
-    fetchLowConfidenceCount();
-  }, []);
-
-  const fetchLowConfidenceCount = async () => {
+  const fetchLowConfidenceCount = useCallback(async () => {
     try {
       const {
         data: { user },
@@ -107,7 +101,7 @@ export function TriageLearningPanel() {
     } catch (error) {
       logger.error('Error fetching low confidence count', error);
     }
-  };
+  }, [confidenceThreshold]);
 
   const runBulkRetriage = async () => {
     setIsRetriaging(true);
@@ -140,7 +134,7 @@ export function TriageLearningPanel() {
     }
   };
 
-  const fetchCorrections = async () => {
+  const fetchCorrections = useCallback(async () => {
     try {
       // Get corrections grouped by sender domain and classification change
       const { data, error } = await supabase
@@ -176,9 +170,9 @@ export function TriageLearningPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchSuggestions = async () => {
+  const fetchSuggestions = useCallback(async () => {
     setLoadingSuggestions(true);
     try {
       const {
@@ -203,7 +197,13 @@ export function TriageLearningPanel() {
     } finally {
       setLoadingSuggestions(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    void fetchCorrections();
+    void fetchSuggestions();
+    void fetchLowConfidenceCount();
+  }, [fetchCorrections, fetchLowConfidenceCount, fetchSuggestions]);
 
   const createRuleFromSuggestion = async (suggestion: SuggestedRule) => {
     setCreatingRule(suggestion.senderDomain);

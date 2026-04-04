@@ -10,6 +10,7 @@ import { Send, FileEdit, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
+import { sendReply } from '@/lib/api/sendReply';
 
 interface DraftMessage {
   id: string;
@@ -137,29 +138,24 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
         // Get the full draft
         const { data: conv } = await supabase
           .from('conversations')
-          .select('ai_draft_response, customer_id')
+          .select('ai_draft_response, customer_id, workspace_id')
           .eq('id', id)
           .single();
 
         if (!conv?.ai_draft_response) continue;
 
-        // Send via edge function
-        const { error } = await supabase.functions.invoke('email-send', {
-          body: {
-            conversationId: id,
-            response: conv.ai_draft_response,
-          },
+        await sendReply({
+          conversationId: id,
+          workspaceId: conv.workspace_id || workspace?.id,
+          content: conv.ai_draft_response,
+          statusAfterSend: 'resolved',
         });
-
-        if (error) throw error;
 
         // Update conversation status
         await supabase
           .from('conversations')
           .update({
             final_response: conv.ai_draft_response,
-            status: 'resolved',
-            resolved_at: new Date().toISOString(),
           })
           .eq('id', id);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -34,24 +34,18 @@ interface VerificationResult {
   notes?: string;
 }
 
-export const DraftDisplay = ({ 
-  workspaceId, 
-  conversationId, 
-  draftText, 
+export const DraftDisplay = ({
+  workspaceId,
+  conversationId,
+  draftText,
   customerMessage,
   onDraftUpdate,
-  autoVerify = true
+  autoVerify = true,
 }: DraftDisplayProps) => {
   const [verification, setVerification] = useState<VerificationResult | null>(null);
   const [verifying, setVerifying] = useState(false);
 
-  useEffect(() => {
-    if (draftText && autoVerify) {
-      verifyDraft();
-    }
-  }, [draftText, autoVerify]);
-
-  const verifyDraft = async () => {
+  const verifyDraft = useCallback(async () => {
     if (!draftText || !customerMessage) return;
 
     setVerifying(true);
@@ -61,8 +55,8 @@ export const DraftDisplay = ({
           workspace_id: workspaceId,
           conversation_id: conversationId,
           draft_text: draftText,
-          customer_message: customerMessage
-        }
+          customer_message: customerMessage,
+        },
       });
 
       if (error) throw error;
@@ -70,11 +64,11 @@ export const DraftDisplay = ({
 
       if (data.verification.status === 'failed') {
         toast.warning('Draft needs review', {
-          description: 'Some issues were found that may need attention'
+          description: 'Some issues were found that may need attention',
         });
       } else if (data.verification.status === 'passed') {
         toast.success('Draft verified', {
-          description: 'No issues found'
+          description: 'No issues found',
         });
       }
     } catch (e: any) {
@@ -84,12 +78,18 @@ export const DraftDisplay = ({
         status: 'passed',
         confidence_score: 0.5,
         issues: [],
-        notes: 'Verification unavailable'
+        notes: 'Verification unavailable',
       });
     } finally {
       setVerifying(false);
     }
-  };
+  }, [conversationId, customerMessage, draftText, workspaceId]);
+
+  useEffect(() => {
+    if (draftText && autoVerify) {
+      void verifyDraft();
+    }
+  }, [autoVerify, draftText, verifyDraft]);
 
   const useCorrectedDraft = () => {
     if (verification?.corrected_draft) {
@@ -101,45 +101,82 @@ export const DraftDisplay = ({
   const getStatusIcon = () => {
     if (verifying) return <Loader2 className="h-4 w-4 animate-spin" />;
     switch (verification?.status) {
-      case 'passed': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'failed': return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'needs_review': return <AlertTriangle className="h-4 w-4 text-amber-500" />;
-      default: return null;
+      case 'passed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed':
+        return <XCircle className="h-4 w-4 text-destructive" />;
+      case 'needs_review':
+        return <AlertTriangle className="h-4 w-4 text-amber-500" />;
+      default:
+        return null;
     }
   };
 
   const getStatusBadge = () => {
     if (verifying) {
-      return <Badge variant="secondary" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" />Verifying...</Badge>;
+      return (
+        <Badge variant="secondary" className="gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Verifying...
+        </Badge>
+      );
     }
     switch (verification?.status) {
-      case 'passed': 
-        return <Badge className="gap-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"><CheckCircle className="h-3 w-3" />Verified</Badge>;
-      case 'failed': 
-        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Issues Found</Badge>;
-      case 'needs_review': 
-        return <Badge className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"><AlertTriangle className="h-3 w-3" />Review Needed</Badge>;
-      default: 
-        return <Badge variant="outline" className="gap-1">Unverified</Badge>;
+      case 'passed':
+        return (
+          <Badge className="gap-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+            <CheckCircle className="h-3 w-3" />
+            Verified
+          </Badge>
+        );
+      case 'failed':
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <XCircle className="h-3 w-3" />
+            Issues Found
+          </Badge>
+        );
+      case 'needs_review':
+        return (
+          <Badge className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+            <AlertTriangle className="h-3 w-3" />
+            Review Needed
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="outline" className="gap-1">
+            Unverified
+          </Badge>
+        );
     }
   };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'high': return 'text-destructive';
-      case 'medium': return 'text-amber-600 dark:text-amber-400';
-      default: return 'text-blue-600 dark:text-blue-400';
+      case 'high':
+        return 'text-destructive';
+      case 'medium':
+        return 'text-amber-600 dark:text-amber-400';
+      default:
+        return 'text-blue-600 dark:text-blue-400';
     }
   };
 
   const getIssueTypeLabel = (type: string) => {
     switch (type) {
-      case 'hallucination': return 'Hallucination';
-      case 'incorrect_fact': return 'Incorrect Fact';
-      case 'unsupported_claim': return 'Unsupported Claim';
-      case 'tone_mismatch': return 'Tone Mismatch';
-      case 'missing_info': return 'Missing Info';
-      default: return type;
+      case 'hallucination':
+        return 'Hallucination';
+      case 'incorrect_fact':
+        return 'Incorrect Fact';
+      case 'unsupported_claim':
+        return 'Unsupported Claim';
+      case 'tone_mismatch':
+        return 'Tone Mismatch';
+      case 'missing_info':
+        return 'Missing Info';
+      default:
+        return type;
     }
   };
 
@@ -164,7 +201,7 @@ export const DraftDisplay = ({
             disabled={verifying}
             className="gap-1.5"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", verifying && "animate-spin")} />
+            <RefreshCw className={cn('h-3.5 w-3.5', verifying && 'animate-spin')} />
             Re-verify
           </Button>
         </div>
@@ -177,7 +214,7 @@ export const DraftDisplay = ({
               <div className="space-y-2 mt-1">
                 {verification.issues.map((issue, i) => (
                   <div key={i} className="text-sm">
-                    <span className={cn("font-medium", getSeverityColor(issue.severity))}>
+                    <span className={cn('font-medium', getSeverityColor(issue.severity))}>
                       {getIssueTypeLabel(issue.type)}:
                     </span>{' '}
                     <span className="text-foreground">{issue.description}</span>

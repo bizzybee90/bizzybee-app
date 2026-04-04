@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { DraftVerificationBadge } from './DraftVerificationBadge';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { sendReply } from '@/lib/api/sendReply';
 
 interface DraftReplyEditorProps {
   open: boolean;
@@ -42,6 +44,7 @@ export function DraftReplyEditor({
   >(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { workspace } = useWorkspace();
 
   // Reset draft when opened
   const handleOpenChange = (isOpen: boolean) => {
@@ -54,24 +57,24 @@ export function DraftReplyEditor({
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      // Call edge function to send response
-      const { error: sendError } = await supabase.functions.invoke('email-send', {
-        body: {
-          conversationId,
-          response: draft,
-          channel: 'email',
-        },
-      });
+      const activeWorkspaceId = workspaceId || workspace?.id;
+      if (!activeWorkspaceId) {
+        throw new Error('Workspace is required to send this reply.');
+      }
 
-      if (sendError) throw sendError;
+      // Call edge function to send response
+      await sendReply({
+        conversationId,
+        workspaceId: activeWorkspaceId,
+        content: draft,
+        statusAfterSend: 'resolved',
+      });
 
       // Update conversation status
       const { error: updateError } = await supabase
         .from('conversations')
         .update({
-          status: 'resolved',
           final_response: draft,
-          resolved_at: new Date().toISOString(),
           needs_review: false,
           reviewed_at: new Date().toISOString(),
         })

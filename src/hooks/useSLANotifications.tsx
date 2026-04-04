@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Conversation } from '@/lib/types';
 
+type SLAConversation = Conversation & {
+  customer?: {
+    name: string | null;
+  } | null;
+};
+
 export const useSLANotifications = () => {
   const { toast } = useToast();
 
@@ -17,18 +23,18 @@ export const useSLANotifications = () => {
       if (!conversations) return;
 
       const now = new Date();
-      conversations.forEach((conv: any) => {
+      (conversations as SLAConversation[]).forEach((conv) => {
         if (!conv.sla_due_at) return;
-        
+
         const dueAt = new Date(conv.sla_due_at);
         const minutesRemaining = (dueAt.getTime() - now.getTime()) / 1000 / 60;
 
         // Warn at 15 minutes
         if (minutesRemaining > 0 && minutesRemaining <= 15 && minutesRemaining > 14) {
           toast({
-            title: "SLA Warning",
+            title: 'SLA Warning',
             description: `${conv.customer?.name || 'Conversation'} will breach SLA in ${Math.round(minutesRemaining)} minutes`,
-            variant: "destructive",
+            variant: 'destructive',
           });
 
           // Browser notification
@@ -43,9 +49,9 @@ export const useSLANotifications = () => {
         // Alert on breach
         if (minutesRemaining <= 0 && minutesRemaining > -1) {
           toast({
-            title: "SLA BREACHED",
+            title: 'SLA BREACHED',
             description: `${conv.customer?.name || 'Conversation'} has breached SLA!`,
-            variant: "destructive",
+            variant: 'destructive',
           });
         }
       });

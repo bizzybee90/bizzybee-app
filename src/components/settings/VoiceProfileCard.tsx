@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -59,12 +59,7 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
   const [driftLog, setDriftLog] = useState<DriftLog | null>(null);
   const [checkingDrift, setCheckingDrift] = useState(false);
 
-  useEffect(() => {
-    fetchProfile();
-    fetchDriftLog();
-  }, [workspaceId]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('voice_profiles')
@@ -79,9 +74,9 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceId]);
 
-  const fetchDriftLog = async () => {
+  const fetchDriftLog = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('voice_drift_log')
@@ -97,7 +92,12 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
     } catch (e) {
       console.error('Error fetching drift log:', e);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void fetchProfile();
+    void fetchDriftLog();
+  }, [fetchDriftLog, fetchProfile]);
 
   const checkDrift = async () => {
     // detect-style-drift edge function has been removed
@@ -126,7 +126,7 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
     if (!driftLog) return null;
     const score = driftLog.drift_score;
     const timeAgo = formatDistanceToNow(new Date(driftLog.checked_at), { addSuffix: true });
-    
+
     if (driftLog.refresh_triggered) {
       return (
         <Badge variant="default" className="text-xs">
@@ -177,9 +177,7 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
             <div className="flex flex-wrap gap-2">
               {profile.tone && <Badge variant="secondary">{profile.tone}</Badge>}
               {profile.emails_analyzed && profile.emails_analyzed > 0 && (
-                <Badge variant="outline">
-                  {profile.emails_analyzed} emails analyzed
-                </Badge>
+                <Badge variant="outline">{profile.emails_analyzed} emails analyzed</Badge>
               )}
               {profile.examples_stored && profile.examples_stored > 0 && (
                 <Badge variant="outline" className="bg-muted text-primary border-primary/20">
@@ -194,7 +192,10 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
                 {voiceDna.tone_keywords && voiceDna.tone_keywords.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {voiceDna.tone_keywords.map((keyword, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full"
+                      >
                         {keyword}
                       </span>
                     ))}
@@ -218,7 +219,9 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
 
                 {voiceDna.tics && voiceDna.tics.length > 0 && (
                   <div className="bg-muted rounded-lg p-3">
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Your writing habits:</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      Your writing habits:
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       {voiceDna.tics.slice(0, 3).join(' • ')}
                     </p>
@@ -238,14 +241,14 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
             {/* Playbook section */}
             {playbook && playbook.length > 0 && (
               <div className="border-t pt-4">
-                <button 
+                <button
                   onClick={() => setShowPlaybook(!showPlaybook)}
                   className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
                 >
                   <BookOpen className="h-4 w-4" />
                   {showPlaybook ? 'Hide' : 'Show'} Response Playbook ({playbook.length} categories)
                 </button>
-                
+
                 {showPlaybook && (
                   <div className="mt-3 space-y-3">
                     {playbook.map((category, i) => (
@@ -261,10 +264,12 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
                         {category.golden_example && (
                           <div className="mt-2 text-xs space-y-1">
                             <p className="text-muted-foreground">
-                              <span className="font-medium">Customer:</span> "{category.golden_example.customer}"
+                              <span className="font-medium">Customer:</span> "
+                              {category.golden_example.customer}"
                             </p>
                             <p className="text-primary">
-                              <span className="font-medium">You replied:</span> "{category.golden_example.owner}"
+                              <span className="font-medium">You replied:</span> "
+                              {category.golden_example.owner}"
                             </p>
                           </div>
                         )}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { Conversation } from '@/lib/types';
@@ -377,7 +377,7 @@ export const ConversationList = ({
     refetchInterval: 60000, // Refetch every 60 seconds in background
   });
 
-  const conversations = queryData?.data || [];
+  const conversations = useMemo(() => queryData?.data ?? [], [queryData?.data]);
   const hasMore = queryData ? (page + 1) * PAGE_SIZE < (queryData.count || 0) : false;
 
   // Use server-side search results directly (no client-side filter needed)

@@ -11,6 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { Send, Loader2, User, Bot, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { sendReply } from '@/lib/api/sendReply';
 
 interface Message {
   id: string;
@@ -23,6 +25,7 @@ interface Message {
 
 interface ConversationDetails {
   id: string;
+  workspace_id: string;
   title: string;
   ai_draft_response: string;
   email_classification?: string;
@@ -46,6 +49,7 @@ export function DraftPreviewSheet({
   onOpenChange,
   onSent,
 }: DraftPreviewSheetProps) {
+  const { workspace } = useWorkspace();
   const [conversation, setConversation] = useState<ConversationDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draftText, setDraftText] = useState('');
@@ -69,6 +73,7 @@ export function DraftPreviewSheet({
           .select(
             `
             id,
+            workspace_id,
             title,
             ai_draft_response,
             email_classification,
@@ -92,6 +97,7 @@ export function DraftPreviewSheet({
 
         setConversation({
           id: convData.id,
+          workspace_id: convData.workspace_id,
           title: convData.title || 'Untitled',
           ai_draft_response: convData.ai_draft_response || '',
           email_classification: convData.email_classification,
@@ -120,15 +126,12 @@ export function DraftPreviewSheet({
 
     setSending(true);
     try {
-      // Send via edge function
-      const { error: sendError } = await supabase.functions.invoke('email-send', {
-        body: {
-          conversationId: conversation.id,
-          response: draftText,
-        },
+      await sendReply({
+        conversationId: conversation.id,
+        workspaceId: workspace?.id || conversation.workspace_id,
+        content: draftText,
+        statusAfterSend: 'resolved',
       });
-
-      if (sendError) throw sendError;
 
       // Update conversation
       await supabase
@@ -136,8 +139,6 @@ export function DraftPreviewSheet({
         .update({
           final_response: draftText,
           ai_draft_response: draftText,
-          status: 'resolved',
-          resolved_at: new Date().toISOString(),
           human_edited: draftText !== conversation.ai_draft_response,
         })
         .eq('id', conversation.id);

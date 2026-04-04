@@ -1,9 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { TrendingUp, TrendingDown, Minus, Star, RefreshCw, MessageSquare, Clock, Hash, ChevronDown } from 'lucide-react';
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Star,
+  RefreshCw,
+  MessageSquare,
+  Clock,
+  Hash,
+  ChevronDown,
+} from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
@@ -42,7 +52,15 @@ interface CustomerInsight {
 }
 
 // Collapsible section component
-const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) => {
+const CollapsibleSection = ({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-b border-slate-100/80 last:border-b-0">
@@ -51,60 +69,52 @@ const CollapsibleSection = ({ title, defaultOpen = false, children }: { title: s
         className="flex items-center justify-between w-full py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
       >
         {title}
-        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
       </button>
       {open && <div className="pb-3">{children}</div>}
     </div>
   );
 };
 
-export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }: CustomerIntelligenceProps) => {
+export const CustomerIntelligence = ({
+  workspaceId,
+  customerId,
+  conversationId,
+}: CustomerIntelligenceProps) => {
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [insights, setInsights] = useState<CustomerInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [enriching, setEnriching] = useState(false);
   const enrichAttemptedRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
+  const loadCustomerData = useCallback(async () => {
+    const { data: customerData } = await supabase
+      .from('customers')
+      .select(
+        'id, name, email, vip_status, sentiment_trend, response_preference, topics_discussed, intelligence, last_analyzed_at',
+      )
+      .eq('id', customerId)
+      .single();
+
+    const { data: insightsData } = await supabase
+      .from('customer_insights')
+      .select('id, insight_type, insight_text, confidence, created_at')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    const typedCustomer = customerData as CustomerData | null;
+    setCustomer(typedCustomer);
+    setInsights((insightsData || []) as CustomerInsight[]);
+
+    const intel = typedCustomer?.intelligence as CustomerData['intelligence'];
+    return {
+      hasIntelligence: Boolean(intel && Object.keys(intel).length > 0 && intel.summary),
+      hasInsights: (insightsData || []).length > 0,
+    };
   }, [customerId]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const { data: customerData } = await supabase
-        .from('customers')
-        .select('id, name, email, vip_status, sentiment_trend, response_preference, topics_discussed, intelligence, last_analyzed_at')
-        .eq('id', customerId)
-        .single();
-
-      const { data: insightsData } = await supabase
-        .from('customer_insights')
-        .select('id, insight_type, insight_text, confidence, created_at')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      const typedCustomer = customerData as CustomerData | null;
-      setCustomer(typedCustomer);
-      setInsights((insightsData || []) as CustomerInsight[]);
-
-      const intel = typedCustomer?.intelligence as CustomerData['intelligence'];
-      const hasIntelligence = intel && Object.keys(intel).length > 0 && intel.summary;
-      const hasInsights = (insightsData || []).length > 0;
-
-      if (!hasIntelligence && !hasInsights && enrichAttemptedRef.current !== customerId) {
-        enrichAttemptedRef.current = customerId;
-        triggerEnrichment();
-      }
-    } catch (e) {
-      console.error('Error fetching intelligence:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const triggerEnrichment = async () => {
+  const triggerEnrichment = useCallback(async () => {
     setEnriching(true);
     try {
       let convId = conversationId;
@@ -136,14 +146,34 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
       if (error) {
         console.error('Enrichment error:', error);
       } else {
-        await fetchData();
+        await loadCustomerData();
       }
     } catch (err) {
       console.error('Auto-enrichment error:', err);
     } finally {
       setEnriching(false);
     }
-  };
+  }, [conversationId, customerId, loadCustomerData, workspaceId]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { hasIntelligence, hasInsights } = await loadCustomerData();
+
+      if (!hasIntelligence && !hasInsights && enrichAttemptedRef.current !== customerId) {
+        enrichAttemptedRef.current = customerId;
+        void triggerEnrichment();
+      }
+    } catch (e) {
+      console.error('Error fetching intelligence:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [customerId, loadCustomerData, triggerEnrichment]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   const handleManualRefresh = async () => {
     enrichAttemptedRef.current = null;
@@ -191,35 +221,53 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
 
   const getSentimentLabel = (trend: string | null | undefined) => {
     switch (trend) {
-      case 'positive': return 'Positive';
-      case 'negative': return 'Negative';
-      case 'declining': return 'Declining';
-      default: return 'Neutral';
+      case 'positive':
+        return 'Positive';
+      case 'negative':
+        return 'Negative';
+      case 'declining':
+        return 'Declining';
+      default:
+        return 'Neutral';
     }
   };
 
   const getSentimentColor = (trend: string | null | undefined) => {
     switch (trend) {
-      case 'positive': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'negative': return 'bg-red-50 text-red-700 border-red-200';
-      case 'declining': return 'bg-orange-50 text-orange-700 border-orange-200';
-      default: return 'bg-slate-50 text-slate-600 border-slate-200';
+      case 'positive':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'negative':
+        return 'bg-red-50 text-red-700 border-red-200';
+      case 'declining':
+        return 'bg-orange-50 text-orange-700 border-orange-200';
+      default:
+        return 'bg-slate-50 text-slate-600 border-slate-200';
     }
   };
 
   const getInsightTypeColor = (type: string) => {
     switch (type) {
-      case 'opportunity': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'risk': return 'bg-red-50 text-red-700 border-red-200';
-      case 'preference': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'behavior': return 'bg-purple-50 text-purple-700 border-purple-200';
-      default: return 'bg-slate-50 text-slate-600 border-slate-200';
+      case 'opportunity':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'risk':
+        return 'bg-red-50 text-red-700 border-red-200';
+      case 'preference':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'behavior':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      default:
+        return 'bg-slate-50 text-slate-600 border-slate-200';
     }
   };
 
   const getInitials = (name: string | null, email: string | null) => {
     if (name) {
-      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      return name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
     }
     if (email) return email[0].toUpperCase();
     return '?';
@@ -304,7 +352,7 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
               onClick={handleManualRefresh}
               disabled={enriching}
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", enriching && "animate-spin")} />
+              <RefreshCw className={cn('h-3.5 w-3.5', enriching && 'animate-spin')} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Re-analyse customer</TooltipContent>
@@ -348,7 +396,10 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
 
         {/* Sentiment — collapsible */}
         <CollapsibleSection title="Sentiment" defaultOpen>
-          <Badge variant="outline" className={cn("text-xs border", getSentimentColor(customer?.sentiment_trend))}>
+          <Badge
+            variant="outline"
+            className={cn('text-xs border', getSentimentColor(customer?.sentiment_trend))}
+          >
             {getSentimentLabel(customer?.sentiment_trend)}
           </Badge>
         </CollapsibleSection>
@@ -374,9 +425,17 @@ export const CustomerIntelligence = ({ workspaceId, customerId, conversationId }
           <CollapsibleSection title="Insights">
             <div className="space-y-2">
               {insights.slice(0, 5).map((insight) => (
-                <div key={insight.id} className="rounded-xl bg-white/60 border border-slate-100 p-2.5">
+                <div
+                  key={insight.id}
+                  className="rounded-xl bg-white/60 border border-slate-100 p-2.5"
+                >
                   <div className="flex items-start gap-2">
-                    <Badge className={cn("text-xs capitalize shrink-0 border", getInsightTypeColor(insight.insight_type))}>
+                    <Badge
+                      className={cn(
+                        'text-xs capitalize shrink-0 border',
+                        getInsightTypeColor(insight.insight_type),
+                      )}
+                    >
                       {insight.insight_type}
                     </Badge>
                     <p className="text-sm text-muted-foreground">{insight.insight_text}</p>
