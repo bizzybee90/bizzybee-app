@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { MessageSquare, Phone, Mail, Globe, Plus, Cloud, Info, CheckCircle, Zap, FileEdit, Eye, Pause, Settings2 } from 'lucide-react';
+import { MessageSquare, Phone, Mail, Globe, Plus, Cloud, Info, CheckCircle, Zap, FileEdit, Eye, Pause, Settings2, Facebook, Instagram, MapPin } from 'lucide-react';
 import { EmailAccountCard } from './EmailAccountCard';
 import {
   Select,
@@ -86,14 +86,20 @@ export const ChannelManagementPanel = () => {
     sms: Phone,
     whatsapp: MessageSquare,
     email: Mail,
-    webchat: Globe
+    webchat: Globe,
+    facebook: Facebook,
+    instagram: Instagram,
+    google_business: MapPin
   };
 
   const channelLabels: Record<string, string> = {
     sms: 'SMS',
     whatsapp: 'WhatsApp',
     email: 'Email',
-    webchat: 'Web Chat'
+    webchat: 'Web Chat',
+    facebook: 'Facebook Messenger',
+    instagram: 'Instagram DMs',
+    google_business: 'Google Business Messages'
   };
 
   const providerLabels: Record<string, string> = {
@@ -394,6 +400,9 @@ export const ChannelManagementPanel = () => {
                           {channel.channel === 'sms' && 'Text message communication'}
                           {channel.channel === 'whatsapp' && 'WhatsApp Business messaging'}
                           {channel.channel === 'webchat' && 'Website chat widget (coming soon)'}
+                          {channel.channel === 'facebook' && 'Facebook Messenger for your business page'}
+                          {channel.channel === 'instagram' && 'Instagram Direct Messages'}
+                          {channel.channel === 'google_business' && 'Messages from Google Business Profile'}
                         </p>
                       </div>
                     </div>
