@@ -25,14 +25,39 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     );
 
     // Then check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      if (!session) {
-        navigate("/auth");
+    supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
+      if (existingSession) {
+        setSession(existingSession);
+        setUser(existingSession.user);
+        setLoading(false);
+        return;
       }
+
+      // DEV BYPASS: skip auth entirely during local development
+      if (import.meta.env.DEV) {
+        const devUser = {
+          id: 'ad5f7868-d88d-4e1f-84b6-f34ae711e44d',
+          email: 'michael@maccleaning.uk',
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString(),
+        } as User;
+        const devSession = {
+          access_token: 'dev-bypass-token',
+          refresh_token: 'dev-bypass-refresh',
+          expires_in: 86400,
+          token_type: 'bearer',
+          user: devUser,
+        } as Session;
+        setUser(devUser);
+        setSession(devSession);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(false);
+      navigate("/auth");
     });
 
     return () => subscription.unsubscribe();
@@ -48,8 +73,9 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
          hasCheckedOnboarding.current = false;
        }
       
-      // Skip onboarding check if already on onboarding page
+      // Skip onboarding check if already on onboarding page or in dev mode
       if (location.pathname === '/onboarding') return;
+      if (import.meta.env.DEV) { hasCheckedOnboarding.current = true; return; }
 
       checkingOnboardingRef.current = true;
       try {
