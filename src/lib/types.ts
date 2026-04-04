@@ -167,3 +167,109 @@ export interface SLAConfig {
   first_response_minutes: number;
   pause_outside_hours: boolean;
 }
+
+// AI Phone types
+export interface AiPhoneService {
+  name: string;
+  description: string;
+  price_from: number | null;
+  price_to: number | null;
+  duration_minutes: number | null;
+}
+
+export interface AiPhoneOpeningHours {
+  [day: string]: { open: string; close: string; closed?: boolean };
+}
+
+export interface AiPhoneBookingRules {
+  allow_booking: boolean;
+  booking_url?: string;
+  booking_instructions?: string;
+}
+
+export interface AiPhoneConfig {
+  id: string;
+  workspace_id: string;
+  retell_agent_id: string | null;
+  retell_llm_id: string | null;
+  retell_phone_number: string | null;
+  retell_phone_number_id: string | null;
+  phone_provider: 'retell' | 'twilio_sip';
+  twilio_number_sid: string | null;
+  twilio_trunk_sid: string | null;
+  twilio_sip_uri: string | null;
+  business_name: string;
+  business_description: string | null;
+  services: AiPhoneService[];
+  opening_hours: AiPhoneOpeningHours;
+  booking_rules: AiPhoneBookingRules;
+  custom_instructions: string | null;
+  greeting_message: string;
+  voice_id: string;
+  voice_name: string;
+  max_call_duration_seconds: number;
+  transfer_number: string | null;
+  is_active: boolean;
+  data_retention_days: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiPhoneKBEntry {
+  id: string;
+  config_id: string;
+  title: string;
+  content: string;
+  category: 'faq' | 'pricing' | 'services' | 'policies' | 'general';
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiPhoneCallLog {
+  id: string;
+  workspace_id: string;
+  config_id: string;
+  retell_call_id: string;
+  direction: 'inbound' | 'outbound';
+  caller_number: string | null;
+  called_number: string | null;
+  status: 'in_progress' | 'completed' | 'transferred' | 'error' | 'voicemail';
+  start_time: string;
+  end_time: string | null;
+  duration_seconds: number | null;
+  transcript: string | null;
+  transcript_object: unknown;
+  summary: string | null;
+  sentiment: 'positive' | 'neutral' | 'negative' | null;
+  outcome: 'resolved' | 'booking_made' | 'message_taken' | 'transferred' | 'abandoned' | 'error' | null;
+  outcome_details: Record<string, unknown>;
+  cost_cents: number;
+  requires_followup: boolean;
+  followup_notes: string | null;
+  call_analysis: Record<string, unknown>;
+  disconnection_reason: string | null;
+  created_at: string;
+}
+
+export interface AiPhoneUsage {
+  id: string;
+  workspace_id: string;
+  month: string;
+  total_calls: number;
+  total_minutes: number;
+  total_cost_cents: number;
+  included_minutes: number;
+  overage_minutes: number;
+  overage_cost_cents: number;
+}
+
+export interface AiPhoneStats {
+  calls_today: number;
+  calls_this_week: number;
+  avg_duration_seconds: number;
+  resolution_rate: number;
+  minutes_used: number;
+  included_minutes: number;
+  overage_minutes: number;
+}

@@ -1,4 +1,4 @@
-import { Home, Mail, Archive, Clock, Send, Inbox, BarChart3, MessageSquare, Settings, ClipboardCheck, BookOpen, Zap, FileEdit } from 'lucide-react';
+import { Home, Mail, Archive, Clock, Send, Inbox, BarChart3, MessageSquare, Settings, ClipboardCheck, BookOpen, Zap, FileEdit, Phone } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
@@ -111,6 +111,7 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
               { to: '/snoozed', icon: Clock, label: 'Snoozed', count: viewCounts?.snoozed, color: 'text-amber-500' },
               { to: '/done', icon: Archive, label: 'Cleared', count: viewCounts?.done, color: 'text-green-500' },
               { to: '/sent', icon: Send, label: 'Sent' },
+              { to: '/ai-phone', icon: Phone, label: 'AI Phone' },
               { to: '/channels', icon: MessageSquare, label: 'Channels' },
               { to: '/analytics', icon: BarChart3, label: 'Analytics' },
               { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
@@ -187,6 +188,7 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
           <IconRailItem to="/snoozed" icon={Clock} label="Snoozed" count={viewCounts?.snoozed} color="text-amber-500" />
           <IconRailItem to="/done" icon={Archive} label="Cleared" count={viewCounts?.done} color="text-green-500" />
           <IconRailItem to="/sent" icon={Send} label="Sent" color="text-blue-500" />
+          <IconRailItem to="/ai-phone" icon={Phone} label="AI Phone" />
         </nav>
 
         {/* Email import */}

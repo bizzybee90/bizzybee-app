@@ -29,6 +29,7 @@ import EmailAuthSuccess from "./pages/EmailAuthSuccess";
 import EmailOAuthCallback from "./pages/EmailOAuthCallback";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import DevOpsDashboard from "./pages/admin/DevOpsDashboard";
+import AiPhone from "./pages/AiPhone";
 
 
 
@@ -311,6 +312,16 @@ const RouterContent = () => {
           element={
             <AuthGuard>
               <DevOpsDashboard />
+            </AuthGuard>
+          }
+        />
+
+        {/* AI Phone */}
+        <Route
+          path="/ai-phone"
+          element={
+            <AuthGuard>
+              <AiPhone />
             </AuthGuard>
           }
         />
