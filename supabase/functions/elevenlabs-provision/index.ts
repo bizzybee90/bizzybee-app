@@ -47,42 +47,13 @@ interface ProvisionRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers – Retell API
-// ---------------------------------------------------------------------------
-
-const RETELL_BASE = "https://api.retellai.com";
-
-async function retellPost(path: string, body: Record<string, unknown>) {
-  const apiKey = Deno.env.get("RETELL_API_KEY");
-  if (!apiKey) throw new Error("RETELL_API_KEY is not configured");
-
-  const res = await fetch(`${RETELL_BASE}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Retell ${path} failed (${res.status}): ${text}`);
-  }
-  return res.json();
-}
-
-// ---------------------------------------------------------------------------
 // Helpers – Twilio API
 // ---------------------------------------------------------------------------
 
-function twilioHeaders(): HeadersInit {
+function twilioAuthHeader(): string {
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
   const token = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-  return {
-    Authorization: "Basic " + btoa(`${sid}:${token}`),
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
+  return "Basic " + btoa(`${sid}:${token}`);
 }
 
 function formEncode(params: Record<string, string>): string {
@@ -92,16 +63,12 @@ function formEncode(params: Record<string, string>): string {
 }
 
 async function twilioGet(url: string) {
-  const sid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-  const token = Deno.env.get("TWILIO_AUTH_TOKEN")!;
   const res = await fetch(url, {
-    headers: {
-      Authorization: "Basic " + btoa(`${sid}:${token}`),
-    },
+    headers: { Authorization: twilioAuthHeader() },
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Twilio GET ${url} failed (${res.status}): ${text}`);
+    throw new Error(`Twilio GET failed (${res.status}): ${text}`);
   }
   return res.json();
 }
@@ -109,12 +76,15 @@ async function twilioGet(url: string) {
 async function twilioPost(url: string, params: Record<string, string>) {
   const res = await fetch(url, {
     method: "POST",
-    headers: twilioHeaders(),
+    headers: {
+      Authorization: twilioAuthHeader(),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
     body: formEncode(params),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Twilio POST ${url} failed (${res.status}): ${text}`);
+    throw new Error(`Twilio POST failed (${res.status}): ${text}`);
   }
   return res.json();
 }
@@ -123,11 +93,18 @@ async function twilioPost(url: string, params: Record<string, string>) {
 // System prompt builder
 // ---------------------------------------------------------------------------
 
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function buildSystemPrompt(config: ProvisionRequest): string {
   const parts: string[] = [];
 
   parts.push(
-    `You are ${config.business_name}'s AI phone receptionist. You answer calls professionally, helpfully and warmly on behalf of the business. You speak with a British English accent and tone.`
+    `You are a friendly, professional AI receptionist for ${config.business_name}.`
+  );
+  parts.push(
+    `\nYour role is to answer incoming calls, help callers with their enquiries, and ensure no call goes unanswered.`
   );
 
   if (config.business_description) {
@@ -180,37 +157,26 @@ function buildSystemPrompt(config: ProvisionRequest): string {
       parts.push(`\nBOOKING RULES:\n${line}`);
     } else {
       parts.push(
-        `\nBOOKING RULES:\nDo not book appointments. Take a message and let the caller know someone will get back to them.`
+        `\nBOOKING RULES:\nTake the caller's preferred date/time and say someone will confirm.`
       );
     }
   }
 
-  if (config.transfer_number) {
-    parts.push(
-      `\nCALL TRANSFER:\nIf the caller insists on speaking to a human or the query is urgent/complex, transfer the call to ${config.transfer_number}.`
-    );
-  }
-
   parts.push(`\nRULES:
-- Keep responses to 1-3 sentences. Be concise and natural.
-- Never make up information about the business. If unsure, offer to take a message.
-- Always be polite, professional and helpful.
-- If the caller asks something outside your knowledge, take their name and number and say someone will call back.
-- Do not discuss pricing unless listed above. Offer to have someone follow up with a quote.`);
+- Be warm, friendly, and professional — like the best receptionist they've ever spoken to
+- Use natural British English
+- Keep responses concise — this is a phone call, not an essay
+- If you're not sure about something, say so honestly and offer to have someone call them back
+- Never make up information about pricing, availability, or services that isn't in your knowledge base
+- Always collect a callback number before ending if you couldn't fully resolve the enquiry
+- If asked whether you are a real person or AI, always answer honestly: "I'm an AI assistant for ${config.business_name}. I can help with most enquiries, or I can put you through to someone if you'd prefer."
+- Never deny being AI`);
 
   if (config.custom_instructions) {
-    parts.push(`\nADDITIONAL INSTRUCTIONS:\n${config.custom_instructions}`);
+    parts.push(`- ${config.custom_instructions}`);
   }
 
-  const now = new Date().toISOString();
-  parts.push(`\nCurrent date/time: ${now}`);
-  parts.push(`This call may be recorded for quality purposes.`);
-
   return parts.join("\n");
-}
-
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,8 +205,8 @@ Deno.serve(async (req) => {
   }
 
   // ── Auth ──────────────────────────────────────────────────────────────
-  let userId: string;
   let workspaceId: string;
+  let userId: string;
   try {
     const auth = await validateAuth(req);
     userId = auth.userId;
@@ -279,23 +245,23 @@ Deno.serve(async (req) => {
     booking_rules: body.booking_rules ?? null,
     custom_instructions: body.custom_instructions ?? null,
     greeting_message: body.greeting_message ?? null,
-    voice_id: body.voice_id ?? "11labs-Adrian",
-    voice_name: body.voice_name ?? "Adrian",
+    voice_id: body.voice_id ?? "cjVigY5qzO86Huf0OWal",
+    voice_name: body.voice_name ?? "Eric",
     max_call_duration_seconds: body.max_call_duration_seconds ?? 300,
     transfer_number: body.transfer_number ?? null,
     data_retention_days: body.data_retention_days ?? 90,
   };
 
   const { data: config, error: insertErr } = await supabase
-    .from("ai_phone_configs")
+    .from("elevenlabs_agents")
     .insert(configRow)
     .select("id")
     .single();
 
   if (insertErr || !config) {
-    console.error("Failed to insert ai_phone_configs:", insertErr);
+    console.error("Failed to insert elevenlabs_agents:", insertErr);
     return errorResponse(
-      `Failed to create phone config: ${insertErr?.message ?? "unknown"}`,
+      `Failed to create agent config: ${insertErr?.message ?? "unknown"}`,
       500
     );
   }
@@ -305,7 +271,7 @@ Deno.serve(async (req) => {
   // Helper to mark config as errored
   async function markError(step: string, message: string) {
     await supabase
-      .from("ai_phone_configs")
+      .from("elevenlabs_agents")
       .update({
         status: "error",
         error_message: `[${step}] ${message}`,
@@ -318,88 +284,96 @@ Deno.serve(async (req) => {
     // ── Step 2: Build system prompt ───────────────────────────────────
     const systemPrompt = buildSystemPrompt(body);
 
-    // ── Step 3: Create Retell LLM ─────────────────────────────────────
-    console.log(`[${configId}] Creating Retell LLM...`);
-    const llmResult = await retellPost("/create-retell-llm", {
-      model: "claude-sonnet-4-6-20250514",
-      general_prompt: systemPrompt,
-    });
-    const llmId: string = llmResult.llm_id;
-    console.log(`[${configId}] Retell LLM created: ${llmId}`);
+    // ── Step 3: Build ElevenLabs agent payload ────────────────────────
+    const elevenLabsApiKey = Deno.env.get("ELEVENLABS_API_KEY");
+    if (!elevenLabsApiKey) throw new Error("ELEVENLABS_API_KEY is not configured");
 
-    // ── Step 4: Create Retell Agent ───────────────────────────────────
-    console.log(`[${configId}] Creating Retell Agent...`);
-    const webhookUrl = `${supabaseUrl}/functions/v1/retell-webhook`;
-    const maxDurationMs =
-      (body.max_call_duration_seconds ?? 300) * 1000;
+    const defaultGreeting = `Hello, thank you for calling ${body.business_name}. How can I help you today?`;
+    const greeting = body.greeting_message
+      ? body.greeting_message.replace(/\{business_name\}/g, body.business_name)
+      : defaultGreeting;
 
-    const agentResult = await retellPost("/create-agent", {
-      agent_name: `${body.business_name} AI Receptionist`,
-      response_engine: { type: "retell-llm", llm_id: llmId },
-      voice_id: body.voice_id ?? "11labs-Adrian",
-      voice_model: "eleven_flash_v2_5",
-      language: "en-GB",
-      webhook_url: webhookUrl,
-      max_call_duration_ms: maxDurationMs,
-      data_storage_setting: "everything_except_pii",
-      ...(body.greeting_message
-        ? { begin_message: body.greeting_message }
-        : {}),
-      post_call_analysis_data: [
-        {
-          name: "call_summary",
-          type: "string",
-          description: "1-2 sentence summary of the call",
+    const maxDuration = body.max_call_duration_seconds ?? 300;
+    const voiceId = body.voice_id ?? "cjVigY5qzO86Huf0OWal";
+
+    // Build built-in tools
+    const builtInTools: Record<string, unknown> = {
+      end_call: {},
+      voicemail_detection: {},
+      language_detection: {},
+    };
+
+    if (body.transfer_number) {
+      builtInTools.transfer_to_number = {
+        description:
+          "Transfer the call to a human when the caller requests it or for emergencies",
+        phone_number: body.transfer_number,
+      };
+    }
+
+    const agentPayload = {
+      agent: {
+        first_message: greeting,
+        language: "en",
+        prompt: {
+          prompt: systemPrompt,
+          llm: "gemini-2.5-flash",
+          temperature: 0.2,
+          built_in_tools: builtInTools,
         },
-        {
-          name: "caller_sentiment",
-          type: "enum",
-          choices: ["positive", "neutral", "negative"],
-          description: "Overall caller sentiment",
+      },
+      conversation: {
+        tts: {
+          model_id: "eleven_flash_v2_5",
+          voice_id: voiceId,
+          stability: 0.5,
+          speed: 1.0,
+          similarity_boost: 0.8,
         },
-        {
-          name: "call_outcome",
-          type: "enum",
-          choices: [
-            "resolved",
-            "booking_made",
-            "message_taken",
-            "transferred",
-            "abandoned",
-          ],
-          description: "How the call concluded",
+        conversation: {
+          max_duration_seconds: maxDuration,
         },
-        {
-          name: "requires_followup",
-          type: "boolean",
-          description: "Whether this call needs human follow-up",
+        turn: {
+          turn_eagerness: "normal",
         },
-        {
-          name: "caller_name",
-          type: "string",
-          description: "Name of the caller if provided",
+      },
+    };
+
+    // ── Step 4: Create ElevenLabs agent ───────────────────────────────
+    console.log(`[${configId}] Creating ElevenLabs agent...`);
+
+    const elevenLabsRes = await fetch(
+      "https://api.elevenlabs.io/v1/convai/agents/create",
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": elevenLabsApiKey,
+          "Content-Type": "application/json",
         },
-        {
-          name: "caller_phone",
-          type: "string",
-          description: "Phone number of the caller if provided",
-        },
-      ],
-    });
-    const agentId: string = agentResult.agent_id;
-    console.log(`[${configId}] Retell Agent created: ${agentId}`);
+        body: JSON.stringify(agentPayload),
+      }
+    );
+
+    if (!elevenLabsRes.ok) {
+      const errText = await elevenLabsRes.text();
+      throw new Error(
+        `ElevenLabs agent creation failed (${elevenLabsRes.status}): ${errText}`
+      );
+    }
+
+    const elevenLabsResult = await elevenLabsRes.json();
+    const agentId: string = elevenLabsResult.agent_id;
+    console.log(`[${configId}] ElevenLabs agent created: ${agentId}`);
 
     // ── Step 5: Search for available UK number ────────────────────────
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioBase = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}`;
 
     console.log(`[${configId}] Searching for available UK numbers...`);
-    const availableUrl = `${twilioBase}/AvailablePhoneNumbers/GB/Local.json?AreaCode=20&VoiceEnabled=true&Limit=1`;
+    const availableUrl = `${twilioBase}/AvailablePhoneNumbers/GB/Local.json?VoiceEnabled=true&Limit=1`;
     const availableResult = await twilioGet(availableUrl);
 
-    if (
-      !availableResult.available_phone_numbers?.length
-    ) {
+    if (!availableResult.available_phone_numbers?.length) {
       throw new Error(
         "No available UK phone numbers found. Try again later or contact support."
       );
@@ -421,62 +395,16 @@ Deno.serve(async (req) => {
       `[${configId}] Number purchased: ${purchasedNumber} (${twilioNumberSid})`
     );
 
-    // ── Step 7: Create SIP trunk ──────────────────────────────────────
-    console.log(`[${configId}] Creating SIP trunk...`);
-    const trunkResult = await twilioPost(
-      "https://trunking.twilio.com/v1/Trunks",
-      {
-        FriendlyName: `BizzyBee - ${body.business_name}`,
-      }
-    );
-    const trunkSid: string = trunkResult.sid;
-    console.log(`[${configId}] SIP trunk created: ${trunkSid}`);
-
-    // ── Step 8: Add origination URI to trunk ──────────────────────────
-    console.log(`[${configId}] Adding origination URI...`);
-    await twilioPost(
-      `https://trunking.twilio.com/v1/Trunks/${trunkSid}/OriginationUrls`,
-      {
-        SipUrl: "sip:sip.retellai.com",
-        Weight: "1",
-        Priority: "1",
-        Enabled: "true",
-        FriendlyName: "Retell",
-      }
-    );
-    console.log(`[${configId}] Origination URI added`);
-
-    // ── Step 9: Associate number with trunk ───────────────────────────
-    console.log(`[${configId}] Associating number with trunk...`);
-    await twilioPost(
-      `https://trunking.twilio.com/v1/Trunks/${trunkSid}/PhoneNumbers`,
-      { PhoneNumberSid: twilioNumberSid }
-    );
-    console.log(`[${configId}] Number associated with trunk`);
-
-    // ── Step 10: Import number into Retell ────────────────────────────
-    console.log(`[${configId}] Importing number into Retell...`);
-    const terminationUri = `${trunkSid}.pstn.twilio.com`;
-    const importResult = await retellPost("/import-phone-number", {
-      phone_number: purchasedNumber,
-      termination_uri: terminationUri,
-      inbound_agents: [{ agent_id: agentId, weight: 1 }],
-    });
-    const retellPhoneId: string = importResult.phone_number_id;
-    console.log(`[${configId}] Number imported into Retell: ${retellPhoneId}`);
-
-    // ── Step 11: Update config with all IDs ───────────────────────────
+    // ── Step 7: Update config with all IDs ───────────────────────────
     const { error: updateErr } = await supabase
-      .from("ai_phone_configs")
+      .from("elevenlabs_agents")
       .update({
-        status: "active",
-        retell_llm_id: llmId,
-        retell_agent_id: agentId,
-        retell_phone_number_id: retellPhoneId,
+        elevenlabs_agent_id: agentId,
         phone_number: purchasedNumber,
         twilio_number_sid: twilioNumberSid,
-        twilio_trunk_sid: trunkSid,
         system_prompt: systemPrompt,
+        status: "active",
+        is_active: true,
         error_message: null,
         updated_at: new Date().toISOString(),
       })
@@ -487,27 +415,21 @@ Deno.serve(async (req) => {
       // Provisioning succeeded even if DB update fails — log but don't throw
     }
 
-    // ── Step 12: Return success ───────────────────────────────────────
+    // ── Step 8: Return success ───────────────────────────────────────
     console.log(`[${configId}] Provisioning complete!`);
 
     return jsonResponse({
       success: true,
-      config_id: configId,
+      agent_id: agentId,
       phone_number: purchasedNumber,
-      retell_agent_id: agentId,
-      retell_llm_id: llmId,
-      retell_phone_number_id: retellPhoneId,
-      twilio_number_sid: twilioNumberSid,
-      twilio_trunk_sid: trunkSid,
-      status: "active",
+      config_id: configId,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${configId}] Provisioning failed:`, message);
 
-    // Determine which step failed for the error message
     await markError("provision", message);
 
-    return errorResponse(`Provisioning failed: ${message}`, 500);
+    return errorResponse("Provisioning failed. Please try again or contact support.", 500);
   }
 });

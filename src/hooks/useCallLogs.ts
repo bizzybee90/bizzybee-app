@@ -51,15 +51,15 @@ export function useCallLogs() {
       if (!workspace?.id) return [];
 
       let query = supabase
-        .from('ai_phone_call_logs')
+        .from('call_logs')
         .select('*')
         .eq('workspace_id', workspace.id)
-        .order('start_time', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(25);
 
       const dateCutoff = getDateCutoff(filters.dateRange);
       if (dateCutoff) {
-        query = query.gte('start_time', dateCutoff);
+        query = query.gte('created_at', dateCutoff);
       }
 
       if (filters.outcome) {
@@ -88,7 +88,7 @@ export function useCallLogs() {
         {
           event: '*',
           schema: 'public',
-          table: 'ai_phone_call_logs',
+          table: 'call_logs',
           filter: `workspace_id=eq.${workspace.id}`,
         },
         () => {

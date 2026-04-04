@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
 
     // Delete call logs for this caller in this workspace
     const { data: deletedRows, error: deleteError } = await supabase
-      .from('ai_phone_call_logs')
+      .from('call_logs')
       .delete()
       .eq('caller_number', phone_number)
       .eq('workspace_id', workspaceId)

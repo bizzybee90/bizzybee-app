@@ -190,14 +190,14 @@ export interface AiPhoneBookingRules {
 export interface AiPhoneConfig {
   id: string;
   workspace_id: string;
-  retell_agent_id: string | null;
-  retell_llm_id: string | null;
-  retell_phone_number: string | null;
-  retell_phone_number_id: string | null;
-  phone_provider: 'retell' | 'twilio_sip';
+  elevenlabs_agent_id: string | null;
+  phone_number: string | null;
   twilio_number_sid: string | null;
-  twilio_trunk_sid: string | null;
-  twilio_sip_uri: string | null;
+  voice_id: string;
+  voice_name: string;
+  knowledge_base_id: string | null;
+  llm_model: string;
+  status: 'provisioning' | 'active' | 'error' | 'inactive';
   business_name: string;
   business_description: string | null;
   services: AiPhoneService[];
@@ -205,8 +205,6 @@ export interface AiPhoneConfig {
   booking_rules: AiPhoneBookingRules;
   custom_instructions: string | null;
   greeting_message: string;
-  voice_id: string;
-  voice_name: string;
   max_call_duration_seconds: number;
   transfer_number: string | null;
   is_active: boolean;
@@ -217,7 +215,7 @@ export interface AiPhoneConfig {
 
 export interface AiPhoneKBEntry {
   id: string;
-  config_id: string;
+  agent_id: string;
   title: string;
   content: string;
   category: 'faq' | 'pricing' | 'services' | 'policies' | 'general';
@@ -229,25 +227,24 @@ export interface AiPhoneKBEntry {
 export interface AiPhoneCallLog {
   id: string;
   workspace_id: string;
-  config_id: string;
-  retell_call_id: string;
+  agent_id: string;
+  elevenlabs_conversation_id: string | null;
   direction: 'inbound' | 'outbound';
   caller_number: string | null;
-  called_number: string | null;
-  status: 'in_progress' | 'completed' | 'transferred' | 'error' | 'voicemail';
-  start_time: string;
-  end_time: string | null;
+  caller_name: string | null;
+  status: 'in_progress' | 'completed' | 'transferred' | 'error';
   duration_seconds: number | null;
-  transcript: string | null;
-  transcript_object: unknown;
+  transcript: unknown;
   summary: string | null;
   sentiment: 'positive' | 'neutral' | 'negative' | null;
+  topics: string[] | null;
+  success_evaluation: boolean | null;
+  call_type: 'emergency' | 'booking' | 'enquiry' | 'callback_request' | 'general' | null;
   outcome: 'resolved' | 'booking_made' | 'message_taken' | 'transferred' | 'abandoned' | 'error' | null;
-  outcome_details: Record<string, unknown>;
-  cost_cents: number;
+  actions_taken: Record<string, unknown>;
   requires_followup: boolean;
-  followup_notes: string | null;
-  call_analysis: Record<string, unknown>;
+  cost_cents: number;
+  recording_url: string | null;
   disconnection_reason: string | null;
   created_at: string;
 }

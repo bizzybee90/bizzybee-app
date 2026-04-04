@@ -72,7 +72,7 @@ export const KnowledgeBaseEditor = () => {
       const { data, error } = await supabase
         .from('ai_phone_knowledge_base' as any)
         .select('*')
-        .eq('config_id', configId)
+        .eq('agent_id', configId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data as unknown as AiPhoneKBEntry[]) ?? [];
@@ -80,9 +80,9 @@ export const KnowledgeBaseEditor = () => {
     enabled: !!configId,
   });
 
-  // --- Sync KB to Retell (fire-and-forget) ---
+  // --- Sync KB to ElevenLabs (fire-and-forget) ---
   const syncToRetell = () => {
-    supabase.functions.invoke('retell-update-agent', { body: {} }).catch(() => {
+    supabase.functions.invoke('elevenlabs-update-agent', { body: {} }).catch(() => {
       // fire-and-forget — errors are non-critical
     });
   };
@@ -94,7 +94,7 @@ export const KnowledgeBaseEditor = () => {
       const { data, error } = await supabase
         .from('ai_phone_knowledge_base' as any)
         .insert({
-          config_id: configId,
+          agent_id: configId,
           title: entry.title,
           content: entry.content,
           category: entry.category,

@@ -34,21 +34,21 @@ Deno.serve(async (req) => {
 
     // Calls today
     const { count: callsToday } = await supabase
-      .from('ai_phone_call_logs')
+      .from('call_logs')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
       .gte('start_time', todayMidnight);
 
     // Calls this week
     const { count: callsThisWeek } = await supabase
-      .from('ai_phone_call_logs')
+      .from('call_logs')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
       .gte('start_time', sevenDaysAgo);
 
     // Average duration and resolution rate from completed calls
     const { data: completedCalls } = await supabase
-      .from('ai_phone_call_logs')
+      .from('call_logs')
       .select('duration_seconds, outcome')
       .eq('workspace_id', workspaceId)
       .eq('status', 'completed');

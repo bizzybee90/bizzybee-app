@@ -2,12 +2,12 @@ import { Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const VOICES = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', description: 'Warm, professional British female', gender: 'Female' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', description: 'Deep, authoritative British male', gender: 'Male' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', description: 'Professional, clear British female', gender: 'Female' },
-  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', description: 'Young, energetic and friendly', gender: 'Female' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', description: 'Deep, warm American male', gender: 'Male' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', description: 'Confident, conversational male', gender: 'Male' },
+  { id: 'cgSgspJ2msm6clMCkdW9', name: 'Jessica', description: 'Warm, professional British female', gender: 'Female' },
+  { id: 'iP95p4xoKVk53GoZ742B', name: 'Chris', description: 'Confident, friendly British male', gender: 'Male' },
+  { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte', description: 'Clear, elegant British female', gender: 'Female' },
+  { id: 'bIHbv24MWmeRgasZH58o', name: 'Will', description: 'Warm, conversational British male', gender: 'Male' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', description: 'Natural, approachable female', gender: 'Female' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', description: 'Authoritative, professional British male', gender: 'Male' },
 ] as const;
 
 interface VoiceSelectorProps {

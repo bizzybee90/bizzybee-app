@@ -19,7 +19,7 @@ export function useAiPhoneConfig() {
       if (!workspace?.id) return null;
 
       const { data, error } = await supabase
-        .from('ai_phone_configs')
+        .from('elevenlabs_agents')
         .select('*')
         .eq('workspace_id', workspace.id)
         .maybeSingle();
@@ -32,7 +32,7 @@ export function useAiPhoneConfig() {
 
   const createConfig = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const { data, error } = await supabase.functions.invoke('retell-provision', {
+      const { data, error } = await supabase.functions.invoke('elevenlabs-provision', {
         body,
       });
       if (error) throw error;
@@ -51,7 +51,7 @@ export function useAiPhoneConfig() {
 
   const updateConfig = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const { data, error } = await supabase.functions.invoke('retell-update-agent', {
+      const { data, error } = await supabase.functions.invoke('elevenlabs-update-agent', {
         body,
       });
       if (error) throw error;
@@ -71,7 +71,7 @@ export function useAiPhoneConfig() {
       if (!config?.id) throw new Error('No config found');
 
       const { error } = await supabase
-        .from('ai_phone_configs')
+        .from('elevenlabs_agents')
         .update({ is_active: isActive, updated_at: new Date().toISOString() })
         .eq('id', config.id);
 
