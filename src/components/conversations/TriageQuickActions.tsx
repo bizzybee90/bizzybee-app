@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowUp, Tag, RefreshCw, Loader2 } from 'lucide-react';
 import { Conversation } from '@/lib/types';
@@ -38,10 +39,10 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
   const handleRetriage = async () => {
     setIsRetriaging(true);
     setRetriageResult(null);
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workflow_type: 'email_classification', conversationId: conversation.id, limit: 1 }
+        body: { workflow_type: 'email_classification', conversationId: conversation.id, limit: 1 },
       });
 
       if (error) throw error;
@@ -61,7 +62,7 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
         });
       }
     } catch (error) {
-      console.error('Error retriaging conversation:', error);
+      logger.error('Error retriaging conversation', error);
       toast({
         title: 'Re-triage failed',
         description: 'Please try again',
@@ -75,7 +76,9 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
   const handleMoveToActionRequired = async () => {
     setIsUpdating(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -83,22 +86,20 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
         .single();
 
       // Log the correction for learning
-      const { error: correctionError } = await supabase
-        .from('triage_corrections')
-        .insert({
-          workspace_id: userData?.workspace_id,
-          conversation_id: conversation.id,
-          original_classification: currentClassification,
-          new_classification: 'customer_inquiry',
-          original_requires_reply: false,
-          new_requires_reply: true,
-          sender_email: conversation.customer?.email || null,
-          sender_domain: conversation.customer?.email?.split('@')[1] || null,
-          corrected_by: user?.id,
-        });
+      const { error: correctionError } = await supabase.from('triage_corrections').insert({
+        workspace_id: userData?.workspace_id,
+        conversation_id: conversation.id,
+        original_classification: currentClassification,
+        new_classification: 'customer_inquiry',
+        original_requires_reply: false,
+        new_requires_reply: true,
+        sender_email: conversation.customer?.email || null,
+        sender_domain: conversation.customer?.email?.split('@')[1] || null,
+        corrected_by: user?.id,
+      });
 
       if (correctionError) {
-        console.error('Failed to log correction:', correctionError);
+        logger.error('Failed to log correction', correctionError);
       }
 
       // Update the conversation
@@ -118,11 +119,11 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
       toast({ title: 'Moved to Action Required' });
       onUpdate?.();
     } catch (error) {
-      console.error('Error moving conversation:', error);
-      toast({ 
-        title: 'Failed to move', 
+      logger.error('Error moving conversation', error);
+      toast({
+        title: 'Failed to move',
         description: 'Please try again',
-        variant: 'destructive' 
+        variant: 'destructive',
       });
     } finally {
       setIsUpdating(false);
@@ -131,11 +132,16 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
 
   const getBucketColor = (bucket: string) => {
     switch (bucket) {
-      case 'act_now': return 'bg-red-500/10 text-red-600 border-red-200';
-      case 'quick_win': return 'bg-yellow-500/10 text-yellow-600 border-yellow-200';
-      case 'auto_handled': return 'bg-green-500/10 text-green-600 border-green-200';
-      case 'wait': return 'bg-blue-500/10 text-blue-600 border-blue-200';
-      default: return 'bg-muted text-muted-foreground';
+      case 'act_now':
+        return 'bg-red-500/10 text-red-600 border-red-200';
+      case 'quick_win':
+        return 'bg-yellow-500/10 text-yellow-600 border-yellow-200';
+      case 'auto_handled':
+        return 'bg-green-500/10 text-green-600 border-green-200';
+      case 'wait':
+        return 'bg-blue-500/10 text-blue-600 border-blue-200';
+      default:
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -168,7 +174,7 @@ export function TriageQuickActions({ conversation, onUpdate }: TriageQuickAction
             <ArrowUp className="h-3 w-3" />
             Action Required
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"

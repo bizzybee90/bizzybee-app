@@ -4,7 +4,16 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Mail, MessageCircle, Phone, Smartphone, Monitor, Settings, Eye, EyeOff } from 'lucide-react';
+import {
+  Mail,
+  MessageCircle,
+  Phone,
+  Smartphone,
+  Monitor,
+  Settings,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
@@ -35,36 +44,36 @@ const channelConfig = {
     label: 'Email',
     color: 'text-blue-600',
     bgColor: 'bg-blue-50 dark:bg-blue-950/20',
-    emoji: '📧'
+    emoji: '📧',
   },
   whatsapp: {
     icon: MessageCircle,
     label: 'WhatsApp',
     color: 'text-green-600',
     bgColor: 'bg-green-50 dark:bg-green-950/20',
-    emoji: '💬'
+    emoji: '💬',
   },
   sms: {
     icon: Smartphone,
     label: 'SMS',
     color: 'text-purple-600',
     bgColor: 'bg-purple-50 dark:bg-purple-950/20',
-    emoji: '📱'
+    emoji: '📱',
   },
   phone: {
     icon: Phone,
     label: 'Phone',
     color: 'text-orange-600',
     bgColor: 'bg-orange-50 dark:bg-orange-950/20',
-    emoji: '📞'
+    emoji: '📞',
   },
   webchat: {
     icon: Monitor,
     label: 'Web Chat',
     color: 'text-indigo-600',
     bgColor: 'bg-indigo-50 dark:bg-indigo-950/20',
-    emoji: '💻'
-  }
+    emoji: '💻',
+  },
 };
 
 export default function ChannelsDashboard() {
@@ -73,12 +82,14 @@ export default function ChannelsDashboard() {
   const isMobile = useIsMobile();
   const [channelStats, setChannelStats] = useState<ChannelStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [enabledChannels, setEnabledChannels] = useState<Record<string, boolean>>({});
   const [hiddenChannels, setHiddenChannels] = useState<Record<string, boolean>>({});
   const [showSettings, setShowSettings] = useState(false);
 
   const fetchChannelStats = async () => {
     if (!workspace?.id) return;
+    setFetchError(null);
 
     try {
       // Show last 7 days instead of just today
@@ -99,40 +110,42 @@ export default function ChannelsDashboard() {
 
       if (conversations) {
         const channels = ['email', 'whatsapp', 'sms', 'phone', 'webchat'];
-        const stats = channels.map(channel => {
-          const channelConvos = conversations.filter(c => c.channel === channel);
-          const unread = channelConvos.filter(c => c.status === 'new').length;
-          
+        const stats = channels.map((channel) => {
+          const channelConvos = conversations.filter((c) => c.channel === channel);
+          const unread = channelConvos.filter((c) => c.status === 'new').length;
+
           // Calculate average response time (in minutes)
           const withResponseTimes = channelConvos.filter(
-            c => c.first_response_at && c.created_at
+            (c) => c.first_response_at && c.created_at,
           );
-          const avgResponseTime = withResponseTimes.length > 0
-            ? withResponseTimes.reduce((acc, c) => {
-                const created = new Date(c.created_at).getTime();
-                const responded = new Date(c.first_response_at!).getTime();
-                return acc + (responded - created) / 1000 / 60; // convert to minutes
-              }, 0) / withResponseTimes.length
-            : null;
+          const avgResponseTime =
+            withResponseTimes.length > 0
+              ? withResponseTimes.reduce((acc, c) => {
+                  const created = new Date(c.created_at).getTime();
+                  const responded = new Date(c.first_response_at!).getTime();
+                  return acc + (responded - created) / 1000 / 60; // convert to minutes
+                }, 0) / withResponseTimes.length
+              : null;
 
           return {
             channel,
             unread,
             total: channelConvos.length,
             avgResponseTime,
-            recentConversations: channelConvos.slice(0, 5).map(c => ({
+            recentConversations: channelConvos.slice(0, 5).map((c) => ({
               id: c.id,
               title: c.title || 'Untitled',
               status: c.status || 'new',
-              created_at: c.created_at
-            }))
+              created_at: c.created_at,
+            })),
           };
         });
 
         setChannelStats(stats);
       }
-    } catch (error) {
-      console.error('Error fetching channel stats:', error);
+    } catch (err) {
+      console.error('Error fetching channel stats:', err);
+      setFetchError('Failed to load channel data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -150,25 +163,26 @@ export default function ChannelsDashboard() {
     fetchChannelStats();
     fetchEnabledChannels();
 
-    // Set up realtime subscription
-    const channel = supabase
-      .channel('channels-dashboard-realtime')
+    // Set up realtime subscription with workspace-specific channel name
+    const realtimeChannel = supabase
+      .channel(`channels-dashboard-${workspace.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace.id}`,
         },
         () => {
           fetchChannelStats();
-        }
+        },
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeChannel.unsubscribe();
+      supabase.removeChannel(realtimeChannel);
     };
   }, [workspace?.id]);
 
@@ -182,7 +196,7 @@ export default function ChannelsDashboard() {
 
     if (data) {
       const enabled: Record<string, boolean> = {};
-      data.forEach(ch => {
+      data.forEach((ch) => {
         enabled[ch.channel] = ch.enabled || false;
       });
       setEnabledChannels(enabled);
@@ -205,15 +219,19 @@ export default function ChannelsDashboard() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'resolved': return 'default';
-      case 'in_progress': return 'secondary';
-      case 'new': return 'destructive';
-      default: return 'outline';
+      case 'resolved':
+        return 'default';
+      case 'in_progress':
+        return 'secondary';
+      case 'new':
+        return 'destructive';
+      default:
+        return 'outline';
     }
   };
 
-  const visibleChannelStats = channelStats.filter(stat => 
-    enabledChannels[stat.channel] !== false && !hiddenChannels[stat.channel]
+  const visibleChannelStats = channelStats.filter(
+    (stat) => enabledChannels[stat.channel] !== false && !hiddenChannels[stat.channel],
   );
 
   const mainContent = loading ? (
@@ -228,7 +246,9 @@ export default function ChannelsDashboard() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="min-w-0 flex-1 w-full sm:w-auto">
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold">Channels Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Monitor activity across all channels (last 7 days)</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Monitor activity across all channels (last 7 days)
+          </p>
         </div>
         <Button
           variant="outline"
@@ -245,24 +265,34 @@ export default function ChannelsDashboard() {
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">Channel Visibility</h3>
           <div className="space-y-3">
-            {channelStats.map(stat => {
+            {channelStats.map((stat) => {
               const config = channelConfig[stat.channel as keyof typeof channelConfig];
               const Icon = config.icon;
               return (
-                <div key={stat.channel} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div
+                  key={stat.channel}
+                  className="flex items-center justify-between py-2 border-b last:border-0"
+                >
                   <div className="flex items-center gap-3">
                     <Icon className={`h-5 w-5 ${config.color}`} />
-                    <Label htmlFor={`toggle-${stat.channel}`} className="cursor-pointer font-medium">
+                    <Label
+                      htmlFor={`toggle-${stat.channel}`}
+                      className="cursor-pointer font-medium"
+                    >
                       {config.label}
                     </Label>
                     {enabledChannels[stat.channel] === false && (
-                      <Badge variant="outline" className="text-xs">Disabled in workspace</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Disabled in workspace
+                      </Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
                       id={`toggle-${stat.channel}`}
-                      checked={!hiddenChannels[stat.channel] && enabledChannels[stat.channel] !== false}
+                      checked={
+                        !hiddenChannels[stat.channel] && enabledChannels[stat.channel] !== false
+                      }
                       onCheckedChange={() => toggleChannelVisibility(stat.channel)}
                       disabled={enabledChannels[stat.channel] === false}
                     />
@@ -289,7 +319,22 @@ export default function ChannelsDashboard() {
         </Card>
       )}
 
-      <div className={isMobile ? "grid grid-cols-2 gap-3" : "grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6"}>
+      {fetchError && (
+        <Card className="p-4 border-destructive bg-destructive/5">
+          <div className="flex items-center gap-2 text-destructive">
+            <p className="text-sm font-medium">{fetchError}</p>
+            <Button variant="outline" size="sm" onClick={fetchChannelStats}>
+              Retry
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <div
+        className={
+          isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6'
+        }
+      >
         {visibleChannelStats.map((stat) => {
           const config = channelConfig[stat.channel as keyof typeof channelConfig];
           const Icon = config.icon;
@@ -311,8 +356,8 @@ export default function ChannelsDashboard() {
           }
 
           return (
-            <Card 
-              key={stat.channel} 
+            <Card
+              key={stat.channel}
               className={`p-4 md:p-6 ${config.bgColor} cursor-pointer hover:shadow-lg transition-all active:scale-[0.98]`}
               onClick={() => navigate(`/channel/${stat.channel}`)}
             >
@@ -332,7 +377,10 @@ export default function ChannelsDashboard() {
                   </div>
                 </div>
                 {stat.unread > 0 && (
-                  <Badge variant="destructive" className="text-sm md:text-lg px-2 md:px-3 py-0.5 md:py-1 flex-shrink-0">
+                  <Badge
+                    variant="destructive"
+                    className="text-sm md:text-lg px-2 md:px-3 py-0.5 md:py-1 flex-shrink-0"
+                  >
                     {stat.unread}
                   </Badge>
                 )}
@@ -341,9 +389,7 @@ export default function ChannelsDashboard() {
               <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 p-3 md:p-4 bg-background rounded-lg">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Unread</p>
-                  <p className={`text-xl md:text-2xl font-bold ${config.color}`}>
-                    {stat.unread}
-                  </p>
+                  <p className={`text-xl md:text-2xl font-bold ${config.color}`}>{stat.unread}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Avg Response</p>
@@ -367,7 +413,10 @@ export default function ChannelsDashboard() {
                             <p className="font-medium text-xs md:text-sm truncate flex-1 min-w-0">
                               {conv.title}
                             </p>
-                            <Badge variant={getStatusColor(conv.status)} className="ml-2 text-xs flex-shrink-0">
+                            <Badge
+                              variant={getStatusColor(conv.status)}
+                              className="ml-2 text-xs flex-shrink-0"
+                            >
                               {conv.status}
                             </Badge>
                           </div>
@@ -387,15 +436,12 @@ export default function ChannelsDashboard() {
             </Card>
           );
         })}
-        
+
         {visibleChannelStats.length === 0 && (
           <Card className="col-span-2 p-12">
             <div className="text-center">
               <p className="text-muted-foreground mb-4">No channels are currently visible.</p>
-              <Button
-                variant="outline"
-                onClick={() => setShowSettings(true)}
-              >
+              <Button variant="outline" onClick={() => setShowSettings(true)}>
                 <Settings className="h-4 w-4 mr-2" />
                 Show channel settings
               </Button>
@@ -407,17 +453,8 @@ export default function ChannelsDashboard() {
   );
 
   if (isMobile) {
-    return (
-      <MobilePageLayout>
-        {mainContent}
-      </MobilePageLayout>
-    );
+    return <MobilePageLayout>{mainContent}</MobilePageLayout>;
   }
 
-  return (
-    <ThreeColumnLayout
-      sidebar={<Sidebar />}
-      main={mainContent}
-    />
-  );
+  return <ThreeColumnLayout sidebar={<Sidebar />} main={mainContent} />;
 }

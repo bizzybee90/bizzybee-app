@@ -1,12 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,7 +15,8 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
@@ -25,12 +25,16 @@ serve(async (req) => {
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
   }
@@ -40,13 +44,15 @@ serve(async (req) => {
     const { conversationId, markAsRead = true, archive = false } = await req.json();
 
     if (!conversationId) {
-      return new Response(
-        JSON.stringify({ error: 'conversationId is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'conversationId is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`mark-email-read: conversationId=${conversationId}, markAsRead=${markAsRead}, archive=${archive}`);
+    console.log(
+      `mark-email-read: conversationId=${conversationId}, markAsRead=${markAsRead}, archive=${archive}`,
+    );
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -61,19 +67,18 @@ serve(async (req) => {
 
     if (convError || !conversation) {
       console.error('Conversation not found:', convError);
-      return new Response(
-        JSON.stringify({ error: 'Conversation not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Conversation not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Only process email conversations
     if (conversation.channel !== 'email') {
       console.log('Not an email conversation, skipping');
-      return new Response(
-        JSON.stringify({ success: true, message: 'Not an email conversation' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ success: true, message: 'Not an email conversation' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Try to find external_id from messages table (more reliable than metadata)
@@ -97,15 +102,15 @@ serve(async (req) => {
     } else {
       // Fallback to metadata
       const metadata = conversation.metadata || {};
-      aurinkoMessageId = (metadata as Record<string, unknown>).aurinko_message_id as string || null;
+      aurinkoMessageId =
+        ((metadata as Record<string, unknown>).aurinko_message_id as string) || null;
     }
 
     if (!aurinkoMessageId) {
       console.log('No external message ID found, skipping');
-      return new Response(
-        JSON.stringify({ success: true, message: 'No external message ID' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ success: true, message: 'No external message ID' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Fetch the email provider config
@@ -133,22 +138,24 @@ serve(async (req) => {
 
     if (!emailConfig) {
       console.error('Email config not found');
-      return new Response(
-        JSON.stringify({ error: 'Email configuration not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Email configuration not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Get decrypted access token securely
-    const { data: tokenData, error: tokenError } = await supabase
-      .rpc('get_decrypted_access_token', { p_config_id: emailConfig.id });
+    const { data: tokenData, error: tokenError } = await supabase.rpc(
+      'get_decrypted_access_token',
+      { p_config_id: emailConfig.id },
+    );
 
     if (tokenError || !tokenData) {
       console.error('Failed to get access token:', tokenError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to retrieve access token' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Failed to retrieve access token' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const accessToken = tokenData;
@@ -161,16 +168,16 @@ serve(async (req) => {
 
     // If archiving, also remove Inbox and Unread labels
     if (archive) {
-      patchBody.removeSysLabels = ["\\Inbox", "\\Unread"];
+      patchBody.removeSysLabels = ['\\Inbox', '\\Unread'];
     }
 
     // Mark email as read/unread (and optionally archive) in Aurinko/Gmail
     console.log(`Patching email ${aurinkoMessageId}: ${JSON.stringify(patchBody)}`);
-    
+
     const response = await fetch(`${aurinkoBaseUrl}/v1/email/messages/${aurinkoMessageId}`, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(patchBody),
@@ -179,25 +186,31 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Failed to update email:', response.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update email', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Failed to update email', details: errorText }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    console.log(`Email ${aurinkoMessageId} updated successfully (read=${markAsRead}, archive=${archive})`);
-
-    return new Response(
-      JSON.stringify({ success: true, messageId: aurinkoMessageId, markedAsRead: markAsRead, archived: archive }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    console.log(
+      `Email ${aurinkoMessageId} updated successfully (read=${markAsRead}, archive=${archive})`,
     );
 
+    return new Response(
+      JSON.stringify({
+        success: true,
+        messageId: aurinkoMessageId,
+        markedAsRead: markAsRead,
+        archived: archive,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error in mark-email-read:', error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

@@ -6,12 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  Send, 
-  FileEdit, 
-  ChevronRight,
-  Loader2,
-} from 'lucide-react';
+import { Send, FileEdit, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
@@ -45,14 +40,16 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
       try {
         const { data, error } = await supabase
           .from('conversations')
-          .select(`
+          .select(
+            `
             id, 
             title, 
             ai_draft_response, 
             updated_at, 
             email_classification,
             customers(name)
-          `)
+          `,
+          )
           .eq('workspace_id', workspace.id)
           .not('ai_draft_response', 'is', null)
           .is('final_response', null)
@@ -65,15 +62,16 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
         if (error) throw error;
 
         setDrafts(
-          (data || []).map(d => ({
+          (data || []).map((d) => ({
             id: d.id,
             title: d.title || 'Untitled',
-            customerName: (d.customers as any)?.name,
-            draftPreview: d.ai_draft_response?.substring(0, 100) + 
+            customerName: (d.customers as { name?: string } | null)?.name,
+            draftPreview:
+              d.ai_draft_response?.substring(0, 100) +
               (d.ai_draft_response && d.ai_draft_response.length > 100 ? '...' : ''),
             updatedAt: new Date(d.updated_at!),
             classification: d.email_classification,
-          }))
+          })),
         );
       } catch (error) {
         console.error('Error fetching drafts:', error);
@@ -93,9 +91,9 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
-        () => fetchDrafts()
+        () => fetchDrafts(),
       )
       .subscribe();
 
@@ -105,7 +103,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
   }, [workspace?.id, maxItems]);
 
   const handleToggleSelect = (id: string) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -120,7 +118,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
     if (selectedIds.size === drafts.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(drafts.map(d => d.id)));
+      setSelectedIds(new Set(drafts.map((d) => d.id)));
     }
   };
 
@@ -133,7 +131,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
 
     for (const id of selectedIds) {
       try {
-        const draft = drafts.find(d => d.id === id);
+        const draft = drafts.find((d) => d.id === id);
         if (!draft) continue;
 
         // Get the full draft
@@ -166,9 +164,11 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
           .eq('id', id);
 
         // Mark the email as read in Gmail/Outlook
-        supabase.functions.invoke('mark-email-read', {
-          body: { conversationId: id, markAsRead: true }
-        }).catch(err => console.error('Failed to mark email as read:', err));
+        supabase.functions
+          .invoke('mark-email-read', {
+            body: { conversationId: id, markAsRead: true },
+          })
+          .catch((err) => console.error('Failed to mark email as read:', err));
 
         successCount++;
       } catch (error) {
@@ -197,7 +197,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
   if (loading) {
     return (
       <div className="space-y-3">
-        {[1, 2].map(i => (
+        {[1, 2].map((i) => (
           <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse">
             <div className="h-4 w-4 rounded bg-muted" />
             <div className="flex-1 space-y-2">
@@ -230,23 +230,14 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
             onCheckedChange={handleSelectAll}
           />
           <span className="text-sm text-muted-foreground">
-            {selectedIds.size > 0 
-              ? `${selectedIds.size} selected` 
+            {selectedIds.size > 0
+              ? `${selectedIds.size} selected`
               : `${drafts.length} draft${drafts.length > 1 ? 's' : ''} ready`}
           </span>
         </div>
         {selectedIds.size > 0 && (
-          <Button
-            size="sm"
-            onClick={handleSendSelected}
-            disabled={sending}
-            className="gap-2"
-          >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+          <Button size="sm" onClick={handleSendSelected} disabled={sending} className="gap-2">
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Send {selectedIds.size}
           </Button>
         )}
@@ -254,21 +245,21 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
 
       {/* Draft list */}
       <div className="space-y-2">
-        {drafts.map(draft => (
+        {drafts.map((draft) => (
           <Card
             key={draft.id}
             className={cn(
-              "p-3 cursor-pointer transition-colors hover:bg-accent/50",
-              selectedIds.has(draft.id) && "border-primary/50 bg-primary/5"
+              'p-3 cursor-pointer transition-colors hover:bg-accent/50',
+              selectedIds.has(draft.id) && 'border-primary/50 bg-primary/5',
             )}
           >
             <div className="flex items-start gap-3">
               <Checkbox
                 checked={selectedIds.has(draft.id)}
                 onCheckedChange={() => handleToggleSelect(draft.id)}
-                onClick={e => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               />
-              <div 
+              <div
                 className="flex-1 min-w-0"
                 onClick={() => navigate(`/needs-action?filter=drafts&conversation=${draft.id}`)}
               >

@@ -31,8 +31,26 @@ interface UseInboxEmailsOptions {
   page: number;
 }
 
+// Shape of conversation row with customer join, as returned by Supabase queries
+interface ConversationWithCustomer {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+  channel?: string | null;
+  email_classification?: string | null;
+  decision_bucket?: string | null;
+  requires_reply?: boolean | null;
+  triage_confidence?: number | null;
+  summary_for_human?: string | null;
+  external_conversation_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  direction?: string;
+  customer?: { id?: string; name?: string; email?: string } | null;
+}
+
 // Map a conversation row (with customer join) to the InboxEmail shape
-const mapConversationToInboxEmail = (conv: any): InboxEmail => ({
+const mapConversationToInboxEmail = (conv: ConversationWithCustomer): InboxEmail => ({
   id: conv.id,
   from_email: conv.customer?.email || null,
   from_name: conv.customer?.name || null,
@@ -61,7 +79,8 @@ export const useInboxEmails = ({ folder, categoryFilter, search, page }: UseInbo
 
       let query = supabase
         .from('conversations')
-        .select(`
+        .select(
+          `
           id,
           title,
           status,
@@ -76,7 +95,9 @@ export const useInboxEmails = ({ folder, categoryFilter, search, page }: UseInbo
           created_at,
           updated_at,
           customer:customers(id, name, email)
-        `, { count: 'exact' })
+        `,
+          { count: 'exact' },
+        )
         .eq('workspace_id', workspace.id)
         .order('updated_at', { ascending: false });
 
@@ -96,9 +117,7 @@ export const useInboxEmails = ({ folder, categoryFilter, search, page }: UseInbo
             .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
           break;
         case 'ai-review':
-          query = query
-            .lt('triage_confidence', 0.7)
-            .in('status', ['new', 'open']);
+          query = query.lt('triage_confidence', 0.7).in('status', ['new', 'open']);
           break;
         case 'noise':
           query = query.or('decision_bucket.eq.auto_handled,email_classification.eq.spam');
@@ -110,7 +129,7 @@ export const useInboxEmails = ({ folder, categoryFilter, search, page }: UseInbo
 
       // Apply category filter
       if (categoryFilter) {
-        const group = CATEGORY_GROUPS.find(g => g.key === categoryFilter);
+        const group = CATEGORY_GROUPS.find((g) => g.key === categoryFilter);
         if (group) {
           query = query.in('email_classification', group.categories);
         }
@@ -148,13 +167,15 @@ export const useEmailDetail = (emailId: string | null) => {
       // First try conversations (which is what the list returns)
       const { data: conv, error: convError } = await supabase
         .from('conversations')
-        .select(`
+        .select(
+          `
           id, title, status, channel, email_classification,
           decision_bucket, requires_reply, triage_confidence,
           summary_for_human, external_conversation_id,
           created_at, updated_at,
           customer:customers(id, name, email)
-        `)
+        `,
+        )
         .eq('id', emailId)
         .single();
 
@@ -172,11 +193,15 @@ export const useEmailDetail = (emailId: string | null) => {
         if (latestMsg) {
           mapped.body = latestMsg.body || mapped.body;
           // Try to get HTML from raw_payload
-          const raw = latestMsg.raw_payload as any;
+          const raw = latestMsg.raw_payload as Record<string, unknown> | null;
           if (raw?.htmlBody) {
-            mapped.body_html = raw.htmlBody;
-          } else if (raw?.body?.html) {
-            mapped.body_html = raw.body.html;
+            mapped.body_html = raw.htmlBody as string;
+          } else if (
+            raw?.body &&
+            typeof raw.body === 'object' &&
+            (raw.body as Record<string, unknown>)?.html
+          ) {
+            mapped.body_html = (raw.body as Record<string, unknown>).html as string;
           }
         }
         return mapped;
@@ -220,16 +245,28 @@ export const useEmailThread = (threadId: string | null) => {
           .eq('id', threadId)
           .single();
 
-        return messages.map((msg: any): InboxEmail => {
-          const raw = msg.raw_payload as any;
+        const convData = conv as {
+          title?: string;
+          customer?: { name?: string; email?: string } | null;
+        } | null;
+        return messages.map((msg): InboxEmail => {
+          const raw = msg.raw_payload as Record<string, unknown> | null;
           return {
             id: msg.id,
-            from_email: msg.direction === 'inbound' ? (conv as any)?.customer?.email || null : null,
-            from_name: msg.actor_name || (msg.direction === 'inbound' ? (conv as any)?.customer?.name : 'You'),
+            from_email: msg.direction === 'inbound' ? convData?.customer?.email || null : null,
+            from_name:
+              msg.actor_name ||
+              (msg.direction === 'inbound' ? convData?.customer?.name : 'You') ||
+              null,
             to_emails: null,
-            subject: (conv as any)?.title || null,
+            subject: convData?.title || null,
             body: msg.body || null,
-            body_html: raw?.htmlBody || raw?.body?.html || null,
+            body_html:
+              (raw?.htmlBody as string) ||
+              (raw?.body && typeof raw.body === 'object'
+                ? ((raw.body as Record<string, unknown>)?.html as string)
+                : null) ||
+              null,
             received_at: msg.created_at,
             category: null,
             confidence: null,
@@ -246,7 +283,9 @@ export const useEmailThread = (threadId: string | null) => {
       // Fallback: try email_import_queue thread
       const { data, error } = await supabase
         .from('email_import_queue')
-        .select('id, from_email, from_name, to_emails, subject, body, body_html, received_at, category, confidence, direction')
+        .select(
+          'id, from_email, from_name, to_emails, subject, body, body_html, received_at, category, confidence, direction',
+        )
         .eq('workspace_id', workspace.id)
         .eq('thread_id', threadId)
         .order('received_at', { ascending: true });

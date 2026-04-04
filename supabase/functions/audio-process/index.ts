@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +12,7 @@ interface AudioRequest {
   customer_name?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -22,18 +21,23 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   const supabaseAuth = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
+    { global: { headers: { Authorization: authHeader } } },
   );
-  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
   if (authError || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   // --- END AUTH CHECK ---
@@ -44,13 +48,13 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const body: AudioRequest = await req.json();
-    console.log(`[${functionName}] Request:`, { 
+    console.log(`[${functionName}] Request:`, {
       workspace_id: body.workspace_id,
-      has_audio: !!body.audio_url
+      has_audio: !!body.audio_url,
     });
 
     if (!body.workspace_id) throw new Error('workspace_id is required');
@@ -65,7 +69,7 @@ serve(async (req) => {
     // Download audio file
     console.log(`[${functionName}] Downloading audio...`);
     let audioBlob: Blob;
-    
+
     try {
       // Check if it's a Supabase storage URL
       if (body.audio_url.includes('supabase') && body.audio_url.includes('/storage/')) {
@@ -95,7 +99,7 @@ serve(async (req) => {
 
     // Transcribe with OpenAI Whisper
     console.log(`[${functionName}] Transcribing with Whisper...`);
-    
+
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.mp3');
     formData.append('model', 'whisper-1');
@@ -104,9 +108,9 @@ serve(async (req) => {
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
-      body: formData
+      body: formData,
     });
 
     if (!whisperResponse.ok) {
@@ -118,7 +122,9 @@ serve(async (req) => {
     const transcript = transcription.text || '';
     const duration = transcription.duration || 0;
 
-    console.log(`[${functionName}] Transcription complete: ${transcript.length} chars, ${duration}s`);
+    console.log(
+      `[${functionName}] Transcription complete: ${transcript.length} chars, ${duration}s`,
+    );
 
     if (!transcript) {
       throw new Error('No transcription generated');
@@ -174,16 +180,15 @@ Return JSON:
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6-20250514',
         max_tokens: 1024,
-        system: 'You are an expert at analyzing voicemail messages for businesses. Extract actionable information. Return valid JSON only.',
-        messages: [
-          { role: 'user', content: analysisPrompt }
-        ]
-      })
+        system:
+          'You are an expert at analyzing voicemail messages for businesses. Extract actionable information. Return valid JSON only.',
+        messages: [{ role: 'user', content: analysisPrompt }],
+      }),
     });
 
     if (!aiResponse.ok) {
@@ -209,14 +214,15 @@ Return JSON:
         purpose: 'other',
         extracted_info: {},
         action_required: 'Review and respond to voicemail',
-        suggested_response: 'Thank you for your call. We received your voicemail and will get back to you shortly.'
+        suggested_response:
+          'Thank you for your call. We received your voicemail and will get back to you shortly.',
       };
     }
 
     console.log(`[${functionName}] Analysis complete:`, {
       sentiment: analysis.caller_sentiment,
       urgency: analysis.urgency,
-      purpose: analysis.purpose
+      purpose: analysis.purpose,
     });
 
     // Store voicemail transcript
@@ -231,7 +237,7 @@ Return JSON:
         summary: analysis.summary,
         caller_sentiment: analysis.caller_sentiment,
         extracted_info: analysis.extracted_info,
-        suggested_response: analysis.suggested_response
+        suggested_response: analysis.suggested_response,
       })
       .select('id')
       .single();
@@ -244,9 +250,9 @@ Return JSON:
     if (body.message_id) {
       await supabase
         .from('messages')
-        .update({ 
+        .update({
           is_voicemail: true,
-          audio_url: body.audio_url
+          audio_url: body.audio_url,
         })
         .eq('id', body.message_id);
     }
@@ -266,14 +272,13 @@ Return JSON:
           urgency: analysis.urgency,
           purpose: analysis.purpose,
           extracted_info: analysis.extracted_info,
-          action_required: analysis.action_required
+          action_required: analysis.action_required,
         },
         suggested_response: analysis.suggested_response,
-        duration_ms: processingDuration
+        duration_ms: processingDuration,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-
   } catch (error: any) {
     console.error(`[${functionName}] Error:`, error);
     return new Response(
@@ -281,9 +286,9 @@ Return JSON:
         success: false,
         error: error.message,
         function: functionName,
-        duration_ms: Date.now() - startTime
+        duration_ms: Date.now() - startTime,
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });

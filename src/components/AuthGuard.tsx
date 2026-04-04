@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from "@supabase/supabase-js";
-import { isOnboardingComplete } from "@/lib/onboardingStatus";
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import type { User, Session } from '@supabase/supabase-js';
+import { isOnboardingComplete } from '@/lib/onboardingStatus';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
@@ -16,13 +16,13 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     // Set up auth state listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
     // Then check for existing session
     supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
@@ -33,31 +33,8 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      // DEV BYPASS: skip auth entirely during local development
-      if (import.meta.env.DEV) {
-        const devUser = {
-          id: 'ad5f7868-d88d-4e1f-84b6-f34ae711e44d',
-          email: 'michael@maccleaning.uk',
-          app_metadata: {},
-          user_metadata: {},
-          aud: 'authenticated',
-          created_at: new Date().toISOString(),
-        } as User;
-        const devSession = {
-          access_token: 'dev-bypass-token',
-          refresh_token: 'dev-bypass-refresh',
-          expires_in: 86400,
-          token_type: 'bearer',
-          user: devUser,
-        } as Session;
-        setUser(devUser);
-        setSession(devSession);
-        setLoading(false);
-        return;
-      }
-
       setLoading(false);
-      navigate("/auth");
+      navigate('/auth');
     });
 
     return () => subscription.unsubscribe();
@@ -68,20 +45,19 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     const checkOnboarding = async () => {
       if (!user || checkingOnboardingRef.current || hasCheckedOnboarding.current) return;
 
-       // If user changes (sign out/in), allow a new check.
-       if (lastCheckedUserIdRef.current && lastCheckedUserIdRef.current !== user.id) {
-         hasCheckedOnboarding.current = false;
-       }
-      
-      // Skip onboarding check if already on onboarding page or in dev mode
+      // If user changes (sign out/in), allow a new check.
+      if (lastCheckedUserIdRef.current && lastCheckedUserIdRef.current !== user.id) {
+        hasCheckedOnboarding.current = false;
+      }
+
+      // Skip onboarding check if already on onboarding page
       if (location.pathname === '/onboarding') return;
-      if (import.meta.env.DEV) { hasCheckedOnboarding.current = true; return; }
 
       checkingOnboardingRef.current = true;
       try {
         const { data: userData, error } = await supabase
           .from('users')
-            .select('onboarding_completed, onboarding_step')
+          .select('onboarding_completed, onboarding_step')
           .eq('id', user.id)
           .single();
 

@@ -1,12 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -21,25 +20,28 @@ serve(async (req) => {
     // =============================================
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - missing token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized - missing token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Create client with user's auth to verify JWT
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await userSupabase.auth.getUser();
 
     if (authError || !user) {
       console.error('[request-deletion] JWT validation failed:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized - invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const userId = user.id;
@@ -53,10 +55,10 @@ serve(async (req) => {
       .single();
 
     if (userError || !userData?.workspace_id) {
-      return new Response(
-        JSON.stringify({ error: 'User not associated with a workspace' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'User not associated with a workspace' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const workspaceId = userData.workspace_id;
@@ -67,10 +69,10 @@ serve(async (req) => {
     const { customer_identifier, reason, deletion_type } = await req.json();
 
     if (!customer_identifier) {
-      return new Response(
-        JSON.stringify({ error: 'customer_identifier is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'customer_identifier is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('Creating deletion request for:', customer_identifier);
@@ -97,10 +99,10 @@ serve(async (req) => {
     }
 
     if (customerError || !customer) {
-      return new Response(
-        JSON.stringify({ error: 'Customer not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Customer not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Create deletion request
@@ -112,7 +114,7 @@ serve(async (req) => {
         reason: reason || 'Customer requested data deletion',
         deletion_type: deletion_type || 'full',
         notes: 'Request created via API',
-        requested_by: userId
+        requested_by: userId,
       })
       .select('id')
       .single();
@@ -133,15 +135,16 @@ serve(async (req) => {
         request_id: deletionRequest.id,
         status: 'pending',
         estimated_completion: estimatedCompletion.toISOString(),
-        message: 'Your deletion request has been received and will be processed within 30 days. An administrator will review your request.'
+        message:
+          'Your deletion request has been received and will be processed within 30 days. An administrator will review your request.',
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
     console.error('Error creating deletion request:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

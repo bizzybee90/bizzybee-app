@@ -7,20 +7,21 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  ArrowLeft, 
-  ArrowRight, 
-  Pencil, 
-  Trash2, 
-  Plus, 
-  X, 
+import {
+  ArrowLeft,
+  ArrowRight,
+  Pencil,
+  Trash2,
+  Plus,
+  X,
   Check,
   MessageSquare,
   Sparkles,
   BarChart3,
-  SkipForward
+  SkipForward,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 
 interface ReviewLearningStepProps {
@@ -81,14 +82,14 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
 
       if (voiceData) {
         // Parse JSON fields
-        const commonPhrases = Array.isArray(voiceData.common_phrases) 
-          ? voiceData.common_phrases as string[]
+        const commonPhrases = Array.isArray(voiceData.common_phrases)
+          ? (voiceData.common_phrases as string[])
           : [];
         const greetingPatterns = Array.isArray(voiceData.greeting_patterns)
-          ? voiceData.greeting_patterns as string[]
+          ? (voiceData.greeting_patterns as string[])
           : [];
         const signoffPatterns = Array.isArray(voiceData.signoff_patterns)
-          ? voiceData.signoff_patterns as string[]
+          ? (voiceData.signoff_patterns as string[])
           : [];
 
         setVoiceProfile({
@@ -112,13 +113,15 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
         .limit(10);
 
       if (responsesData) {
-        setLearnedResponses(responsesData.map(r => ({
-          id: r.id,
-          email_category: r.email_category || 'General',
-          trigger_phrases: r.trigger_phrases || [],
-          response_pattern: r.response_pattern || '',
-          example_response: r.example_response || '',
-        })));
+        setLearnedResponses(
+          responsesData.map((r) => ({
+            id: r.id,
+            email_category: r.email_category || 'General',
+            trigger_phrases: r.trigger_phrases || [],
+            response_pattern: r.response_pattern || '',
+            example_response: r.example_response || '',
+          })),
+        );
       }
 
       // Load inbox insights
@@ -129,8 +132,8 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
         .single();
 
       if (insightsData) {
-        const inquiryTypes = Array.isArray(insightsData.common_inquiry_types) 
-          ? insightsData.common_inquiry_types as { type: string; count: number }[]
+        const inquiryTypes = Array.isArray(insightsData.common_inquiry_types)
+          ? (insightsData.common_inquiry_types as { type: string; count: number }[])
           : [];
         setInsights({
           total_emails_analyzed: insightsData.total_emails_analyzed || 0,
@@ -139,7 +142,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
         });
       }
     } catch (error) {
-      console.error('Error loading learning data:', error);
+      logger.error('Error loading learning data', error);
     } finally {
       setLoading(false);
     }
@@ -166,7 +169,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
       toast.success('Voice profile updated');
       setEditingVoice(false);
     } catch (error) {
-      console.error('Error saving voice profile:', error);
+      logger.error('Error saving voice profile', error);
       toast.error('Failed to save voice profile');
     } finally {
       setSaving(false);
@@ -188,7 +191,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
       toast.success('Response pattern updated');
       setEditingResponseId(null);
     } catch (error) {
-      console.error('Error updating response:', error);
+      logger.error('Error updating response', error);
       toast.error('Failed to update response');
     } finally {
       setSaving(false);
@@ -197,16 +200,13 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
 
   const deleteResponse = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('learned_responses')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('learned_responses').delete().eq('id', id);
 
       if (error) throw error;
-      setLearnedResponses(prev => prev.filter(r => r.id !== id));
+      setLearnedResponses((prev) => prev.filter((r) => r.id !== id));
       toast.success('Response pattern removed');
     } catch (error) {
-      console.error('Error deleting response:', error);
+      logger.error('Error deleting response', error);
       toast.error('Failed to remove response');
     }
   };
@@ -282,7 +282,9 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
       {insights && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-muted/30 rounded-lg p-3 text-center">
-            <div className="text-xl font-bold text-primary">{insights.total_emails_analyzed.toLocaleString()}</div>
+            <div className="text-xl font-bold text-primary">
+              {insights.total_emails_analyzed.toLocaleString()}
+            </div>
             <div className="text-xs text-muted-foreground">Emails Analyzed</div>
           </div>
           <div className="bg-muted/30 rounded-lg p-3 text-center">
@@ -326,7 +328,12 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                       <Button variant="ghost" size="sm" onClick={() => setEditingVoice(false)}>
                         <X className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="default" size="sm" onClick={saveVoiceProfile} disabled={saving}>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={saveVoiceProfile}
+                        disabled={saving}
+                      >
                         <Check className="h-3.5 w-3.5 mr-1" />
                         Save
                       </Button>
@@ -337,14 +344,16 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
               <CardContent className="space-y-4">
                 {/* Tone Descriptors */}
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-2 block">Tone</label>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Tone
+                  </label>
                   <div className="flex flex-wrap gap-2">
                     {voiceProfile.tone_descriptors.map((tone, i) => (
                       <Badge key={i} variant="secondary" className="gap-1">
                         {tone}
                         {editingVoice && (
-                          <X 
-                            className="h-3 w-3 cursor-pointer hover:text-destructive" 
+                          <X
+                            className="h-3 w-3 cursor-pointer hover:text-destructive"
                             onClick={() => removeToneDescriptor(i)}
                           />
                         )}
@@ -359,7 +368,12 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                           className="h-7 w-24 text-xs"
                           onKeyDown={(e) => e.key === 'Enter' && addToneDescriptor()}
                         />
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={addToneDescriptor}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={addToneDescriptor}
+                        >
                           <Plus className="h-3 w-3" />
                         </Button>
                       </div>
@@ -376,7 +390,9 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                     <span className="text-xs text-muted-foreground">Casual</span>
                     <Slider
                       value={[voiceProfile.formality_score]}
-                      onValueChange={([value]) => setVoiceProfile({ ...voiceProfile, formality_score: value })}
+                      onValueChange={([value]) =>
+                        setVoiceProfile({ ...voiceProfile, formality_score: value })
+                      }
                       min={1}
                       max={10}
                       step={1}
@@ -392,7 +408,9 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={voiceProfile.uses_emojis}
-                      onCheckedChange={(checked) => setVoiceProfile({ ...voiceProfile, uses_emojis: checked })}
+                      onCheckedChange={(checked) =>
+                        setVoiceProfile({ ...voiceProfile, uses_emojis: checked })
+                      }
                       disabled={!editingVoice}
                     />
                     <span className="text-sm">Uses emojis</span>
@@ -400,7 +418,9 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={voiceProfile.uses_exclamations}
-                      onCheckedChange={(checked) => setVoiceProfile({ ...voiceProfile, uses_exclamations: checked })}
+                      onCheckedChange={(checked) =>
+                        setVoiceProfile({ ...voiceProfile, uses_exclamations: checked })
+                      }
                       disabled={!editingVoice}
                     />
                     <span className="text-sm">Uses exclamations</span>
@@ -410,14 +430,16 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                 {/* Common Phrases */}
                 {voiceProfile.common_phrases.length > 0 && (
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground mb-2 block">Common Phrases</label>
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                      Common Phrases
+                    </label>
                     <div className="flex flex-wrap gap-2">
                       {voiceProfile.common_phrases.slice(0, 5).map((phrase, i) => (
                         <Badge key={i} variant="outline" className="gap-1 text-xs">
                           "{phrase}"
                           {editingVoice && (
-                            <X 
-                              className="h-3 w-3 cursor-pointer hover:text-destructive" 
+                            <X
+                              className="h-3 w-3 cursor-pointer hover:text-destructive"
                               onClick={() => removeCommonPhrase(i)}
                             />
                           )}
@@ -432,7 +454,12 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                             className="h-7 w-32 text-xs"
                             onKeyDown={(e) => e.key === 'Enter' && addCommonPhrase()}
                           />
-                          <Button variant="ghost" size="sm" className="h-7 px-2" onClick={addCommonPhrase}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={addCommonPhrase}
+                          >
                             <Plus className="h-3 w-3" />
                           </Button>
                         </div>
@@ -442,7 +469,8 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                 )}
 
                 {/* Greeting & Signoff */}
-                {(voiceProfile.greeting_patterns.length > 0 || voiceProfile.signoff_patterns.length > 0) && (
+                {(voiceProfile.greeting_patterns.length > 0 ||
+                  voiceProfile.signoff_patterns.length > 0) && (
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     {voiceProfile.greeting_patterns.length > 0 && (
                       <div>
@@ -481,25 +509,40 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                           {editingResponseId === response.id ? (
                             <div className="space-y-2">
                               <div>
-                                <label className="text-xs text-muted-foreground">Trigger phrases (comma separated)</label>
+                                <label className="text-xs text-muted-foreground">
+                                  Trigger phrases (comma separated)
+                                </label>
                                 <Input
                                   value={response.trigger_phrases.join(', ')}
                                   onChange={(e) => {
-                                    const phrases = e.target.value.split(',').map(p => p.trim()).filter(Boolean);
-                                    setLearnedResponses(prev => 
-                                      prev.map(r => r.id === response.id ? { ...r, trigger_phrases: phrases } : r)
+                                    const phrases = e.target.value
+                                      .split(',')
+                                      .map((p) => p.trim())
+                                      .filter(Boolean);
+                                    setLearnedResponses((prev) =>
+                                      prev.map((r) =>
+                                        r.id === response.id
+                                          ? { ...r, trigger_phrases: phrases }
+                                          : r,
+                                      ),
                                     );
                                   }}
                                   className="h-8 text-sm mt-1"
                                 />
                               </div>
                               <div>
-                                <label className="text-xs text-muted-foreground">Response pattern</label>
+                                <label className="text-xs text-muted-foreground">
+                                  Response pattern
+                                </label>
                                 <Textarea
                                   value={response.response_pattern}
                                   onChange={(e) => {
-                                    setLearnedResponses(prev => 
-                                      prev.map(r => r.id === response.id ? { ...r, response_pattern: e.target.value } : r)
+                                    setLearnedResponses((prev) =>
+                                      prev.map((r) =>
+                                        r.id === response.id
+                                          ? { ...r, response_pattern: e.target.value }
+                                          : r,
+                                      ),
                                     );
                                   }}
                                   className="text-sm mt-1 min-h-[60px]"
@@ -529,17 +572,17 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                         <div className="flex gap-1 shrink-0">
                           {editingResponseId === response.id ? (
                             <>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className="h-7 w-7"
                                 onClick={() => setEditingResponseId(null)}
                               >
                                 <X className="h-3.5 w-3.5" />
                               </Button>
-                              <Button 
-                                variant="default" 
-                                size="icon" 
+                              <Button
+                                variant="default"
+                                size="icon"
                                 className="h-7 w-7"
                                 onClick={() => updateResponse(response)}
                                 disabled={saving}
@@ -549,17 +592,17 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
                             </>
                           ) : (
                             <>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className="h-7 w-7"
                                 onClick={() => setEditingResponseId(response.id)}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className="h-7 w-7 text-destructive hover:text-destructive"
                                 onClick={() => deleteResponse(response.id)}
                               >

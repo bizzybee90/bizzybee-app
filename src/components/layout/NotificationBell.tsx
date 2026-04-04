@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Bell, Check, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Notification {
@@ -38,11 +35,11 @@ export const NotificationBell = () => {
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
           const newNotification = payload.new as Notification;
-          setNotifications(prev => [newNotification, ...prev]);
+          setNotifications((prev) => [newNotification, ...prev]);
           if (!newNotification.is_read) {
-            setUnreadCount(prev => prev + 1);
+            setUnreadCount((prev) => prev + 1);
           }
-        }
+        },
       )
       .subscribe();
 
@@ -62,9 +59,9 @@ export const NotificationBell = () => {
       if (error) throw error;
 
       setNotifications(data || []);
-      setUnreadCount(data?.filter(n => !n.is_read).length || 0);
+      setUnreadCount(data?.filter((n) => !n.is_read).length || 0);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      logger.error('Error fetching notifications', error);
     } finally {
       setLoading(false);
     }
@@ -72,25 +69,20 @@ export const NotificationBell = () => {
 
   const markAsRead = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', id);
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
 
       if (error) throw error;
 
-      setNotifications(prev =>
-        prev.map(n => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      logger.error('Error marking notification as read', error);
     }
   };
 
   const markAllAsRead = async () => {
     try {
-      const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+      const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
       if (unreadIds.length === 0) return;
 
       const { error } = await supabase
@@ -100,10 +92,10 @@ export const NotificationBell = () => {
 
       if (error) throw error;
 
-      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (error) {
-      console.error('Error marking all as read:', error);
+      logger.error('Error marking all as read', error);
     }
   };
 
@@ -126,7 +118,7 @@ export const NotificationBell = () => {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <Badge 
+            <Badge
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
               variant="destructive"
             >
@@ -167,14 +159,10 @@ export const NotificationBell = () => {
                   onClick={() => !notification.is_read && markAsRead(notification.id)}
                 >
                   <div className="flex gap-3">
-                    <span className="text-xl">
-                      {getNotificationIcon(notification.type)}
-                    </span>
+                    <span className="text-xl">{getNotificationIcon(notification.type)}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-sm truncate">
-                          {notification.title}
-                        </p>
+                        <p className="font-medium text-sm truncate">{notification.title}</p>
                         {!notification.is_read && (
                           <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
                         )}
@@ -183,7 +171,9 @@ export const NotificationBell = () => {
                         {notification.body}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(notification.created_at), {
+                          addSuffix: true,
+                        })}
                       </p>
                     </div>
                   </div>

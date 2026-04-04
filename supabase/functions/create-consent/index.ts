@@ -1,13 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { validateAuth, AuthError, authErrorResponse } from "../_shared/auth.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -25,7 +24,7 @@ serve(async (req) => {
     if (!customer_identifier || !channel || !consent_method) {
       return new Response(
         JSON.stringify({ error: 'customer_identifier, channel, and consent_method are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -51,13 +50,13 @@ serve(async (req) => {
 
     if (!customer) {
       console.log('Customer not found, creating new customer');
-      
+
       const isEmail = customer_identifier.includes('@');
       const customerData: any = {
         workspace_id: workspaceId,
         name: customer_name || customer_identifier,
       };
-      
+
       if (isEmail) {
         customerData.email = customer_identifier;
       } else {
@@ -87,7 +86,7 @@ serve(async (req) => {
         consent_given: true,
         consent_date: new Date().toISOString(),
         consent_method: consent_method,
-        notes: `Consent captured via ${consent_method} contact`
+        notes: `Consent captured via ${consent_method} contact`,
       })
       .select('id')
       .single();
@@ -102,18 +101,18 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         consent_id: consent.id,
-        customer_id: customer.id
+        customer_id: customer.id,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
     if (error instanceof AuthError) {
       return authErrorResponse(error);
     }
     console.error('Error creating consent:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

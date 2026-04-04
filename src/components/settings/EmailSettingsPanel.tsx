@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { Upload, Save, Eye, Building2, Code } from 'lucide-react';
 import DOMPurify from 'dompurify';
@@ -69,7 +70,7 @@ export function EmailSettingsPanel() {
         }
       }
     } catch (error) {
-      console.error('Error fetching email settings:', error);
+      logger.error('Error fetching email settings', error);
     } finally {
       setLoading(false);
     }
@@ -90,14 +91,14 @@ export function EmailSettingsPanel() {
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('email-assets')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('email-assets').getPublicUrl(fileName);
 
-      setSettings(prev => ({ ...prev, logo_url: publicUrl }));
+      setSettings((prev) => ({ ...prev, logo_url: publicUrl }));
       toast({ title: 'Logo uploaded successfully' });
     } catch (error) {
-      console.error('Error uploading logo:', error);
+      logger.error('Error uploading logo', error);
       toast({ title: 'Failed to upload logo', variant: 'destructive' });
     } finally {
       setUploading(false);
@@ -105,8 +106,9 @@ export function EmailSettingsPanel() {
   };
 
   const generateSignatureHtml = (): string => {
-    const { company_name, company_phone, company_website, company_address, logo_url, from_name } = settings;
-    
+    const { company_name, company_phone, company_website, company_address, logo_url, from_name } =
+      settings;
+
     return `
 <table cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, sans-serif; font-size: 12px; color: #333;">
   <tr>
@@ -128,8 +130,45 @@ export function EmailSettingsPanel() {
   // Sanitize HTML to prevent XSS attacks - allows only safe email signature elements
   const sanitizeSignatureHtml = (html: string): string => {
     return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: ['table', 'tr', 'td', 'th', 'tbody', 'thead', 'div', 'span', 'img', 'a', 'b', 'i', 'strong', 'em', 'br', 'p', 'hr', 'font'],
-      ALLOWED_ATTR: ['style', 'href', 'src', 'alt', 'width', 'height', 'cellpadding', 'cellspacing', 'border', 'align', 'valign', 'bgcolor', 'color', 'face', 'size', 'target', 'rel'],
+      ALLOWED_TAGS: [
+        'table',
+        'tr',
+        'td',
+        'th',
+        'tbody',
+        'thead',
+        'div',
+        'span',
+        'img',
+        'a',
+        'b',
+        'i',
+        'strong',
+        'em',
+        'br',
+        'p',
+        'hr',
+        'font',
+      ],
+      ALLOWED_ATTR: [
+        'style',
+        'href',
+        'src',
+        'alt',
+        'width',
+        'height',
+        'cellpadding',
+        'cellspacing',
+        'border',
+        'align',
+        'valign',
+        'bgcolor',
+        'color',
+        'face',
+        'size',
+        'target',
+        'rel',
+      ],
     });
   };
 
@@ -157,12 +196,12 @@ export function EmailSettingsPanel() {
           .select()
           .single();
         if (error) throw error;
-        setSettings(prev => ({ ...prev, id: data.id, signature_html: signatureHtml }));
+        setSettings((prev) => ({ ...prev, id: data.id, signature_html: signatureHtml }));
       }
 
       toast({ title: 'Email settings saved' });
     } catch (error) {
-      console.error('Error saving email settings:', error);
+      logger.error('Error saving email settings', error);
       toast({ title: 'Failed to save settings', variant: 'destructive' });
     } finally {
       setSaving(false);
@@ -181,9 +220,7 @@ export function EmailSettingsPanel() {
             <Building2 className="h-5 w-5" />
             Email Settings
           </CardTitle>
-          <CardDescription>
-            Configure sender information and email signature
-          </CardDescription>
+          <CardDescription>Configure sender information and email signature</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -191,7 +228,7 @@ export function EmailSettingsPanel() {
               <Label>From Name</Label>
               <Input
                 value={settings.from_name}
-                onChange={e => setSettings(prev => ({ ...prev, from_name: e.target.value }))}
+                onChange={(e) => setSettings((prev) => ({ ...prev, from_name: e.target.value }))}
                 placeholder="MAC Cleaning Support"
               />
             </div>
@@ -200,7 +237,9 @@ export function EmailSettingsPanel() {
               <Input
                 type="email"
                 value={settings.reply_to_email}
-                onChange={e => setSettings(prev => ({ ...prev, reply_to_email: e.target.value }))}
+                onChange={(e) =>
+                  setSettings((prev) => ({ ...prev, reply_to_email: e.target.value }))
+                }
                 placeholder="support@company.com"
               />
             </div>
@@ -216,7 +255,10 @@ export function EmailSettingsPanel() {
               Email Signature
             </div>
             <div className="flex items-center gap-3">
-              <Label htmlFor="custom-html-toggle" className="text-sm font-normal text-muted-foreground">
+              <Label
+                htmlFor="custom-html-toggle"
+                className="text-sm font-normal text-muted-foreground"
+              >
                 {useCustomHtml ? 'Custom HTML' : 'Builder Mode'}
               </Label>
               <Switch
@@ -227,8 +269,8 @@ export function EmailSettingsPanel() {
             </div>
           </CardTitle>
           <CardDescription>
-            {useCustomHtml 
-              ? 'Paste your custom HTML signature directly' 
+            {useCustomHtml
+              ? 'Paste your custom HTML signature directly'
               : 'Fill in your company details to auto-generate a signature'}
           </CardDescription>
         </CardHeader>
@@ -238,12 +280,13 @@ export function EmailSettingsPanel() {
               <Label>Custom HTML Signature</Label>
               <Textarea
                 value={customHtml}
-                onChange={e => setCustomHtml(e.target.value)}
+                onChange={(e) => setCustomHtml(e.target.value)}
                 placeholder="<table>...</table>"
                 className="font-mono text-sm min-h-[200px]"
               />
               <p className="text-xs text-muted-foreground">
-                Paste your complete HTML signature. Use inline CSS for best email client compatibility.
+                Paste your complete HTML signature. Use inline CSS for best email client
+                compatibility.
               </p>
             </div>
           ) : (
@@ -253,7 +296,9 @@ export function EmailSettingsPanel() {
                   <Label>Company Name</Label>
                   <Input
                     value={settings.company_name}
-                    onChange={e => setSettings(prev => ({ ...prev, company_name: e.target.value }))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, company_name: e.target.value }))
+                    }
                     placeholder="MAC Cleaning Services"
                   />
                 </div>
@@ -261,7 +306,9 @@ export function EmailSettingsPanel() {
                   <Label>Phone Number</Label>
                   <Input
                     value={settings.company_phone}
-                    onChange={e => setSettings(prev => ({ ...prev, company_phone: e.target.value }))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, company_phone: e.target.value }))
+                    }
                     placeholder="+44 123 456 7890"
                   />
                 </div>
@@ -272,7 +319,9 @@ export function EmailSettingsPanel() {
                   <Label>Website</Label>
                   <Input
                     value={settings.company_website}
-                    onChange={e => setSettings(prev => ({ ...prev, company_website: e.target.value }))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, company_website: e.target.value }))
+                    }
                     placeholder="https://www.company.com"
                   />
                 </div>
@@ -280,7 +329,9 @@ export function EmailSettingsPanel() {
                   <Label>Address</Label>
                   <Input
                     value={settings.company_address}
-                    onChange={e => setSettings(prev => ({ ...prev, company_address: e.target.value }))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, company_address: e.target.value }))
+                    }
                     placeholder="123 Main St, London, UK"
                   />
                 </div>
@@ -290,7 +341,11 @@ export function EmailSettingsPanel() {
                 <Label>Company Logo</Label>
                 <div className="flex items-center gap-4">
                   {settings.logo_url && (
-                    <img src={settings.logo_url} alt="Logo" className="h-16 w-auto rounded border" />
+                    <img
+                      src={settings.logo_url}
+                      alt="Logo"
+                      className="h-16 w-auto rounded border"
+                    />
                   )}
                   <div>
                     <input

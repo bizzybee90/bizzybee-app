@@ -1,9 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import {
-  ChevronLeft, ChevronRight, AlertCircle, CheckCircle2, RotateCcw,
-  Globe, FileText, Download, Loader2, Search, Sparkles, ArrowRight
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
+  RotateCcw,
+  Globe,
+  FileText,
+  Download,
+  Loader2,
+  Search,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { generateKnowledgeBasePDF } from '@/components/settings/knowledge-base/generateKnowledgeBasePDF';
 import { toast } from 'sonner';
@@ -28,7 +39,12 @@ interface ExistingKnowledge {
   scrapedAt: string | null;
 }
 
-export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, onBack }: KnowledgeBaseStepProps) {
+export function KnowledgeBaseStep({
+  workspaceId,
+  businessContext,
+  onComplete,
+  onBack,
+}: KnowledgeBaseStepProps) {
   const [status, setStatus] = useState<Status>('checking');
   const [jobDbId, setJobDbId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,13 +89,18 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
 
         // Check for FAQs from website source
         // @ts-ignore - Supabase types cause deep instantiation errors
-        const faqResult = await supabase.from('faq_database').select('id, generation_source').eq('workspace_id', workspaceId).eq('is_own_content', true).limit(500);
+        const faqResult = await supabase
+          .from('faq_database')
+          .select('id, generation_source')
+          .eq('workspace_id', workspaceId)
+          .eq('is_own_content', true)
+          .limit(500);
         const faqs = faqResult?.data as Array<{ id: string; generation_source?: string }> | null;
         const faqCount = faqs?.length || 0;
 
         if (faqCount > 0) {
           // n8n stores the source page URL in generation_source
-          const uniquePages = new Set(faqs?.map(f => f.generation_source).filter(Boolean) ?? []);
+          const uniquePages = new Set(faqs?.map((f) => f.generation_source).filter(Boolean) ?? []);
           setExistingKnowledge({
             faqCount,
             pagesScraped: uniquePages.size,
@@ -91,7 +112,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
 
         setStatus('idle');
       } catch (err) {
-        console.error('Error checking existing knowledge:', err);
+        logger.error('Error checking existing knowledge', err);
         setStatus('idle');
       }
     };
@@ -130,10 +151,14 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           .eq('workspace_id', workspaceId)
           .eq('is_own_content', true)
           .not('generation_source', 'is', null);
-        const uniquePages = new Set((pageRows as Array<{ generation_source: string }> | null)?.map(r => r.generation_source) ?? []);
+        const uniquePages = new Set(
+          (pageRows as Array<{ generation_source: string }> | null)?.map(
+            (r) => r.generation_source,
+          ) ?? [],
+        );
         pagesScraped = uniquePages.size;
       } catch (err) {
-        console.warn('Could not count pages:', err);
+        logger.warn('Could not count pages', { error: String(err) });
       }
 
       // Update scraping_jobs row in DB so re-entry detection works
@@ -150,7 +175,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
             .maybeSingle();
           resolvedJobId = latestJob?.id || null;
         } catch (err) {
-          console.warn('Could not find latest scraping_jobs row:', err);
+          logger.warn('Could not find latest scraping_jobs row', { error: String(err) });
         }
       }
       if (resolvedJobId) {
@@ -165,7 +190,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
             })
             .eq('id', resolvedJobId);
         } catch (err) {
-          console.warn('Could not update scraping_jobs:', err);
+          logger.warn('Could not update scraping_jobs', { error: String(err) });
         }
       }
 
@@ -217,7 +242,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           }
         }
       } catch (err) {
-        console.error('Polling error:', err);
+        logger.error('Polling error', err);
       }
     };
 
@@ -244,7 +269,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           workspace_id: workspaceId,
           workflow_type: 'own_website_scrape',
           websiteUrl: businessContext.websiteUrl,
-        }
+        },
       });
 
       if (invokeError) throw new Error(invokeError.message || 'Failed to start scraping');
@@ -253,7 +278,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
       setJobDbId(data.jobId || null);
       setStatus('polling');
     } catch (err: any) {
-      console.error('Start scraping error:', err);
+      logger.error('Start scraping error', err);
       setError(err.message || 'Something went wrong');
       setStatus('error');
     }
@@ -289,7 +314,8 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
   if (status === 'already_done' && existingKnowledge) {
     const pagesCount = existingKnowledge.pagesScraped || 0;
     const faqCount = existingKnowledge.faqCount || 0;
-    const websiteDomain = businessContext.websiteUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || '';
+    const websiteDomain =
+      businessContext.websiteUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || '';
     const faviconUrl = businessContext.websiteUrl
       ? `https://www.google.com/s2/favicons?domain=${websiteDomain}&sz=64`
       : null;
@@ -304,8 +330,12 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
           <div className="flex items-center gap-2">
-            {faviconUrl && <img src={faviconUrl} alt={businessContext.companyName} className="h-8 w-8 rounded" />}
-            <span className="font-bold text-base">{businessContext.companyName || websiteDomain}</span>
+            {faviconUrl && (
+              <img src={faviconUrl} alt={businessContext.companyName} className="h-8 w-8 rounded" />
+            )}
+            <span className="font-bold text-base">
+              {businessContext.companyName || websiteDomain}
+            </span>
           </div>
         </div>
 
@@ -333,11 +363,22 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
         {/* Stage progress */}
         <div className="border rounded-xl overflow-hidden">
           {[
-            { icon: Search, label: 'Discover Pages', detail: pagesCount ? `${pagesCount} pages found` : 'Complete' },
-            { icon: Globe, label: 'Scrape Content', detail: pagesCount ? `${pagesCount} pages scraped` : 'Complete' },
+            {
+              icon: Search,
+              label: 'Discover Pages',
+              detail: pagesCount ? `${pagesCount} pages found` : 'Complete',
+            },
+            {
+              icon: Globe,
+              label: 'Scrape Content',
+              detail: pagesCount ? `${pagesCount} pages scraped` : 'Complete',
+            },
             { icon: Sparkles, label: 'Extract Knowledge', detail: `${faqCount} FAQs extracted` },
           ].map(({ icon: Icon, label, detail }, i) => (
-            <div key={i} className={`flex items-center justify-between px-4 py-2.5 ${i < 2 ? 'border-b' : ''}`}>
+            <div
+              key={i}
+              className={`flex items-center justify-between px-4 py-2.5 ${i < 2 ? 'border-b' : ''}`}
+            >
               <div className="flex items-center gap-2">
                 <Icon className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{label}</span>
@@ -359,7 +400,7 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
               await generateKnowledgeBasePDF(workspaceId, businessContext.companyName);
               toast.success('Knowledge Base PDF downloaded!');
             } catch (err) {
-              console.error('PDF error:', err);
+              logger.error('PDF generation error', err);
               toast.error('Failed to generate PDF');
             } finally {
               setDownloadingPDF(false);
@@ -368,12 +409,18 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           disabled={downloadingPDF}
           className="w-full gap-2"
         >
-          {downloadingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {downloadingPDF ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
           Download Knowledge Base PDF
         </Button>
 
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} className="flex-1">Back</Button>
+          <Button variant="outline" onClick={onBack} className="flex-1">
+            Back
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -381,11 +428,15 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
               // Fix A: clear stale faq_database + scraping_jobs rows so re-entry doesn't detect old data
               try {
                 await Promise.all([
-                  supabase.from('faq_database').delete().eq('workspace_id', workspaceId).eq('is_own_content', true),
+                  supabase
+                    .from('faq_database')
+                    .delete()
+                    .eq('workspace_id', workspaceId)
+                    .eq('is_own_content', true),
                   supabase.from('scraping_jobs').delete().eq('workspace_id', workspaceId),
                 ]);
               } catch (err) {
-                console.warn('Could not clear stale rows before re-scrape:', err);
+                logger.warn('Could not clear stale rows before re-scrape', { error: String(err) });
               }
               setExistingKnowledge(null);
               setJobDbId(null);
@@ -425,7 +476,10 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
         {/* Stage rows */}
         <div className="border rounded-xl overflow-hidden">
           {stages.map(({ icon: Icon, label }, i) => (
-            <div key={i} className={`flex items-center justify-between px-4 py-2.5 ${i < stages.length - 1 ? 'border-b' : ''}`}>
+            <div
+              key={i}
+              className={`flex items-center justify-between px-4 py-2.5 ${i < stages.length - 1 ? 'border-b' : ''}`}
+            >
               <div className="flex items-center gap-2">
                 <Icon className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{label}</span>
@@ -510,7 +564,13 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
           <Button variant="outline" onClick={handleSkip} className="flex-1">
             Skip for now
           </Button>
-          <Button onClick={() => { setError(null); setStatus('idle'); }} className="flex-1">
+          <Button
+            onClick={() => {
+              setError(null);
+              setStatus('idle');
+            }}
+            className="flex-1"
+          >
             Try Again
           </Button>
         </div>
@@ -533,7 +593,10 @@ export function KnowledgeBaseStep({ workspaceId, businessContext, onComplete, on
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
-          <Button onClick={() => onComplete({ industryFaqs: 0, websiteFaqs: 0 })} className="flex-1">
+          <Button
+            onClick={() => onComplete({ industryFaqs: 0, websiteFaqs: 0 })}
+            className="flex-1"
+          >
             Continue
             <ChevronRight className="h-4 w-4 ml-2" />
           </Button>

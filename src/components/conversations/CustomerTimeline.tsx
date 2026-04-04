@@ -6,15 +6,15 @@ import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChannelIcon } from '@/components/shared/ChannelIcon';
-import { 
-  Clock, 
-  MessageSquare, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Bot, 
+import {
+  Clock,
+  MessageSquare,
+  AlertTriangle,
+  CheckCircle2,
+  Bot,
   User,
   ArrowRight,
-  FileText
+  FileText,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Separator } from '@/components/ui/separator';
@@ -39,10 +39,7 @@ interface CustomerTimelineProps {
   currentConversationId?: string;
 }
 
-export const CustomerTimeline = ({ 
-  customerId, 
-  currentConversationId 
-}: CustomerTimelineProps) => {
+export const CustomerTimeline = ({ customerId, currentConversationId }: CustomerTimelineProps) => {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'timeline' | 'conversations'>('timeline');
@@ -64,7 +61,7 @@ export const CustomerTimeline = ({
         .limit(20);
 
       // Fetch messages for those conversations
-      const conversationIds = conversations?.map(c => c.id) || [];
+      const conversationIds = conversations?.map((c) => c.id) || [];
       const { data: messages } = await supabase
         .from('messages')
         .select('*')
@@ -83,7 +80,7 @@ export const CustomerTimeline = ({
       const timelineEvents: TimelineEvent[] = [];
 
       // Add conversation events
-      conversations?.forEach(conv => {
+      conversations?.forEach((conv) => {
         // Conversation created event
         timelineEvents.push({
           id: `conv-${conv.id}`,
@@ -94,7 +91,7 @@ export const CustomerTimeline = ({
           channel: conv.channel,
           content: conv.summary_for_human || conv.title || 'New conversation',
           status: conv.status || undefined,
-          priority: conv.priority || undefined
+          priority: conv.priority || undefined,
         });
 
         // Escalation event
@@ -107,7 +104,7 @@ export const CustomerTimeline = ({
             conversation_id: conv.id,
             conversation_title: conv.title || `${conv.channel} conversation`,
             channel: conv.channel,
-            content: conv.ai_reason_for_escalation || 'Conversation escalated to human'
+            content: conv.ai_reason_for_escalation || 'Conversation escalated to human',
           });
         }
 
@@ -121,14 +118,14 @@ export const CustomerTimeline = ({
             conversation_id: conv.id,
             conversation_title: conv.title || `${conv.channel} conversation`,
             channel: conv.channel,
-            content: 'Conversation resolved'
+            content: 'Conversation resolved',
           });
         }
       });
 
       // Add message events
-      messages?.forEach(msg => {
-        const conv = conversations?.find(c => c.id === msg.conversation_id);
+      messages?.forEach((msg) => {
+        const conv = conversations?.find((c) => c.id === msg.conversation_id);
         timelineEvents.push({
           id: `msg-${msg.id}`,
           type: 'message',
@@ -138,7 +135,7 @@ export const CustomerTimeline = ({
           channel: msg.channel,
           content: msg.body,
           actor_name: msg.actor_name || undefined,
-          actor_type: msg.actor_type
+          actor_type: msg.actor_type,
         });
       });
 
@@ -148,13 +145,13 @@ export const CustomerTimeline = ({
           id: 'notes',
           type: 'note',
           timestamp: new Date().toISOString(),
-          content: customer.notes
+          content: customer.notes,
         });
       }
 
       // Sort by timestamp (newest first)
-      timelineEvents.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      timelineEvents.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
 
       setEvents(timelineEvents);
@@ -170,9 +167,11 @@ export const CustomerTimeline = ({
       case 'conversation':
         return <MessageSquare className="h-4 w-4 text-primary" />;
       case 'message':
-        return event.actor_type === 'ai_agent' 
-          ? <Bot className="h-4 w-4 text-blue-500" />
-          : <User className="h-4 w-4 text-green-500" />;
+        return event.actor_type === 'ai_agent' ? (
+          <Bot className="h-4 w-4 text-blue-500" />
+        ) : (
+          <User className="h-4 w-4 text-green-500" />
+        );
       case 'event':
         if (event.event_type === 'escalation') {
           return <AlertTriangle className="h-4 w-4 text-orange-500" />;
@@ -240,7 +239,11 @@ export const CustomerTimeline = ({
   }
 
   return (
-    <Tabs value={view} onValueChange={(v) => setView(v as any)} className="w-full">
+    <Tabs
+      value={view}
+      onValueChange={(v) => setView(v as 'timeline' | 'conversations')}
+      className="w-full"
+    >
       <TabsList className="grid w-full grid-cols-2 mb-3">
         <TabsTrigger value="timeline" className="text-xs">
           <Clock className="h-3 w-3 mr-1.5" />
@@ -278,10 +281,7 @@ export const CustomerTimeline = ({
                           {getEventLabel(event)}
                         </span>
                         {event.channel && (
-                          <ChannelIcon 
-                            channel={event.channel} 
-                            className="h-3 w-3 flex-shrink-0" 
-                          />
+                          <ChannelIcon channel={event.channel} className="h-3 w-3 flex-shrink-0" />
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
@@ -291,15 +291,11 @@ export const CustomerTimeline = ({
 
                     {/* Conversation Title */}
                     {event.conversation_title && (
-                      <p className="text-sm font-medium line-clamp-1">
-                        {event.conversation_title}
-                      </p>
+                      <p className="text-sm font-medium line-clamp-1">{event.conversation_title}</p>
                     )}
 
                     {/* Content */}
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {event.content}
-                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{event.content}</p>
 
                     {/* Metadata */}
                     <div className="flex items-center gap-2 flex-wrap">
@@ -338,7 +334,9 @@ export const CustomerTimeline = ({
         <ScrollArea className="h-[400px]">
           <div className="space-y-2 pr-4">
             {events
-              .filter(e => e.type === 'conversation' && e.conversation_id !== currentConversationId)
+              .filter(
+                (e) => e.type === 'conversation' && e.conversation_id !== currentConversationId,
+              )
               .map((event) => (
                 <Card
                   key={event.id}
@@ -362,13 +360,13 @@ export const CustomerTimeline = ({
                       )}
                     </div>
 
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {event.content}
-                    </p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{event.content}</p>
 
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      <span>{formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}</span>
+                      <span>
+                        {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
+                      </span>
                       {event.priority && (
                         <>
                           <span>•</span>
@@ -379,8 +377,10 @@ export const CustomerTimeline = ({
                   </div>
                 </Card>
               ))}
-            
-            {events.filter(e => e.type === 'conversation' && e.conversation_id !== currentConversationId).length === 0 && (
+
+            {events.filter(
+              (e) => e.type === 'conversation' && e.conversation_id !== currentConversationId,
+            ).length === 0 && (
               <div className="flex flex-col items-center justify-center py-6 text-center">
                 <MessageSquare className="h-10 w-10 text-muted-foreground/50 mb-2" />
                 <p className="text-sm text-muted-foreground">First conversation with customer</p>

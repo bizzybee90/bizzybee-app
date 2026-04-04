@@ -18,7 +18,11 @@ const emptyService = (): AiPhoneService => ({
 });
 
 export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
-  const updateService = (index: number, field: keyof AiPhoneService, value: string | number | null) => {
+  const updateService = (
+    index: number,
+    field: keyof AiPhoneService,
+    value: string | number | null,
+  ) => {
     const updated = services.map((s, i) => (i === index ? { ...s, [field]: value } : s));
     onChange(updated);
   };
@@ -35,11 +39,11 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
     <div className="space-y-3">
       {/* Column headers — hidden on mobile */}
       <div className="hidden md:grid md:grid-cols-[1fr_1fr_100px_100px_100px_40px] gap-2 px-1">
-        <Label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Service Name</Label>
-        <Label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Description</Label>
-        <Label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Price From</Label>
-        <Label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Price To</Label>
-        <Label className="text-xs" style={{ color: 'var(--text-secondary)' }}>Duration (min)</Label>
+        <Label className="text-xs text-muted-foreground">Service Name</Label>
+        <Label className="text-xs text-muted-foreground">Description</Label>
+        <Label className="text-xs text-muted-foreground">Price From</Label>
+        <Label className="text-xs text-muted-foreground">Price To</Label>
+        <Label className="text-xs text-muted-foreground">Duration (min)</Label>
         <span />
       </div>
 
@@ -49,7 +53,7 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
           className="grid grid-cols-1 md:grid-cols-[1fr_1fr_100px_100px_100px_40px] gap-2 rounded-lg border p-3 md:border-0 md:p-0"
         >
           <div>
-            <Label className="text-xs md:hidden" style={{ color: 'var(--text-secondary)' }}>Service Name</Label>
+            <Label className="text-xs md:hidden text-muted-foreground">Service Name</Label>
             <Input
               placeholder="e.g. Window Cleaning"
               value={service.name}
@@ -57,7 +61,7 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
             />
           </div>
           <div>
-            <Label className="text-xs md:hidden" style={{ color: 'var(--text-secondary)' }}>Description</Label>
+            <Label className="text-xs md:hidden text-muted-foreground">Description</Label>
             <Input
               placeholder="Brief description"
               value={service.description}
@@ -65,7 +69,7 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
             />
           </div>
           <div>
-            <Label className="text-xs md:hidden" style={{ color: 'var(--text-secondary)' }}>Price From</Label>
+            <Label className="text-xs md:hidden text-muted-foreground">Price From</Label>
             <Input
               type="number"
               placeholder="0"
@@ -77,7 +81,7 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
             />
           </div>
           <div>
-            <Label className="text-xs md:hidden" style={{ color: 'var(--text-secondary)' }}>Price To</Label>
+            <Label className="text-xs md:hidden text-muted-foreground">Price To</Label>
             <Input
               type="number"
               placeholder="0"
@@ -89,14 +93,18 @@ export const ServiceEditor = ({ services, onChange }: ServiceEditorProps) => {
             />
           </div>
           <div>
-            <Label className="text-xs md:hidden" style={{ color: 'var(--text-secondary)' }}>Duration (min)</Label>
+            <Label className="text-xs md:hidden text-muted-foreground">Duration (min)</Label>
             <Input
               type="number"
               placeholder="60"
               min={0}
               value={service.duration_minutes ?? ''}
               onChange={(e) =>
-                updateService(index, 'duration_minutes', e.target.value ? Number(e.target.value) : null)
+                updateService(
+                  index,
+                  'duration_minutes',
+                  e.target.value ? Number(e.target.value) : null,
+                )
               }
             />
           </div>

@@ -20,37 +20,37 @@ interface RefinedFaq {
 
 // ── BizzyBee Brand — warm amber/honey + clean whites (matches KB PDF) ──
 const C = {
-  amber:        [245, 158, 11]  as [number, number, number],
-  amberDark:    [217, 119, 6]   as [number, number, number],
-  amberLight:   [252, 211, 77]  as [number, number, number],
-  amberPale:    [255, 251, 235] as [number, number, number],
-  amberSoft:    [254, 243, 199] as [number, number, number],
-  white:        [255, 255, 255] as [number, number, number],
-  background:   [249, 250, 251] as [number, number, number],
-  foreground:   [26, 28, 34]    as [number, number, number],
-  slate:        [71, 85, 105]   as [number, number, number],
-  muted:        [107, 114, 128] as [number, number, number],
-  subtle:       [156, 163, 175] as [number, number, number],
-  border:       [229, 231, 235] as [number, number, number],
-  green:        [22, 163, 74]   as [number, number, number],
-  greenPale:    [220, 252, 231] as [number, number, number],
-  orange:       [234, 88, 12]   as [number, number, number],
-  violet:       [139, 92, 246]  as [number, number, number],
-  rose:         [225, 29, 72]   as [number, number, number],
-  sky:          [14, 165, 233]  as [number, number, number],
-  teal:         [20, 184, 166]  as [number, number, number],
+  amber: [245, 158, 11] as [number, number, number],
+  amberDark: [217, 119, 6] as [number, number, number],
+  amberLight: [252, 211, 77] as [number, number, number],
+  amberPale: [255, 251, 235] as [number, number, number],
+  amberSoft: [254, 243, 199] as [number, number, number],
+  white: [255, 255, 255] as [number, number, number],
+  background: [249, 250, 251] as [number, number, number],
+  foreground: [26, 28, 34] as [number, number, number],
+  slate: [71, 85, 105] as [number, number, number],
+  muted: [107, 114, 128] as [number, number, number],
+  subtle: [156, 163, 175] as [number, number, number],
+  border: [229, 231, 235] as [number, number, number],
+  green: [22, 163, 74] as [number, number, number],
+  greenPale: [220, 252, 231] as [number, number, number],
+  orange: [234, 88, 12] as [number, number, number],
+  violet: [139, 92, 246] as [number, number, number],
+  rose: [225, 29, 72] as [number, number, number],
+  sky: [14, 165, 233] as [number, number, number],
+  teal: [20, 184, 166] as [number, number, number],
 };
 
 const CAT_COLOURS: Record<string, [number, number, number]> = {
   services: C.amber,
-  pricing:  C.green,
-  booking:  C.violet,
+  pricing: C.green,
+  booking: C.violet,
   policies: C.rose,
   coverage: C.sky,
-  process:  C.amberDark,
-  trust:    C.teal,
-  contact:  C.orange,
-  general:  C.amber,
+  process: C.amberDark,
+  trust: C.teal,
+  contact: C.orange,
+  general: C.amber,
 };
 
 function catColour(cat: string): [number, number, number] {
@@ -61,7 +61,10 @@ function catColour(cat: string): [number, number, number] {
   return C.amber;
 }
 
-export async function generateCompetitorResearchPDF(workspaceId: string, companyName?: string): Promise<void> {
+export async function generateCompetitorResearchPDF(
+  workspaceId: string,
+  companyName?: string,
+): Promise<void> {
   const doc = new jsPDF();
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
@@ -69,14 +72,25 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
   const cw = pw - mx * 2;
   let y = mx;
 
-  const sb: any = supabase as any;
-
-  const fetchAll = async <T,>(table: string, select: string, build?: (q: any) => any): Promise<T[]> => {
-    const ps = 1000; let from = 0; const rows: T[] = [];
+  // Dynamic table pagination — tables may not be in generated Supabase types
+  const fetchAll = async <T>(
+    table: string,
+    select: string,
+    build?: (q: unknown) => unknown,
+  ): Promise<T[]> => {
+    const ps = 1000;
+    let from = 0;
+    const rows: T[] = [];
     while (true) {
-      let q = sb.from(table).select(select).eq('workspace_id', workspaceId).range(from, from + ps - 1);
+      let q: unknown = (supabase as unknown as { from: (t: string) => unknown }).from(table);
+      q = (q as { select: (s: string) => unknown }).select(select);
+      q = (q as { eq: (c: string, v: string) => unknown }).eq('workspace_id', workspaceId);
+      q = (q as { range: (f: number, t: number) => unknown }).range(from, from + ps - 1);
       if (build) q = build(q);
-      const { data, error } = await q;
+      const { data, error } = await (q as Promise<{
+        data: unknown[] | null;
+        error: { message: string } | null;
+      }>);
       if (error) throw error;
       const page = (data || []) as T[];
       rows.push(...page);
@@ -86,41 +100,71 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
     return rows;
   };
 
-  const ensureSpace = (n: number) => { if (y + n > ph - 22) { doc.addPage(); pageHeader(); } };
-  const rRect = (x: number, ry: number, w: number, h: number, r: number, fill: [number, number, number]) => {
-    doc.setFillColor(...fill); doc.roundedRect(x, ry, w, h, r, r, 'F');
+  const ensureSpace = (n: number) => {
+    if (y + n > ph - 22) {
+      doc.addPage();
+      pageHeader();
+    }
+  };
+  const rRect = (
+    x: number,
+    ry: number,
+    w: number,
+    h: number,
+    r: number,
+    fill: [number, number, number],
+  ) => {
+    doc.setFillColor(...fill);
+    doc.roundedRect(x, ry, w, h, r, r, 'F');
   };
   const hLine = (ly: number, col: [number, number, number] = C.border, w = 0.3) => {
-    doc.setDrawColor(...col); doc.setLineWidth(w); doc.line(mx, ly, pw - mx, ly);
+    doc.setDrawColor(...col);
+    doc.setLineWidth(w);
+    doc.line(mx, ly, pw - mx, ly);
   };
 
   // ── fetch data ──
   const [competitorFaqs, adaptedFaqs] = await Promise.all([
-    fetchAll<CompetitorFaq>('faq_database', 'id, question, answer, category, source_business, source_url', q =>
-      q.eq('is_active', true).eq('is_own_content', false).order('category').order('source_business')
+    fetchAll<CompetitorFaq>(
+      'faq_database',
+      'id, question, answer, category, source_business, source_url',
+      (q) =>
+        q
+          .eq('is_active', true)
+          .eq('is_own_content', false)
+          .order('category')
+          .order('source_business'),
     ),
-    fetchAll<RefinedFaq & { id: string }>('faq_database', 'id, question, answer, category, original_faq_id', q =>
-      q.eq('is_active', true).eq('generation_source', 'competitor_adapted').not('original_faq_id', 'is', null)
+    fetchAll<RefinedFaq & { id: string }>(
+      'faq_database',
+      'id, question, answer, category, original_faq_id',
+      (q) =>
+        q
+          .eq('is_active', true)
+          .eq('generation_source', 'competitor_adapted')
+          .not('original_faq_id', 'is', null),
     ),
   ]);
 
   // Build lookup: original competitor FAQ id → refined version
   const refinedMap = new Map<string, RefinedFaq>();
-    adaptedFaqs.forEach(faq => {
+  adaptedFaqs.forEach((faq) => {
     if (faq.original_faq_id) refinedMap.set(faq.original_faq_id, faq);
   });
-  console.log(`[PDF] Found ${competitorFaqs.length} competitor FAQs, ${adaptedFaqs.length} adapted FAQs, refinedMap size: ${refinedMap.size}`);
+  console.log(
+    `[PDF] Found ${competitorFaqs.length} competitor FAQs, ${adaptedFaqs.length} adapted FAQs, refinedMap size: ${refinedMap.size}`,
+  );
 
   // Group by source business
   const bySource: Record<string, CompetitorFaq[]> = {};
-  competitorFaqs.forEach(faq => {
+  competitorFaqs.forEach((faq) => {
     const key = faq.source_business || 'Unknown Competitor';
     if (!bySource[key]) bySource[key] = [];
     bySource[key].push(faq);
   });
 
   const sources = Object.keys(bySource);
-  const adapted = competitorFaqs.filter(f => refinedMap.has(f.id)).length;
+  const adapted = competitorFaqs.filter((f) => refinedMap.has(f.id)).length;
 
   // ════════════════════════════════════════
   //  PAGE HEADER — warm amber bar (matches KB PDF)
@@ -171,11 +215,16 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
     const img = new Image();
     img.crossOrigin = 'anonymous';
     await new Promise<void>((resolve) => {
-      img.onload = () => { doc.addImage(img, 'PNG', pw / 2 - 20, 52, 40, 40); resolve(); };
+      img.onload = () => {
+        doc.addImage(img, 'PNG', pw / 2 - 20, 52, 40, 40);
+        resolve();
+      };
       img.onerror = () => resolve();
       img.src = bizzybeeLogoSrc;
     });
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   // Title
   doc.setFont('helvetica', 'bold');
@@ -196,7 +245,12 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
   // Date
   doc.setFontSize(10);
   doc.setTextColor(...C.muted);
-  doc.text(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), pw / 2, 142, { align: 'center' });
+  doc.text(
+    new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    pw / 2,
+    142,
+    { align: 'center' },
+  );
 
   // ── Stats cards ──
   const sY = 162;
@@ -258,10 +312,12 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
   ];
   let iy = y + 11;
   info.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
     doc.setTextColor(...C.amberDark);
     doc.text(label, mx + 8, iy);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
     doc.setTextColor(...C.foreground);
     doc.text(value, mx + 55, iy);
     iy += 9.5;
@@ -276,10 +332,12 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
     const col = catColour(faqs[0]?.category || 'general');
     doc.setFillColor(...col);
     doc.roundedRect(mx + 4, y - 2.5, 3, 8, 1, 1, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
     doc.setTextColor(...C.foreground);
     doc.text(source, mx + 11, y + 3);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.setTextColor(...C.muted);
     doc.text(`${faqs.length} FAQs`, mx + 11 + doc.getTextWidth(source) + 4, y + 3);
     y += 10;
@@ -300,10 +358,12 @@ export async function generateCompetitorResearchPDF(workspaceId: string, company
     // Source header — amber pill
     const col = catColour(faqs[0]?.category || 'general');
     rRect(mx, y, cw, 14, 5, col);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
     doc.setTextColor(...C.white);
     doc.text(source, mx + 8, y + 10);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text(`${faqs.length} FAQs`, pw - mx - 8, y + 10, { align: 'right' });
     y += 20;
 

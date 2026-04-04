@@ -1,12 +1,6 @@
 import { useCallLogs } from '@/hooks/useCallLogs';
 import { Fragment, useState } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, Phone, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,7 +94,7 @@ const outcomeConfig: Record<string, { label: string; className: string }> = {
 };
 
 function OutcomeBadge({ outcome }: { outcome: string | null }) {
-  if (!outcome) return <span className="text-[var(--text-secondary)]">--</span>;
+  if (!outcome) return <span className="text-muted-foreground">--</span>;
   const cfg = outcomeConfig[outcome] ?? {
     label: outcome,
     className: 'bg-gray-50 text-gray-600 border-gray-200',
@@ -139,34 +133,36 @@ interface ExpandedRowProps {
 function ExpandedRow({ call }: ExpandedRowProps) {
   return (
     <tr>
-      <td colSpan={7} className="px-4 py-4 bg-[var(--bg-secondary)]">
+      <td colSpan={7} className="px-4 py-4 bg-muted">
         <div className="space-y-4 max-w-3xl">
           {/* Transcript */}
           <CallTranscript
-            transcriptObject={call.transcript_object as any}
-            transcriptText={call.transcript}
+            transcriptObject={
+              (
+                call as unknown as {
+                  transcript_object?: Array<{ role: 'agent' | 'user'; content: string }> | null;
+                }
+              ).transcript_object ?? null
+            }
+            transcriptText={typeof call.transcript === 'string' ? call.transcript : null}
           />
 
           {/* Meta grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
             {call.outcome_details && Object.keys(call.outcome_details).length > 0 && (
               <div>
-                <p className="text-[var(--text-secondary)] text-xs mb-0.5">Outcome Details</p>
-                <p className="text-[var(--text-primary)]">
-                  {JSON.stringify(call.outcome_details)}
-                </p>
+                <p className="text-muted-foreground text-xs mb-0.5">Outcome Details</p>
+                <p className="text-foreground">{JSON.stringify(call.outcome_details)}</p>
               </div>
             )}
             <div>
-              <p className="text-[var(--text-secondary)] text-xs mb-0.5">Cost</p>
-              <p className="text-[var(--text-primary)] font-medium">
-                {call.cost_cents}p
-              </p>
+              <p className="text-muted-foreground text-xs mb-0.5">Cost</p>
+              <p className="text-foreground font-medium">{call.cost_cents}p</p>
             </div>
             {call.followup_notes && (
               <div className="col-span-2">
-                <p className="text-[var(--text-secondary)] text-xs mb-0.5">Follow-up Notes</p>
-                <p className="text-[var(--text-primary)]">{call.followup_notes}</p>
+                <p className="text-muted-foreground text-xs mb-0.5">Follow-up Notes</p>
+                <p className="text-foreground">{call.followup_notes}</p>
               </div>
             )}
           </div>
@@ -210,10 +206,8 @@ function EmptyState() {
       <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mb-4">
         <Phone className="w-5 h-5 text-amber-600" />
       </div>
-      <p className="text-base font-medium text-[var(--text-primary)] mb-1">
-        No calls yet
-      </p>
-      <p className="text-sm text-[var(--text-secondary)] max-w-xs">
+      <p className="text-base font-medium text-foreground mb-1">No calls yet</p>
+      <p className="text-sm text-muted-foreground max-w-xs">
         Set up your AI Phone to get started. Calls will appear here in real time.
       </p>
     </div>
@@ -231,9 +225,9 @@ export const CallLogTable = () => {
   };
 
   return (
-    <div className="bg-white border border-[var(--separator)] rounded-xl overflow-hidden">
+    <div className="bg-white border border-border rounded-xl overflow-hidden">
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[var(--separator)]">
+      <div className="flex flex-wrap items-center gap-3 p-4 border-b border-border">
         <Select
           value={filters.dateRange}
           onValueChange={(v) =>
@@ -307,23 +301,23 @@ export const CallLogTable = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--separator)] text-left">
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+              <tr className="border-b border-border text-left">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Time
                 </th>
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Caller
                 </th>
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Duration
                 </th>
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Outcome
                 </th>
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider w-12">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
                   Mood
                 </th>
-                <th className="px-4 py-2.5 text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Summary
                 </th>
                 <th className="px-4 py-2.5 w-10" />
@@ -336,34 +330,30 @@ export const CallLogTable = () => {
                   <Fragment key={call.id}>
                     <tr
                       className={cn(
-                        'border-b border-[var(--separator)] hover:bg-gray-50/50 cursor-pointer transition-colors',
-                        isExpanded && 'bg-gray-50/50'
+                        'border-b border-border hover:bg-gray-50/50 cursor-pointer transition-colors',
+                        isExpanded && 'bg-gray-50/50',
                       )}
                       onClick={() => toggleRow(call.id)}
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <DirectionIcon direction={call.direction} />
-                          <span className="text-[var(--text-primary)]">
-                            {formatTime(call.start_time)}
-                          </span>
+                          <span className="text-foreground">{formatTime(call.start_time)}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[var(--text-primary)] font-mono text-xs">
+                      <td className="px-4 py-3 whitespace-nowrap text-foreground font-mono text-xs">
                         {formatPhoneNumber(call.caller_number)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[var(--text-secondary)]">
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                         {formatDuration(call.duration_seconds)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <OutcomeBadge outcome={call.outcome} />
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {call.sentiment
-                          ? sentimentEmoji[call.sentiment] ?? '--'
-                          : '--'}
+                        {call.sentiment ? (sentimentEmoji[call.sentiment] ?? '--') : '--'}
                       </td>
-                      <td className="px-4 py-3 text-[var(--text-secondary)] max-w-[240px]">
+                      <td className="px-4 py-3 text-muted-foreground max-w-[240px]">
                         {truncate(call.summary, 60)}
                       </td>
                       <td className="px-4 py-3">
@@ -374,9 +364,9 @@ export const CallLogTable = () => {
                           aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
                         >
                           {isExpanded ? (
-                            <ChevronDown className="w-4 h-4 text-[var(--text-secondary)]" />
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="w-4 h-4 text-[var(--text-secondary)]" />
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
                           )}
                         </Button>
                       </td>

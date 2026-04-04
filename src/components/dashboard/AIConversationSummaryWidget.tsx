@@ -4,7 +4,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Loader2, Bot, User, ChevronDown, ChevronUp, ExternalLink, Mail, MessageSquare, Phone } from 'lucide-react';
+import {
+  Loader2,
+  Bot,
+  User,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Mail,
+  MessageSquare,
+  Phone,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { format } from 'date-fns';
@@ -33,7 +43,7 @@ export const AIConversationSummaryWidget = () => {
 
   useEffect(() => {
     fetchConversations();
-    
+
     // Set up realtime subscription
     const channel = supabase
       .channel('ai-conversations-changes')
@@ -43,11 +53,11 @@ export const AIConversationSummaryWidget = () => {
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `is_escalated=eq.false`
+          filter: `is_escalated=eq.false`,
         },
         () => {
           fetchConversations();
-        }
+        },
       )
       .subscribe();
 
@@ -112,10 +122,12 @@ export const AIConversationSummaryWidget = () => {
               customer_message: customerMsg?.body || null,
               ai_response: aiMsg?.body || null,
             };
-          })
+          }),
         );
 
-        setConversations(conversationsWithMessages.filter(c => c.customer_message || c.ai_response));
+        setConversations(
+          conversationsWithMessages.filter((c) => c.customer_message || c.ai_response),
+        );
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -125,7 +137,7 @@ export const AIConversationSummaryWidget = () => {
   };
 
   const toggleExpanded = (id: string) => {
-    setExpandedCards(prev => {
+    setExpandedCards((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
         newSet.delete(id);
@@ -138,10 +150,14 @@ export const AIConversationSummaryWidget = () => {
 
   const getSentimentEmoji = (sentiment: string | null) => {
     switch (sentiment?.toLowerCase()) {
-      case 'positive': return '';
-      case 'negative': return '';
-      case 'neutral': return '';
-      default: return '';
+      case 'positive':
+        return '';
+      case 'negative':
+        return '';
+      case 'neutral':
+        return '';
+      default:
+        return '';
     }
   };
 
@@ -187,9 +203,7 @@ export const AIConversationSummaryWidget = () => {
             <Bot className="h-5 w-5" />
             Recent AI Conversations
           </CardTitle>
-          <CardDescription>
-            View customer inquiries and AI responses
-          </CardDescription>
+          <CardDescription>View customer inquiries and AI responses</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8 text-muted-foreground">
@@ -208,16 +222,14 @@ export const AIConversationSummaryWidget = () => {
           <Bot className="h-5 w-5" />
           Recent AI Conversations
         </CardTitle>
-        <CardDescription>
-          Customer inquiries and AI responses from today
-        </CardDescription>
+        <CardDescription>Customer inquiries and AI responses from today</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[600px] pr-4">
           <div className="space-y-3">
             {conversations.map((convo) => {
               const isExpanded = expandedCards.has(convo.id);
-              
+
               return (
                 <Collapsible
                   key={convo.id}
@@ -233,14 +245,17 @@ export const AIConversationSummaryWidget = () => {
                             {/* Category & Time */}
                             <div className="flex items-center gap-2 mb-2">
                               {convo.category && (
-                                <Badge variant="secondary" className={`text-xs ${getCategoryColor(convo.category)}`}>
+                                <Badge
+                                  variant="secondary"
+                                  className={`text-xs ${getCategoryColor(convo.category)}`}
+                                >
                                   {convo.category}
                                 </Badge>
                               )}
                               <span className="text-xs text-muted-foreground">
                                 {format(new Date(convo.created_at), 'h:mm a')}
                               </span>
-                              <ChannelIcon channel={convo.channel as any} className="h-3 w-3" />
+                              <ChannelIcon channel={convo.channel} className="h-3 w-3" />
                             </div>
 
                             {/* Summary or Title */}
@@ -306,13 +321,15 @@ export const AIConversationSummaryWidget = () => {
                             </span>
                             {convo.ai_confidence && (
                               <span className="flex items-center gap-1">
-                                <span className={
-                                  convo.ai_confidence >= 0.8 
-                                    ? 'text-success' 
-                                    : convo.ai_confidence >= 0.6 
-                                      ? 'text-warning' 
-                                      : 'text-destructive'
-                                }>
+                                <span
+                                  className={
+                                    convo.ai_confidence >= 0.8
+                                      ? 'text-success'
+                                      : convo.ai_confidence >= 0.6
+                                        ? 'text-warning'
+                                        : 'text-destructive'
+                                  }
+                                >
                                   {Math.round(convo.ai_confidence * 100)}% confident
                                 </span>
                               </span>

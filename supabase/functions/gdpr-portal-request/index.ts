@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,18 +17,20 @@ async function createHmacSignature(payload: string, secret: string): Promise<str
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
   const data = encoder.encode(payload);
-  
+
   const key = await crypto.subtle.importKey(
     'raw',
     keyData,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign']
+    ['sign'],
   );
-  
+
   const signature = await crypto.subtle.sign('HMAC', key, data);
   const signatureArray = new Uint8Array(signature);
-  return Array.from(signatureArray).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(signatureArray)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 // Create signed GDPR token
@@ -39,7 +40,7 @@ async function createSignedToken(data: Record<string, unknown>, secret: string):
   return `${payload}.${signature}`;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -53,31 +54,34 @@ serve(async (req) => {
 
     if (!gdprSecret) {
       console.error('GDPR_TOKEN_SECRET not configured');
-      return new Response(
-        JSON.stringify({ error: 'GDPR service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'GDPR service not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { email, request_type, reason, workspace_slug }: GDPRRequest = await req.json();
 
     if (!email || !request_type) {
-      return new Response(
-        JSON.stringify({ error: 'Email and request_type are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Email and request_type are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid email format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const maskedEmail = email.replace(/^(.)(.*)(@.*)$/, (_, first, middle, domain) => `${first}${'*'.repeat(Math.min(middle.length, 5))}${domain}`);
+    const maskedEmail = email.replace(
+      /^(.)(.*)(@.*)$/,
+      (_, first, middle, domain) => `${first}${'*'.repeat(Math.min(middle.length, 5))}${domain}`,
+    );
     console.log('GDPR request received:', { email: maskedEmail, request_type, workspace_slug });
 
     // Find workspace by slug (optional - for multi-tenant)
@@ -109,7 +113,7 @@ serve(async (req) => {
       customer_id: customer?.id || null,
       workspace_id: workspaceId || customer?.workspace_id || null,
       created_at: new Date().toISOString(),
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
     };
 
     // Create HMAC-signed token (payload.signature format)
@@ -121,9 +125,10 @@ serve(async (req) => {
 
     // Send verification email
     if (postmarkApiKey) {
-      const emailSubject = request_type === 'export' 
-        ? 'Verify Your Data Export Request'
-        : 'Verify Your Data Deletion Request';
+      const emailSubject =
+        request_type === 'export'
+          ? 'Verify Your Data Export Request'
+          : 'Verify Your Data Deletion Request';
 
       const emailBody = `
         <h2>Verify Your GDPR Request</h2>
@@ -147,17 +152,17 @@ serve(async (req) => {
       const emailResponse = await fetch('https://api.postmarkapp.com/email', {
         method: 'POST',
         headers: {
-          'Accept': 'application/json',
+          Accept: 'application/json',
           'Content-Type': 'application/json',
-          'X-Postmark-Server-Token': postmarkApiKey
+          'X-Postmark-Server-Token': postmarkApiKey,
         },
         body: JSON.stringify({
           From: 'noreply@bizzybee.ai',
           To: email,
           Subject: emailSubject,
           HtmlBody: emailBody,
-          MessageStream: 'outbound'
-        })
+          MessageStream: 'outbound',
+        }),
       });
 
       if (!emailResponse.ok) {
@@ -181,23 +186,23 @@ serve(async (req) => {
         email,
         request_type,
         reason,
-        verification_pending: true
-      }
+        verification_pending: true,
+      },
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Verification email sent'
+        message: 'Verification email sent',
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error processing GDPR request:', error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

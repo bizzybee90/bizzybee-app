@@ -1,39 +1,56 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import React from "react";
-import Auth from "./pages/Auth";
-import NotFound from "./pages/NotFound";
-import Settings from "./pages/Settings";
-import WebhookLogs from "./pages/WebhookLogs";
-import Privacy from "./pages/Privacy";
-import Terms from "./pages/Terms";
-import Escalations from "./pages/Escalations";
-import { EscalationHub } from "./pages/EscalationHub";
-import ConversationView from "./pages/ConversationView";
-import { AuthGuard } from "./components/AuthGuard";
-import ErrorBoundary from "./components/ErrorBoundary";
-import Home from "./pages/Home";
-import Onboarding from "./pages/Onboarding";
-import ChannelsDashboard from "./pages/ChannelsDashboard";
-import ChannelConversations from "./pages/ChannelConversations";
-import AnalyticsDashboard from "./pages/AnalyticsDashboard";
-import Review from "./pages/Review";
-import ActivityPage from "./pages/ActivityPage";
-import Diagnostics from "./pages/Diagnostics";
-import LearningPage from "./pages/LearningPage";
-import GDPRPortal from "./pages/GDPRPortal";
-import EmailAuthSuccess from "./pages/EmailAuthSuccess";
-import EmailOAuthCallback from "./pages/EmailOAuthCallback";
-import KnowledgeBase from "./pages/KnowledgeBase";
-import DevOpsDashboard from "./pages/admin/DevOpsDashboard";
-import AiPhone from "./pages/AiPhone";
+import { Toaster } from '@/components/ui/toaster';
+import { Toaster as Sonner } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense } from 'react';
+import { AuthGuard } from './components/AuthGuard';
+import ErrorBoundary from './components/ErrorBoundary';
+import { RouteErrorBoundary } from './components/RouteErrorBoundary';
+import { WorkspaceProvider } from './contexts/WorkspaceContext';
 
+// Lazy-loaded pages — each becomes its own chunk
+const Auth = React.lazy(() => import('./pages/Auth'));
+const NotFound = React.lazy(() => import('./pages/NotFound'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const WebhookLogs = React.lazy(() => import('./pages/WebhookLogs'));
+const Privacy = React.lazy(() => import('./pages/Privacy'));
+const Terms = React.lazy(() => import('./pages/Terms'));
+const Escalations = React.lazy(() => import('./pages/Escalations'));
+const EscalationHub = React.lazy(() =>
+  import('./pages/EscalationHub').then((m) => ({ default: m.EscalationHub })),
+);
+const ConversationView = React.lazy(() => import('./pages/ConversationView'));
+const Home = React.lazy(() => import('./pages/Home'));
+const Onboarding = React.lazy(() => import('./pages/Onboarding'));
+const ChannelsDashboard = React.lazy(() => import('./pages/ChannelsDashboard'));
+const ChannelConversations = React.lazy(() => import('./pages/ChannelConversations'));
+const AnalyticsDashboard = React.lazy(() => import('./pages/AnalyticsDashboard'));
+const Review = React.lazy(() => import('./pages/Review'));
+const ActivityPage = React.lazy(() => import('./pages/ActivityPage'));
+const Diagnostics = React.lazy(() => import('./pages/Diagnostics'));
+const LearningPage = React.lazy(() => import('./pages/LearningPage'));
+const GDPRPortal = React.lazy(() => import('./pages/GDPRPortal'));
+const EmailAuthSuccess = React.lazy(() => import('./pages/EmailAuthSuccess'));
+const EmailOAuthCallback = React.lazy(() => import('./pages/EmailOAuthCallback'));
+const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase'));
+const DevOpsDashboard = React.lazy(() => import('./pages/admin/DevOpsDashboard'));
+const AiPhone = React.lazy(() => import('./pages/AiPhone'));
 
+const PageLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
+);
 
 const queryClient = new QueryClient();
+
+/** Wraps a page with AuthGuard + per-route error boundary */
+const Protected = ({ children }: { children: React.ReactNode }) => (
+  <Protected>
+    <RouteErrorBoundary>{children}</RouteErrorBoundary>
+  </Protected>
+);
 
 const RouterContent = () => {
   return (
@@ -42,293 +59,293 @@ const RouterContent = () => {
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/email-auth-success" element={<EmailAuthSuccess />} />
       <Route path="/auth/email/callback" element={<EmailOAuthCallback />} />
-      
+
       {/* Home - Calm reassurance screen */}
-      <Route 
-        path="/" 
+      <Route
+        path="/"
         element={
-          <AuthGuard>
+          <Protected>
             <Home />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
 
       {/* Inbox - All open conversations */}
-      <Route 
-        path="/inbox" 
+      <Route
+        path="/inbox"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="all-open" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Redirect old /all-open to /inbox */}
       <Route path="/all-open" element={<Navigate to="/inbox" replace />} />
-      
+
       {/* Needs Action - Primary view */}
-      <Route 
-        path="/needs-action" 
+      <Route
+        path="/needs-action"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="needs-me" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Redirect old routes */}
       <Route path="/to-reply" element={<Navigate to="/needs-action" replace />} />
       <Route path="/needs-me" element={<Navigate to="/needs-action" replace />} />
-      
+
       {/* Done - Auto-handled + resolved */}
-      <Route 
-        path="/done" 
+      <Route
+        path="/done"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="cleared" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Redirect old cleared route */}
       <Route path="/cleared" element={<Navigate to="/done" replace />} />
-      
+
       {/* Review - Reconciliation flow */}
-      <Route 
-        path="/review" 
+      <Route
+        path="/review"
         element={
-          <AuthGuard>
+          <Protected>
             <Review />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Snoozed */}
-      <Route 
-        path="/snoozed" 
+      <Route
+        path="/snoozed"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="snoozed" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Unread */}
-      <Route 
-        path="/unread" 
+      <Route
+        path="/unread"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="unread" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Drafts */}
-      <Route 
-        path="/drafts" 
+      <Route
+        path="/drafts"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="drafts-ready" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Sent */}
-      <Route 
-        path="/sent" 
+      <Route
+        path="/sent"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="sent" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      
+
       {/* Legacy /all-open handled by redirect above */}
-      
+
       {/* Legacy routes */}
-      <Route 
-        path="/my-tickets" 
+      <Route
+        path="/my-tickets"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="my-tickets" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/unassigned" 
+      <Route
+        path="/unassigned"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="unassigned" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/sla-risk" 
+      <Route
+        path="/sla-risk"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="sla-risk" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/awaiting-reply" 
+      <Route
+        path="/awaiting-reply"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="awaiting-reply" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/triaged" 
+      <Route
+        path="/triaged"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="triaged" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
       <Route
         path="/high-priority"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="high-priority" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/vip-customers" 
+      <Route
+        path="/vip-customers"
         element={
-          <AuthGuard>
+          <Protected>
             <EscalationHub filter="vip-customers" />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/escalations" 
+      <Route
+        path="/escalations"
         element={
-          <AuthGuard>
+          <Protected>
             <Escalations />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/channels" 
+      <Route
+        path="/channels"
         element={
-          <AuthGuard>
+          <Protected>
             <ChannelsDashboard />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/channel/:channel" 
+      <Route
+        path="/channel/:channel"
         element={
-          <AuthGuard>
+          <Protected>
             <ChannelConversations />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/analytics" 
+      <Route
+        path="/analytics"
         element={
-          <AuthGuard>
+          <Protected>
             <AnalyticsDashboard />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
 
       {/* Activity Page - Full activity timeline */}
-      <Route 
-        path="/activity" 
+      <Route
+        path="/activity"
         element={
-          <AuthGuard>
+          <Protected>
             <ActivityPage />
-          </AuthGuard>
+          </Protected>
         }
       />
 
       {/* Learning Page - AI training and patterns */}
-      <Route 
-        path="/learning" 
+      <Route
+        path="/learning"
         element={
-          <AuthGuard>
+          <Protected>
             <LearningPage />
-          </AuthGuard>
+          </Protected>
         }
       />
 
       <Route
         path="/conversation/:id"
         element={
-          <AuthGuard>
+          <Protected>
             <ConversationView />
-          </AuthGuard>
+          </Protected>
         }
       />
 
-      <Route 
+      <Route
         path="/settings"
         element={
-          <AuthGuard>
+          <Protected>
             <Settings />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
-      <Route 
-        path="/webhooks" 
+      <Route
+        path="/webhooks"
         element={
-          <AuthGuard>
+          <Protected>
             <WebhookLogs />
-          </AuthGuard>
-        } 
+          </Protected>
+        }
       />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
-      
+
       {/* Public GDPR Self-Service Portal */}
       <Route path="/gdpr-portal" element={<GDPRPortal />} />
       <Route path="/gdpr-portal/:workspaceSlug" element={<GDPRPortal />} />
-      
-        <Route
-          path="/diagnostics" 
-          element={
-            <AuthGuard>
-              <Diagnostics />
-            </AuthGuard>
-          } 
-        />
 
-        {/* Knowledge Base */}
-        <Route
-          path="/knowledge-base"
-          element={
-            <AuthGuard>
-              <KnowledgeBase />
-            </AuthGuard>
-          }
-        />
+      <Route
+        path="/diagnostics"
+        element={
+          <Protected>
+            <Diagnostics />
+          </Protected>
+        }
+      />
 
-        {/* DevOps Dashboard - Admin only */}
-        <Route
-          path="/admin/devops"
-          element={
-            <AuthGuard>
-              <DevOpsDashboard />
-            </AuthGuard>
-          }
-        />
+      {/* Knowledge Base */}
+      <Route
+        path="/knowledge-base"
+        element={
+          <Protected>
+            <KnowledgeBase />
+          </Protected>
+        }
+      />
 
-        {/* AI Phone */}
-        <Route
-          path="/ai-phone"
-          element={
-            <AuthGuard>
-              <AiPhone />
-            </AuthGuard>
-          }
-        />
+      {/* DevOps Dashboard - Admin only */}
+      <Route
+        path="/admin/devops"
+        element={
+          <Protected>
+            <DevOpsDashboard />
+          </Protected>
+        }
+      />
 
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
+      {/* AI Phone */}
+      <Route
+        path="/ai-phone"
+        element={
+          <Protected>
+            <AiPhone />
+          </Protected>
+        }
+      />
+
+      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };
@@ -340,7 +357,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <ErrorBoundary>
-          <RouterContent />
+          <WorkspaceProvider>
+            <Suspense fallback={<PageLoader />}>
+              <RouterContent />
+            </Suspense>
+          </WorkspaceProvider>
         </ErrorBoundary>
       </BrowserRouter>
     </TooltipProvider>

@@ -1,6 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { calculateQualityScore } from "../_shared/quality-scorer.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { calculateQualityScore } from '../_shared/quality-scorer.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,10 +10,18 @@ const FUNCTION_NAME = 'validate-competitors';
 
 // Businesses that are NEVER competitors regardless of industry
 const UNIVERSAL_REJECT_KEYWORDS = [
-  'skip hire', 'waste removal', 'rubbish collection',
-  'dog walking', 'pet grooming', 'pet sitting',
-  'recruitment', 'staffing agency', 'temp agency',
-  'web design', 'marketing agency', 'seo agency',
+  'skip hire',
+  'waste removal',
+  'rubbish collection',
+  'dog walking',
+  'pet grooming',
+  'pet sitting',
+  'recruitment',
+  'staffing agency',
+  'temp agency',
+  'web design',
+  'marketing agency',
+  'seo agency',
 ];
 
 interface Competitor {
@@ -66,7 +73,7 @@ async function checkSiteHealth(url: string): Promise<{ alive: boolean; reason?: 
 function checkRelevance(
   businessName: string,
   domain: string,
-  businessType: string
+  businessType: string,
 ): { relevance: 'strong' | 'partial' | 'weak'; reason?: string } {
   const nameLower = businessName.toLowerCase();
   const domainLower = domain.toLowerCase();
@@ -80,24 +87,27 @@ function checkRelevance(
   }
 
   // Extract meaningful words from business_type (e.g. "window cleaning" -> ["window", "cleaning"])
-  const typeWords = businessType.toLowerCase()
-    .split(/[\s,&\/]+/)
-    .filter(w => w.length > 2)
-    .filter(w => !['and', 'the', 'for', 'service', 'services', 'ltd', 'limited', 'company'].includes(w));
+  const typeWords = businessType
+    .toLowerCase()
+    .split(/[\s,&/]+/)
+    .filter((w) => w.length > 2)
+    .filter(
+      (w) => !['and', 'the', 'for', 'service', 'services', 'ltd', 'limited', 'company'].includes(w),
+    );
 
   if (typeWords.length === 0) {
     return { relevance: 'partial', reason: 'No business type provided for matching' };
   }
 
   // Strong match: name or domain contains any of the business type keywords
-  const strongMatch = typeWords.some(kw => combined.includes(kw));
+  const strongMatch = typeWords.some((kw) => combined.includes(kw));
   if (strongMatch) {
     return { relevance: 'strong' };
   }
 
   // Partial match: contains generic service-adjacent words
   const genericServiceWords = ['service', 'pro', 'expert', 'specialist', 'local', 'professional'];
-  const partialMatch = genericServiceWords.some(w => combined.includes(w));
+  const partialMatch = genericServiceWords.some((w) => combined.includes(w));
   if (partialMatch) {
     return { relevance: 'partial', reason: 'Generic service term — may not be primary service' };
   }
@@ -106,7 +116,7 @@ function checkRelevance(
   return { relevance: 'weak', reason: 'No service keywords found in name or domain' };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -116,11 +126,13 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const { workspace_id, business_type } = await req.json();
-    console.log(`[${FUNCTION_NAME}] Starting validation for workspace=${workspace_id}, type=${business_type}`);
+    console.log(
+      `[${FUNCTION_NAME}] Starting validation for workspace=${workspace_id}, type=${business_type}`,
+    );
 
     if (!workspace_id) {
       throw new Error('workspace_id is required');
@@ -149,94 +161,98 @@ serve(async (req) => {
     const BATCH_SIZE = 5;
     for (let i = 0; i < competitors.length; i += BATCH_SIZE) {
       const batch = competitors.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async (comp: Competitor) => {
-        // 1. Health check
-        const health = await checkSiteHealth(comp.url);
+      await Promise.all(
+        batch.map(async (comp: Competitor) => {
+          // 1. Health check
+          const health = await checkSiteHealth(comp.url);
 
-        if (!health.alive) {
-          console.log(`[${FUNCTION_NAME}] DEAD: ${comp.domain} — ${health.reason}`);
-          await supabase
-            .from('competitor_sites')
-            .update({
-              status: 'rejected',
-              is_selected: false,
-              is_valid: false,
-              validation_status: 'REJECTED',
-              validation_notes: `Site unreachable: ${health.reason}`,
-            })
-            .eq('id', comp.id);
-          rejected++;
-          return;
-        }
+          if (!health.alive) {
+            console.log(`[${FUNCTION_NAME}] DEAD: ${comp.domain} — ${health.reason}`);
+            await supabase
+              .from('competitor_sites')
+              .update({
+                status: 'rejected',
+                is_selected: false,
+                is_valid: false,
+                validation_status: 'REJECTED',
+                validation_notes: `Site unreachable: ${health.reason}`,
+              })
+              .eq('id', comp.id);
+            rejected++;
+            return;
+          }
 
-        // 2. Relevance check
-        const relevance = checkRelevance(comp.business_name, comp.domain, business_type || '');
+          // 2. Relevance check
+          const relevance = checkRelevance(comp.business_name, comp.domain, business_type || '');
 
-        // 3. Quality score
-        const quality = calculateQualityScore({
-          distance_miles: comp.distance_miles,
-          rating: comp.rating,
-          reviews_count: comp.review_count,
-          domain: comp.domain,
-        });
+          // 3. Quality score
+          const quality = calculateQualityScore({
+            distance_miles: comp.distance_miles,
+            rating: comp.rating,
+            reviews_count: comp.review_count,
+            domain: comp.domain,
+          });
 
-        // 4. Decide: deselect or validate
-        if (relevance.relevance === 'weak') {
-          console.log(`[${FUNCTION_NAME}] WEAK: ${comp.domain} — ${relevance.reason}`);
-          await supabase
-            .from('competitor_sites')
-            .update({
-              status: 'discovered',
-              is_selected: false,
-              is_valid: true,
-              validation_status: 'WEAK_MATCH',
-              validation_notes: relevance.reason || 'Low relevance to target service',
-              quality_score: quality.quality_score,
-              priority_tier: quality.priority_tier,
-              relevance_score: 20,
-            })
-            .eq('id', comp.id);
-          deselected++;
-        } else if (relevance.relevance === 'partial') {
-          console.log(`[${FUNCTION_NAME}] PARTIAL: ${comp.domain} — ${relevance.reason}`);
-          await supabase
-            .from('competitor_sites')
-            .update({
-              status: 'validated',
-              is_selected: true,
-              is_valid: true,
-              validation_status: 'PARTIAL_MATCH',
-              validation_notes: relevance.reason || 'Partial service match',
-              quality_score: quality.quality_score,
-              priority_tier: quality.priority_tier,
-              relevance_score: 60,
-            })
-            .eq('id', comp.id);
-          validated++;
-        } else {
-          console.log(`[${FUNCTION_NAME}] STRONG: ${comp.domain}`);
-          await supabase
-            .from('competitor_sites')
-            .update({
-              status: 'validated',
-              is_selected: true,
-              is_valid: true,
-              validation_status: 'VERIFIED',
-              validation_notes: null,
-              quality_score: quality.quality_score,
-              priority_tier: quality.priority_tier,
-              relevance_score: 100,
-            })
-            .eq('id', comp.id);
-          validated++;
-        }
-      }));
+          // 4. Decide: deselect or validate
+          if (relevance.relevance === 'weak') {
+            console.log(`[${FUNCTION_NAME}] WEAK: ${comp.domain} — ${relevance.reason}`);
+            await supabase
+              .from('competitor_sites')
+              .update({
+                status: 'discovered',
+                is_selected: false,
+                is_valid: true,
+                validation_status: 'WEAK_MATCH',
+                validation_notes: relevance.reason || 'Low relevance to target service',
+                quality_score: quality.quality_score,
+                priority_tier: quality.priority_tier,
+                relevance_score: 20,
+              })
+              .eq('id', comp.id);
+            deselected++;
+          } else if (relevance.relevance === 'partial') {
+            console.log(`[${FUNCTION_NAME}] PARTIAL: ${comp.domain} — ${relevance.reason}`);
+            await supabase
+              .from('competitor_sites')
+              .update({
+                status: 'validated',
+                is_selected: true,
+                is_valid: true,
+                validation_status: 'PARTIAL_MATCH',
+                validation_notes: relevance.reason || 'Partial service match',
+                quality_score: quality.quality_score,
+                priority_tier: quality.priority_tier,
+                relevance_score: 60,
+              })
+              .eq('id', comp.id);
+            validated++;
+          } else {
+            console.log(`[${FUNCTION_NAME}] STRONG: ${comp.domain}`);
+            await supabase
+              .from('competitor_sites')
+              .update({
+                status: 'validated',
+                is_selected: true,
+                is_valid: true,
+                validation_status: 'VERIFIED',
+                validation_notes: null,
+                quality_score: quality.quality_score,
+                priority_tier: quality.priority_tier,
+                relevance_score: 100,
+              })
+              .eq('id', comp.id);
+            validated++;
+          }
+        }),
+      );
     }
 
     await setReviewReady(supabase, workspace_id, competitors.length, validated, rejected);
 
     const duration = Date.now() - startTime;
-    console.log(`[${FUNCTION_NAME}] Done in ${duration}ms: ${validated} validated, ${deselected} deselected, ${rejected} rejected`);
+    console.log(
+      `[${FUNCTION_NAME}] Done in ${duration}ms: ${validated} validated, ${deselected} deselected, ${rejected} rejected`,
+    );
 
     return respond({
       success: true,
@@ -248,10 +264,10 @@ serve(async (req) => {
     });
   } catch (error: any) {
     console.error(`[${FUNCTION_NAME}] Error:`, error);
-    return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
 
@@ -260,25 +276,28 @@ async function setReviewReady(
   workspaceId: string,
   total: number,
   validated: number,
-  rejected: number
+  rejected: number,
 ) {
-  await supabase.from('n8n_workflow_progress').upsert({
-    workspace_id: workspaceId,
-    workflow_type: 'competitor_scrape',
-    status: 'review_ready',
-    details: {
-      message: `${validated} competitors validated, ${rejected} filtered out`,
-      competitors_found: total,
-      validated,
-      rejected,
+  await supabase.from('n8n_workflow_progress').upsert(
+    {
+      workspace_id: workspaceId,
+      workflow_type: 'competitor_scrape',
+      status: 'review_ready',
+      details: {
+        message: `${validated} competitors validated, ${rejected} filtered out`,
+        competitors_found: total,
+        validated,
+        rejected,
+      },
+      updated_at: new Date().toISOString(),
     },
-    updated_at: new Date().toISOString(),
-  }, { onConflict: 'workspace_id,workflow_type' });
+    { onConflict: 'workspace_id,workflow_type' },
+  );
 }
 
 function respond(data: Record<string, unknown>) {
-  return new Response(
-    JSON.stringify(data),
-    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }

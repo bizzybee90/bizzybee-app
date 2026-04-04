@@ -22,11 +22,16 @@ interface ConversationThreadProps {
 
 const WIDE_BREAKPOINT = 1400;
 
-export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackButton }: ConversationThreadProps) => {
+export const ConversationThread = ({
+  conversation,
+  onUpdate,
+  onBack,
+  hideBackButton,
+}: ConversationThreadProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [draftText, setDraftText] = useState<string>('');
-  const [customer, setCustomer] = useState<any>(null);
+  const [customer, setCustomer] = useState<import('@/lib/types').Customer | null>(null);
   const [intelligenceDrawerOpen, setIntelligenceDrawerOpen] = useState(false);
   const [isWide, setIsWide] = useState(false);
   const { toast } = useToast();
@@ -51,7 +56,7 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
   useEffect(() => {
     const fetchCustomer = async () => {
       if (!conversation.customer_id) {
-        setCustomer((conversation as any).customer || null);
+        setCustomer(conversation.customer || null);
         return;
       }
       const { data } = await supabase
@@ -59,7 +64,7 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
         .select('*')
         .eq('id', conversation.customer_id)
         .single();
-      setCustomer(data || (conversation as any).customer || null);
+      setCustomer((data as import('@/lib/types').Customer | null) || conversation.customer || null);
     };
     fetchCustomer();
   }, [conversation.id, conversation.customer_id]);
@@ -88,11 +93,11 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversation.id}`
+          filter: `conversation_id=eq.${conversation.id}`,
         },
         (payload) => {
           setMessages((prev) => [...prev, payload.new as Message]);
-        }
+        },
       )
       .subscribe();
 
@@ -102,7 +107,9 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
   }, [conversation.id]);
 
   const handleReply = async (body: string, isInternal: boolean) => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data: userData } = await supabase
@@ -121,7 +128,7 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
         direction: 'outbound',
         channel: conversation.channel,
         body,
-        is_internal: isInternal
+        is_internal: isInternal,
       })
       .select()
       .single();
@@ -129,9 +136,9 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
     if (insertError) {
       console.error('Error sending message:', insertError);
       toast({
-        title: "Error sending message",
+        title: 'Error sending message',
         description: insertError.message,
-        variant: "destructive"
+        variant: 'destructive',
       });
       return;
     }
@@ -167,41 +174,46 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
                 metadata: {
                   actorType: 'human_agent',
                   actorName: userData?.name || 'Agent',
-                  actorId: user.id
-                }
-              }
+                  actorId: user.id,
+                },
+              },
             });
 
             if (sendError) {
-              toast({ title: "Delivery failed", description: sendError.message, variant: "destructive" });
+              toast({
+                title: 'Delivery failed',
+                description: sendError.message,
+                variant: 'destructive',
+              });
             }
           } else {
-            toast({ title: "No recipient", description: `No ${conversation.channel === 'email' ? 'email' : 'phone'} for customer`, variant: "destructive" });
+            toast({
+              title: 'No recipient',
+              description: `No ${conversation.channel === 'email' ? 'email' : 'phone'} for customer`,
+              variant: 'destructive',
+            });
           }
         }
       } catch (error: any) {
-        toast({ title: "Send failed", description: error.message, variant: "destructive" });
+        toast({ title: 'Send failed', description: error.message, variant: 'destructive' });
       }
     }
 
     if (!isInternal) {
-      const updateData: any = {
+      const updateData: Record<string, string> = {
         updated_at: new Date().toISOString(),
         status: 'waiting_customer',
       };
       if (!conversation.first_response_at) {
         updateData.first_response_at = new Date().toISOString();
       }
-      await supabase
-        .from('conversations')
-        .update(updateData)
-        .eq('id', conversation.id);
+      await supabase.from('conversations').update(updateData).eq('id', conversation.id);
     }
 
     localStorage.removeItem(`draft-${conversation.id}`);
     toast({
-      title: isInternal ? "Note added" : "Message sent",
-      description: isInternal ? "Internal note saved" : "Your reply has been sent successfully",
+      title: isInternal ? 'Note added' : 'Message sent',
+      description: isInternal ? 'Internal note saved' : 'Your reply has been sent successfully',
     });
     onUpdate();
   };
@@ -217,26 +229,42 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
   const isCompleted = conversation.status === 'resolved';
 
   // AI Briefing text
-  const briefingText = conversation.summary_for_human
-    || (conversation as any).ai_why_flagged
-    || (conversation as any).why_this_needs_you
-    || conversation.ai_reason_for_escalation
-    || null;
+  const briefingText =
+    conversation.summary_for_human ||
+    conversation.ai_why_flagged ||
+    conversation.why_this_needs_you ||
+    conversation.ai_reason_for_escalation ||
+    null;
 
   const getSentimentLabel = (s: string | null) => {
     switch (s) {
-      case 'positive': return { emoji: '', label: 'Positive', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-      case 'negative': return { emoji: '', label: 'Negative', color: 'bg-red-50 text-red-700 border-red-200' };
-      case 'frustrated': return { emoji: '', label: 'Frustrated', color: 'bg-orange-50 text-orange-700 border-orange-200' };
-      case 'neutral': return { emoji: '', label: 'Neutral', color: 'bg-slate-50 text-slate-600 border-slate-200' };
-      default: return null;
+      case 'positive':
+        return {
+          emoji: '',
+          label: 'Positive',
+          color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+      case 'negative':
+        return { emoji: '', label: 'Negative', color: 'bg-red-50 text-red-700 border-red-200' };
+      case 'frustrated':
+        return {
+          emoji: '',
+          label: 'Frustrated',
+          color: 'bg-orange-50 text-orange-700 border-orange-200',
+        };
+      case 'neutral':
+        return {
+          emoji: '',
+          label: 'Neutral',
+          color: 'bg-slate-50 text-slate-600 border-slate-200',
+        };
+      default:
+        return null;
     }
   };
 
   // Extract topics from conversation metadata
-  const topics = (conversation as any).extracted_entities?.topics 
-    || (conversation.metadata as any)?.topics 
-    || [];
+  const topics = conversation.extracted_entities?.topics || conversation.metadata?.topics || [];
 
   const sentiment = getSentimentLabel(conversation.ai_sentiment);
 
@@ -248,13 +276,14 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
     );
   }
 
-  const intelligencePanel = conversation.workspace_id && (conversation.customer_id || customer?.id) ? (
-    <CustomerIntelligence
-      workspaceId={conversation.workspace_id}
-      customerId={conversation.customer_id || customer?.id}
-      conversationId={conversation.id}
-    />
-  ) : null;
+  const intelligencePanel =
+    conversation.workspace_id && (conversation.customer_id || customer?.id) ? (
+      <CustomerIntelligence
+        workspaceId={conversation.workspace_id}
+        customerId={conversation.customer_id || customer?.id}
+        conversationId={conversation.id}
+      />
+    ) : null;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -262,36 +291,63 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         {/* Nav header bar */}
         <div className="flex-shrink-0 bg-background border-b border-border">
-          <ConversationHeader conversation={conversation} onUpdate={onUpdate} onBack={onBack} hideBackButton={hideBackButton} />
+          <ConversationHeader
+            conversation={conversation}
+            onUpdate={onUpdate}
+            onBack={onBack}
+            hideBackButton={hideBackButton}
+          />
         </div>
 
         {/* 1. Sender Info Row — first thing after nav */}
-        {(conversation.customer_id || customer) && (() => {
-          // Prioritize actual sender name from first inbound message
-          const firstInbound = messages.find(m => m.actor_type === 'customer');
-          const rawFrom = (firstInbound as any)?.raw_payload?.from;
-          const senderDisplayName = rawFrom?.name || firstInbound?.actor_name || customer?.name || 'Unknown';
-          const senderInitials = senderDisplayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-          
-          return (
-          <div className="flex-shrink-0 px-4 py-2.5 border-b border-border/40 flex items-center justify-between bg-background">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0 shadow-sm">
-                {senderInitials}
+        {(conversation.customer_id || customer) &&
+          (() => {
+            // Prioritize actual sender name from first inbound message
+            const firstInbound = messages.find((m) => m.actor_type === 'customer');
+            const rawPayload = firstInbound?.raw_payload as Record<string, unknown> | null;
+            const rawFrom = rawPayload?.from as { name?: string } | undefined;
+            const senderDisplayName =
+              rawFrom?.name || firstInbound?.actor_name || customer?.name || 'Unknown';
+            const senderInitials = senderDisplayName
+              .split(' ')
+              .map((n: string) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2);
+
+            return (
+              <div className="flex-shrink-0 px-4 py-2.5 border-b border-border/40 flex items-center justify-between bg-background">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0 shadow-sm">
+                    {senderInitials}
+                  </div>
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground truncate">
+                      {senderDisplayName}
+                    </span>
+                    {customer?.email && (
+                      <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+                        {'<'}
+                        {customer.email}
+                        {'>'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground flex-shrink-0">
+                  {conversation.created_at
+                    ? new Date(conversation.created_at).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : ''}
+                </span>
               </div>
-              <div className="min-w-0 flex items-center gap-2">
-                <span className="text-sm font-semibold text-foreground truncate">{senderDisplayName}</span>
-                {customer?.email && (
-                  <span className="text-xs text-muted-foreground truncate hidden sm:inline">{'<'}{customer.email}{'>'}</span>
-                )}
-              </div>
-            </div>
-            <span className="text-xs text-muted-foreground flex-shrink-0">
-              {conversation.created_at ? new Date(conversation.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-            </span>
-          </div>
-          );
-        })()}
+            );
+          })()}
 
         {/* 2. Elevated AI Bento Strip — Frosted Glass (Home page aesthetic) */}
         {briefingText && (
@@ -306,23 +362,36 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
             {/* Bottom row: Intelligence pills + Deep Dive */}
             <div className="flex items-center gap-2 flex-wrap">
               {sentiment && (
-                <span className={cn("inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border", sentiment.color)}>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border',
+                    sentiment.color,
+                  )}
+                >
                   {sentiment.label}
                 </span>
               )}
               {conversation.category && (
                 <CategoryLabel classification={conversation.category} size="sm" />
               )}
-              {Array.isArray(topics) && topics.slice(0, 2).map((topic: string, i: number) => (
-                <span key={i} className="px-2 py-1 text-xs font-medium rounded-md border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                  {topic}
-                </span>
-              ))}
+              {Array.isArray(topics) &&
+                topics.slice(0, 2).map((topic: string, i: number) => (
+                  <span
+                    key={i}
+                    className="px-2 py-1 text-xs font-medium rounded-md border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                  >
+                    {topic}
+                  </span>
+                ))}
               {conversation.priority && conversation.priority !== 'medium' && (
-                <span className={cn(
-                  "inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border",
-                  conversation.priority === 'high' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'
-                )}>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border',
+                    conversation.priority === 'high'
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-slate-200 bg-slate-50 text-slate-600',
+                  )}
+                >
                   <TrendingUp className="w-3 h-3" />
                   {conversation.priority}
                 </span>
@@ -368,9 +437,17 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
             <ReplyArea
               conversationId={conversation.id}
               channel={conversation.channel}
-              aiDraftResponse={(conversation as any).ai_draft_response || conversation.metadata?.ai_draft_response as string}
+              aiDraftResponse={
+                conversation.ai_draft_response ||
+                (conversation.metadata?.ai_draft_response as string)
+              }
               onSend={handleReply}
-              externalDraftText={draftText || ((conversation as any).ai_draft_response as string) || (conversation.metadata?.ai_draft_response as string) || ''}
+              externalDraftText={
+                draftText ||
+                (conversation.ai_draft_response as string) ||
+                (conversation.metadata?.ai_draft_response as string) ||
+                ''
+              }
               onDraftTextCleared={() => setDraftText('')}
               onDraftChange={(text) => {
                 if (text) {
@@ -400,9 +477,7 @@ export const ConversationThread = ({ conversation, onUpdate, onBack, hideBackBut
                 Customer Intelligence
               </SheetTitle>
             </SheetHeader>
-            <div className="mt-4">
-              {intelligencePanel}
-            </div>
+            <div className="mt-4">{intelligencePanel}</div>
           </SheetContent>
         </Sheet>
       )}

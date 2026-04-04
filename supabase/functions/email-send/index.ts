@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || '*',
@@ -22,7 +21,7 @@ interface SendEmailResponse {
   duration_ms?: number;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -37,7 +36,9 @@ serve(async (req) => {
     let bodyRaw: any;
     try {
       bodyRaw = await req.clone().json();
-    } catch { bodyRaw = {}; }
+    } catch {
+      bodyRaw = {};
+    }
     try {
       await validateAuth(req, bodyRaw.workspace_id);
     } catch (authErr: any) {
@@ -49,9 +50,9 @@ serve(async (req) => {
     // STEP 1: Parse and validate input
     // ========================================
     currentStep = 'parsing_input';
-    
+
     const body: SendEmailRequest = bodyRaw;
-    
+
     if (!body.conversation_id) {
       throw new Error('conversation_id is required');
     }
@@ -68,37 +69,40 @@ serve(async (req) => {
     console.log(`[${functionName}] Starting:`, {
       conversation_id: body.conversation_id,
       workspace_id: body.workspace_id,
-      message_length: body.message_body.length
+      message_length: body.message_body.length,
     });
 
     // ========================================
     // STEP 2: Initialize Supabase client
     // ========================================
     currentStep = 'initializing_supabase';
-    
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+
     if (!supabaseUrl) throw new Error('SUPABASE_URL environment variable not configured');
-    if (!supabaseKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable not configured');
-    
+    if (!supabaseKey)
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable not configured');
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ========================================
     // STEP 3: Get conversation with customer
     // ========================================
     currentStep = 'fetching_conversation';
-    
+
     const { data: conversation, error: convError } = await supabase
       .from('conversations')
-      .select(`
+      .select(
+        `
         id,
         source_id,
         subject,
         status,
         workspace_id,
         customer:customers(id, email, name)
-      `)
+      `,
+      )
       .eq('id', body.conversation_id)
       .eq('workspace_id', body.workspace_id)
       .single();
@@ -109,9 +113,11 @@ serve(async (req) => {
     if (!conversation) {
       throw new Error(`Conversation not found: ${body.conversation_id}`);
     }
-    
-    const customer = Array.isArray(conversation.customer) ? conversation.customer[0] : conversation.customer;
-    
+
+    const customer = Array.isArray(conversation.customer)
+      ? conversation.customer[0]
+      : conversation.customer;
+
     if (!customer) {
       throw new Error(`No customer associated with conversation: ${body.conversation_id}`);
     }
@@ -127,14 +133,14 @@ serve(async (req) => {
     console.log(`[${functionName}] Conversation loaded:`, {
       thread_id: threadId,
       recipient: recipientEmail,
-      subject: subject
+      subject: subject,
     });
 
     // ========================================
     // STEP 4: Get email provider config
     // ========================================
     currentStep = 'fetching_email_config';
-    
+
     const { data: emailConfig, error: configError } = await supabase
       .from('email_provider_configs')
       .select('id, account_id, email_address')
@@ -145,15 +151,19 @@ serve(async (req) => {
       throw new Error(`Failed to fetch email config: ${configError.message}`);
     }
     if (!emailConfig) {
-      throw new Error('No email provider configured for this workspace. Please connect your email first.');
+      throw new Error(
+        'No email provider configured for this workspace. Please connect your email first.',
+      );
     }
     if (!emailConfig.account_id) {
       throw new Error('Email account ID is missing. Please reconnect your email.');
     }
 
     // Get decrypted access token securely
-    const { data: accessToken, error: tokenError } = await supabase
-      .rpc('get_decrypted_access_token', { config_id: emailConfig.id });
+    const { data: accessToken, error: tokenError } = await supabase.rpc(
+      'get_decrypted_access_token',
+      { config_id: emailConfig.id },
+    );
 
     if (tokenError || !accessToken) {
       throw new Error('Email access token is missing. Please reconnect your email.');
@@ -166,7 +176,7 @@ serve(async (req) => {
     // STEP 5: Send email via Aurinko
     // ========================================
     currentStep = 'sending_via_aurinko';
-    
+
     // Build the email payload for Aurinko
     const emailPayload: Record<string, unknown> = {
       to: [{ email: recipientEmail, name: recipientName }],
@@ -180,31 +190,28 @@ serve(async (req) => {
       emailPayload.threadId = threadId;
     }
 
-    const aurinkoResponse = await fetch(
-      `https://api.aurinko.io/v1/email/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(emailPayload),
-      }
-    );
+    const aurinkoResponse = await fetch(`https://api.aurinko.io/v1/email/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailPayload),
+    });
 
     if (!aurinkoResponse.ok) {
       const errorBody = await aurinkoResponse.text();
-      
+
       // Check for token expiration
       if (aurinkoResponse.status === 401) {
         throw new Error('Email access token expired. Please reconnect your email account.');
       }
-      
+
       throw new Error(`Aurinko API error ${aurinkoResponse.status}: ${errorBody}`);
     }
 
     const aurinkoData = await aurinkoResponse.json();
-    
+
     if (!aurinkoData.id) {
       throw new Error('Aurinko returned success but no message ID');
     }
@@ -216,7 +223,7 @@ serve(async (req) => {
     // STEP 6: Save message to database
     // ========================================
     currentStep = 'saving_message';
-    
+
     const { data: savedMessage, error: messageError } = await supabase
       .from('messages')
       .insert({
@@ -227,7 +234,7 @@ serve(async (req) => {
         to_email: recipientEmail,
         external_id: externalMessageId,
         is_ai_draft: false,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
       .select('id')
       .single();
@@ -244,18 +251,21 @@ serve(async (req) => {
     // STEP 7: Update conversation status
     // ========================================
     currentStep = 'updating_conversation';
-    
+
     const { error: updateError } = await supabase
       .from('conversations')
       .update({
         status: 'awaiting_reply',
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
       .eq('id', body.conversation_id);
 
     if (updateError) {
       // Log but don't fail - email was sent and message was saved
-      console.error(`[${functionName}] Warning: Failed to update conversation status:`, updateError);
+      console.error(
+        `[${functionName}] Warning: Failed to update conversation status:`,
+        updateError,
+      );
     }
 
     // ========================================
@@ -265,25 +275,24 @@ serve(async (req) => {
     console.log(`[${functionName}] Completed in ${duration}ms:`, {
       message_id: messageId,
       external_id: externalMessageId,
-      recipient: recipientEmail
+      recipient: recipientEmail,
     });
 
     const response: SendEmailResponse = {
       success: true,
       message_id: messageId,
       external_id: externalMessageId,
-      duration_ms: duration
+      duration_ms: duration,
     };
 
-    return new Response(
-      JSON.stringify(response),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const duration = Date.now() - startTime;
-    
+
     console.error(`[${functionName}] Error at step "${currentStep}":`, errorMessage);
 
     const response: SendEmailResponse = {
@@ -291,12 +300,12 @@ serve(async (req) => {
       error: errorMessage,
       function: functionName,
       step: currentStep,
-      duration_ms: duration
+      duration_ms: duration,
     };
 
-    return new Response(
-      JSON.stringify(response),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify(response), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

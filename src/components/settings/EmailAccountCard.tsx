@@ -1,12 +1,29 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, RefreshCw, Trash2, Clock, CheckCircle, Plus, X, Loader2, Rocket, Pencil, Eye, Pause, ChevronDown, Zap, AlertTriangle } from 'lucide-react';
+import {
+  Mail,
+  RefreshCw,
+  Trash2,
+  Clock,
+  CheckCircle,
+  Plus,
+  X,
+  Loader2,
+  Rocket,
+  Pencil,
+  Eye,
+  Pause,
+  ChevronDown,
+  Zap,
+  AlertTriangle,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   AlertDialog,
@@ -18,19 +35,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+} from '@/components/ui/alert-dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 
 interface EmailConfig {
   id: string;
@@ -53,47 +66,47 @@ interface EmailAccountCardProps {
 }
 
 const providerIcons: Record<string, string> = {
-  'Google': '📧',
-  'Office365': '📬',
-  'iCloud': '🍎',
-  'IMAP': '📨',
+  Google: '📧',
+  Office365: '📬',
+  iCloud: '🍎',
+  IMAP: '📨',
 };
 
 const providerLabels: Record<string, string> = {
-  'Google': 'Gmail',
-  'Office365': 'Outlook',
-  'iCloud': 'Apple Mail',
-  'IMAP': 'IMAP',
+  Google: 'Gmail',
+  Office365: 'Outlook',
+  iCloud: 'Apple Mail',
+  IMAP: 'IMAP',
 };
 
 const AUTOMATION_LEVELS = [
-  { 
-    value: 'automatic', 
-    label: 'Automatic', 
-    icon: Rocket, 
+  {
+    value: 'automatic',
+    label: 'Automatic',
+    icon: Rocket,
     description: 'AI drafts and sends automatically',
-    color: 'text-green-600 bg-green-500/10 border-green-500/30'
+    color: 'text-green-600 bg-green-500/10 border-green-500/30',
   },
-  { 
-    value: 'draft_only', 
-    label: 'Draft Only', 
-    icon: Pencil, 
+  {
+    value: 'draft_only',
+    label: 'Draft Only',
+    icon: Pencil,
     description: 'AI drafts, you click to send',
-    color: 'text-blue-600 bg-blue-500/10 border-blue-500/30'
+    color: 'text-blue-600 bg-blue-500/10 border-blue-500/30',
   },
-  { 
-    value: 'review_required', 
-    label: 'Review Mode', 
-    icon: Eye, 
+  {
+    value: 'review_required',
+    label: 'Review Mode',
+    icon: Eye,
     description: 'All responses go to review queue',
-    color: 'text-amber-600 bg-amber-500/10 border-amber-500/30'
+    color: 'text-amber-600 bg-amber-500/10 border-amber-500/30',
   },
-  { 
-    value: 'disabled', 
-    label: 'Manual', 
-    icon: Pause, 
+  {
+    value: 'disabled',
+    label: 'Manual',
+    icon: Pause,
     description: 'No AI assistance',
-    color: 'text-muted-foreground bg-muted border-border'
+    color: 'text-muted-foreground bg-muted border-border',
   },
 ];
 
@@ -108,10 +121,12 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const [refreshingWebhook, setRefreshingWebhook] = useState(false);
 
   const aliases = config.aliases || [];
-  const currentLevel = AUTOMATION_LEVELS.find(l => l.value === (config.automation_level || 'draft_only')) || AUTOMATION_LEVELS[1];
-  
+  const currentLevel =
+    AUTOMATION_LEVELS.find((l) => l.value === (config.automation_level || 'draft_only')) ||
+    AUTOMATION_LEVELS[1];
+
   // Check if subscription is active
-  const isSubscriptionActive = config.subscription_expires_at 
+  const isSubscriptionActive = config.subscription_expires_at
     ? new Date(config.subscription_expires_at) > new Date()
     : false;
 
@@ -130,7 +145,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
       });
       onUpdate();
     } catch (error: any) {
-      console.error('Error syncing email:', error);
+      logger.error('Error syncing email', error);
       const message =
         (typeof error?.message === 'string' && error.message) ||
         (typeof error?.details === 'string' && error.details) ||
@@ -160,7 +175,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
       });
       onUpdate();
     } catch (error: any) {
-      console.error('Error refreshing webhook:', error);
+      logger.error('Error refreshing webhook', error);
       toast({
         title: 'Failed to refresh webhook',
         description: error.message,
@@ -174,17 +189,14 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      const { error } = await supabase
-        .from('email_provider_configs')
-        .delete()
-        .eq('id', config.id);
+      const { error } = await supabase.from('email_provider_configs').delete().eq('id', config.id);
 
       if (error) throw error;
-      
+
       toast({ title: 'Email disconnected', description: 'Account has been removed' });
       onDisconnect();
     } catch (error) {
-      console.error('Error disconnecting email:', error);
+      logger.error('Error disconnecting email', error);
       toast({ title: 'Failed to disconnect', variant: 'destructive' });
     } finally {
       setDisconnecting(false);
@@ -193,17 +205,25 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
 
   const handleAddAlias = async () => {
     if (!newAlias.trim()) return;
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newAlias.trim())) {
-      toast({ title: 'Invalid email', description: 'Please enter a valid email address', variant: 'destructive' });
+      toast({
+        title: 'Invalid email',
+        description: 'Please enter a valid email address',
+        variant: 'destructive',
+      });
       return;
     }
 
     // Check if alias already exists
     if (aliases.includes(newAlias.trim().toLowerCase())) {
-      toast({ title: 'Alias exists', description: 'This alias is already added', variant: 'destructive' });
+      toast({
+        title: 'Alias exists',
+        description: 'This alias is already added',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -216,12 +236,12 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
         .eq('id', config.id);
 
       if (error) throw error;
-      
+
       toast({ title: 'Alias added', description: `${newAlias} added as an alias` });
       setNewAlias('');
       onUpdate();
     } catch (error) {
-      console.error('Error adding alias:', error);
+      logger.error('Error adding alias', error);
       toast({ title: 'Failed to add alias', variant: 'destructive' });
     } finally {
       setAddingAlias(false);
@@ -230,18 +250,18 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
 
   const handleRemoveAlias = async (aliasToRemove: string) => {
     try {
-      const updatedAliases = aliases.filter(a => a !== aliasToRemove);
+      const updatedAliases = aliases.filter((a) => a !== aliasToRemove);
       const { error } = await supabase
         .from('email_provider_configs')
         .update({ aliases: updatedAliases })
         .eq('id', config.id);
 
       if (error) throw error;
-      
+
       toast({ title: 'Alias removed', description: `${aliasToRemove} removed` });
       onUpdate();
     } catch (error) {
-      console.error('Error removing alias:', error);
+      logger.error('Error removing alias', error);
       toast({ title: 'Failed to remove alias', variant: 'destructive' });
     }
   };
@@ -255,15 +275,15 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
         .eq('id', config.id);
 
       if (error) throw error;
-      
-      const levelInfo = AUTOMATION_LEVELS.find(l => l.value === level);
-      toast({ 
+
+      const levelInfo = AUTOMATION_LEVELS.find((l) => l.value === level);
+      toast({
         title: 'Automation mode updated',
-        description: `${config.email_address} is now in ${levelInfo?.label} mode`
+        description: `${config.email_address} is now in ${levelInfo?.label} mode`,
       });
       onUpdate();
     } catch (error) {
-      console.error('Update automation error:', error);
+      logger.error('Update automation error', error);
       toast({ title: 'Failed to update automation level', variant: 'destructive' });
     } finally {
       setUpdatingAutomation(false);
@@ -283,7 +303,8 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
               <div className="flex items-center gap-2">
                 <span className="font-medium">{config.email_address}</span>
                 <Badge variant="secondary" className="text-xs">
-                  {providerIcons[config.provider] || '📧'} {providerLabels[config.provider] || config.provider}
+                  {providerIcons[config.provider] || '📧'}{' '}
+                  {providerLabels[config.provider] || config.provider}
                 </Badge>
                 <Badge variant="outline" className="text-xs text-green-600">
                   <CheckCircle className="h-3 w-3 mr-1" />
@@ -304,22 +325,27 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  Connected {formatDistanceToNow(new Date(config.connected_at), { addSuffix: true })}
+                  Connected{' '}
+                  {formatDistanceToNow(new Date(config.connected_at), { addSuffix: true })}
                 </span>
                 {config.last_sync_at && (
                   <span>
-                    Last synced {formatDistanceToNow(new Date(config.last_sync_at), { addSuffix: true })}
+                    Last synced{' '}
+                    {formatDistanceToNow(new Date(config.last_sync_at), { addSuffix: true })}
                   </span>
                 )}
                 {config.subscription_expires_at && isSubscriptionActive && (
                   <span className="text-emerald-600">
-                    Webhook expires {formatDistanceToNow(new Date(config.subscription_expires_at), { addSuffix: true })}
+                    Webhook expires{' '}
+                    {formatDistanceToNow(new Date(config.subscription_expires_at), {
+                      addSuffix: true,
+                    })}
                   </span>
                 )}
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {!isSubscriptionActive && (
               <Button
@@ -333,19 +359,18 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
                 {refreshingWebhook ? 'Activating...' : 'Enable Real-time'}
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSync}
-              disabled={syncing}
-            >
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing}>
               <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing...' : 'Sync'}
             </Button>
-            
+
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
@@ -353,8 +378,8 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
                 <AlertDialogHeader>
                   <AlertDialogTitle>Disconnect email account?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will remove {config.email_address} from your workspace. 
-                    You won't receive new emails from this account, but existing conversations will be preserved.
+                    This will remove {config.email_address} from your workspace. You won't receive
+                    new emails from this account, but existing conversations will be preserved.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -377,12 +402,10 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label className="text-sm font-medium">AI Automation Mode</Label>
-              <p className="text-xs text-muted-foreground">
-                How should AI handle responses?
-              </p>
+              <p className="text-xs text-muted-foreground">How should AI handle responses?</p>
             </div>
-            <Select 
-              value={config.automation_level || 'draft_only'} 
+            <Select
+              value={config.automation_level || 'draft_only'}
               onValueChange={handleAutomationChange}
               disabled={updatingAutomation}
             >
@@ -418,19 +441,26 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
         {/* Aliases Section */}
         <Collapsible open={aliasesOpen} onOpenChange={setAliasesOpen}>
           <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-between text-muted-foreground"
+            >
               <span className="flex items-center gap-2">
                 <Mail className="h-4 w-4" />
                 Email Aliases ({aliases.length})
               </span>
-              <ChevronDown className={`h-4 w-4 transition-transform ${aliasesOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${aliasesOpen ? 'rotate-180' : ''}`}
+              />
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-3 space-y-3">
             <p className="text-xs text-muted-foreground">
-              Add email aliases that route to this account. Replies will be sent from the address the customer originally emailed.
+              Add email aliases that route to this account. Replies will be sent from the address
+              the customer originally emailed.
             </p>
-            
+
             {/* Existing aliases */}
             {aliases.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -447,7 +477,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
                 ))}
               </div>
             )}
-            
+
             {/* Add new alias */}
             <div className="flex gap-2">
               <Input
@@ -457,11 +487,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
                 onKeyDown={(e) => e.key === 'Enter' && handleAddAlias()}
                 className="flex-1"
               />
-              <Button
-                size="sm"
-                onClick={handleAddAlias}
-                disabled={addingAlias || !newAlias.trim()}
-              >
+              <Button size="sm" onClick={handleAddAlias} disabled={addingAlias || !newAlias.trim()}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add
               </Button>

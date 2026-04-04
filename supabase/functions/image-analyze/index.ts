@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +14,7 @@ interface AnalyzeRequest {
   context?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -24,18 +23,23 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   const supabaseAuth = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
+    { global: { headers: { Authorization: authHeader } } },
   );
-  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
   if (authError || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   // --- END AUTH CHECK ---
@@ -46,14 +50,14 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const body: AnalyzeRequest = await req.json();
-    console.log(`[${functionName}] Request:`, { 
+    console.log(`[${functionName}] Request:`, {
       workspace_id: body.workspace_id,
       analysis_type: body.analysis_type,
-      has_image: !!body.image_url
+      has_image: !!body.image_url,
     });
 
     if (!body.workspace_id) throw new Error('workspace_id is required');
@@ -73,7 +77,7 @@ serve(async (req) => {
 
     // Build analysis prompt based on type
     let analysisPrompt = '';
-    
+
     switch (analysisType) {
       case 'quote':
         analysisPrompt = `You are a ${industry} professional analyzing an image to help provide a quote.
@@ -233,12 +237,13 @@ Return JSON:
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6-20250514',
         max_tokens: 1024,
-        system: 'You are an expert at analyzing images for business purposes. Be specific and practical. Return valid JSON only.',
+        system:
+          'You are an expert at analyzing images for business purposes. Be specific and practical. Return valid JSON only.',
         messages: [
           {
             role: 'user',
@@ -248,14 +253,14 @@ Return JSON:
                 source: {
                   type: 'base64',
                   media_type: mediaType,
-                  data: imageBase64
-                }
+                  data: imageBase64,
+                },
               },
-              { type: 'text', text: analysisPrompt }
-            ]
-          }
-        ]
-      })
+              { type: 'text', text: analysisPrompt },
+            ],
+          },
+        ],
+      }),
     });
 
     if (!aiResponse.ok) {
@@ -277,7 +282,8 @@ Return JSON:
       analysis = {
         description: analysisText,
         confidence: 0.5,
-        suggested_response: 'Thank you for sharing this image. Let me take a closer look and get back to you with more details.'
+        suggested_response:
+          'Thank you for sharing this image. Let me take a closer look and get back to you with more details.',
       };
     }
 
@@ -292,9 +298,12 @@ Return JSON:
         image_url: body.image_url,
         analysis_type: analysisType,
         extracted_data: analysis,
-        description: analysis.description || analysis.job_description || JSON.stringify(analysis).slice(0, 500),
+        description:
+          analysis.description ||
+          analysis.job_description ||
+          JSON.stringify(analysis).slice(0, 500),
         suggested_response: analysis.suggested_response,
-        confidence: analysis.confidence
+        confidence: analysis.confidence,
       })
       .select('id')
       .single();
@@ -305,10 +314,7 @@ Return JSON:
 
     // Update message if provided
     if (body.message_id) {
-      await supabase
-        .from('messages')
-        .update({ has_attachments: true })
-        .eq('id', body.message_id);
+      await supabase.from('messages').update({ has_attachments: true }).eq('id', body.message_id);
     }
 
     const duration = Date.now() - startTime;
@@ -321,11 +327,10 @@ Return JSON:
         analysis_type: analysisType,
         result: analysis,
         suggested_response: analysis.suggested_response,
-        duration_ms: duration
+        duration_ms: duration,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-
   } catch (error: any) {
     console.error(`[${functionName}] Error:`, error);
     return new Response(
@@ -333,9 +338,9 @@ Return JSON:
         success: false,
         error: error.message,
         function: functionName,
-        duration_ms: Date.now() - startTime
+        duration_ms: Date.now() - startTime,
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });

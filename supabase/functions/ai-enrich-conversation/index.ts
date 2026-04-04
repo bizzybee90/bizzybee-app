@@ -1,12 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -17,18 +16,23 @@ serve(async (req) => {
   if (!isServiceRole) {
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
   }
@@ -42,7 +46,7 @@ serve(async (req) => {
     if (!conversation_id || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing conversation_id or workspace_id' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -55,14 +59,16 @@ serve(async (req) => {
     // 1. Fetch conversation + customer + messages
     const { data: conversation } = await supabase
       .from('conversations')
-      .select('*, customer:customers(name, email, vip_status, sentiment_trend, intelligence, topics_discussed)')
+      .select(
+        '*, customer:customers(name, email, vip_status, sentiment_trend, intelligence, topics_discussed)',
+      )
       .eq('id', conversation_id)
       .single();
 
     if (!conversation) {
       return new Response(JSON.stringify({ error: 'Conversation not found' }), {
         status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -76,7 +82,7 @@ serve(async (req) => {
     if (!messages || messages.length === 0) {
       console.log('No messages found for conversation:', conversation_id);
       return new Response(JSON.stringify({ status: 'no_messages' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -96,9 +102,12 @@ serve(async (req) => {
       .single();
 
     // 4. Build the conversation thread text
-    const threadText = messages.map(m =>
-      `[${m.direction === 'inbound' ? 'CUSTOMER' : 'BUSINESS'}] ${m.actor_name || 'Unknown'}: ${(m.body || '').substring(0, 500)}`
-    ).join('\n\n');
+    const threadText = messages
+      .map(
+        (m) =>
+          `[${m.direction === 'inbound' ? 'CUSTOMER' : 'BUSINESS'}] ${m.actor_name || 'Unknown'}: ${(m.body || '').substring(0, 500)}`,
+      )
+      .join('\n\n');
 
     const customerName = conversation.customer?.name || 'Unknown Customer';
     const customerEmail = conversation.customer?.email || '';
@@ -113,13 +122,15 @@ serve(async (req) => {
       .order('created_at', { ascending: true });
 
     // 5b. Build FAQ context for drafting
-    const faqContext = (faqs && faqs.length > 0)
-      ? `\nRelevant FAQs for this business:\n${faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
-      : '';
+    const faqContext =
+      faqs && faqs.length > 0
+        ? `\nRelevant FAQs for this business:\n${faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n')}`
+        : '';
 
-    const rulesContext = (houseRules && houseRules.length > 0)
-      ? `\nBrand rules you must always follow — no exceptions:\n${houseRules.map((r: { rule_text: string }, i: number) => `${i + 1}. ${r.rule_text}`).join('\n')}`
-      : '';
+    const rulesContext =
+      houseRules && houseRules.length > 0
+        ? `\nBrand rules you must always follow — no exceptions:\n${houseRules.map((r: { rule_text: string }, i: number) => `${i + 1}. ${r.rule_text}`).join('\n')}`
+        : '';
 
     // 6. Single AI call - Claude Haiku generates everything
     const systemPrompt = `You are an AI assistant for ${businessName}, a UK-based service business. Analyze the email conversation and return a JSON object with these exact fields:
@@ -156,9 +167,7 @@ ${threadText}`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-6-20250514',
         max_tokens: 1000,
-        messages: [
-          { role: 'user', content: userPrompt }
-        ],
+        messages: [{ role: 'user', content: userPrompt }],
         system: systemPrompt,
       }),
     });
@@ -168,7 +177,7 @@ ${threadText}`;
       console.error('Anthropic API error:', aiResponse.status, errText);
       return new Response(JSON.stringify({ error: 'AI call failed', status: aiResponse.status }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -178,13 +187,16 @@ ${threadText}`;
     // Parse JSON response, handling potential markdown wrapping
     let enrichment;
     try {
-      const cleanJson = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const cleanJson = rawText
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
       enrichment = JSON.parse(cleanJson);
     } catch (parseErr) {
       console.error('Failed to parse AI response:', rawText.substring(0, 200));
       return new Response(JSON.stringify({ error: 'AI response parse failed' }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -224,10 +236,7 @@ ${threadText}`;
         requires_reply: enrichment.requires_reply ?? true,
         ai_draft_response: enrichment.draft_response || null,
       };
-      await supabase
-        .from('conversations')
-        .update(safePayload)
-        .eq('id', conversation_id);
+      await supabase.from('conversations').update(safePayload).eq('id', conversation_id);
     }
 
     // 8. Update customer intelligence if we have a customer
@@ -241,19 +250,36 @@ ${threadText}`;
 
       // Compute message length from this conversation
       const avgMessageLength = messages
-        ? Math.round(messages.filter((m: any) => m.direction === 'inbound').reduce((sum: number, m: any) => sum + (m.body?.length || 0), 0) / Math.max(1, messages.filter((m: any) => m.direction === 'inbound').length))
+        ? Math.round(
+            messages
+              .filter((m: any) => m.direction === 'inbound')
+              .reduce((sum: number, m: any) => sum + (m.body?.length || 0), 0) /
+              Math.max(1, messages.filter((m: any) => m.direction === 'inbound').length),
+          )
         : existingIntel?.communication_patterns?.message_length || null;
 
       // Build insights array from the enrichment
       const insights: Array<{ type: string; description: string; confidence: number }> = [];
       if (enrichment.customer_summary) {
-        insights.push({ type: 'profile', description: enrichment.customer_summary, confidence: 0.85 });
+        insights.push({
+          type: 'profile',
+          description: enrichment.customer_summary,
+          confidence: 0.85,
+        });
       }
       if (enrichment.sentiment) {
-        insights.push({ type: 'sentiment', description: `Customer sentiment is ${enrichment.sentiment}`, confidence: 0.8 });
+        insights.push({
+          type: 'sentiment',
+          description: `Customer sentiment is ${enrichment.sentiment}`,
+          confidence: 0.8,
+        });
       }
       if (enrichment.urgency) {
-        insights.push({ type: 'urgency', description: `Typical urgency level: ${enrichment.urgency}`, confidence: 0.75 });
+        insights.push({
+          type: 'urgency',
+          description: `Typical urgency level: ${enrichment.urgency}`,
+          confidence: 0.75,
+        });
       }
 
       // Build the full intelligence JSON the frontend expects
@@ -264,13 +290,11 @@ ${threadText}`;
           ...(existingIntel.communication_patterns || {}),
           tone: enrichment.customer_tone || existingIntel?.communication_patterns?.tone || null,
           message_length: avgMessageLength,
-          typical_response_time: existingIntel?.communication_patterns?.typical_response_time || null,
+          typical_response_time:
+            existingIntel?.communication_patterns?.typical_response_time || null,
         },
         topics_discussed: mergedTopics,
-        insights: [
-          ...(existingIntel.insights || []),
-          ...insights,
-        ].slice(-20),
+        insights: [...(existingIntel.insights || []), ...insights].slice(-20),
         lifetime_value_estimate: existingIntel.lifetime_value_estimate || null,
         last_analyzed_at: new Date().toISOString(),
       };
@@ -286,7 +310,7 @@ ${threadText}`;
         .eq('id', conversation.customer_id);
 
       // Write to customer_insights table
-      const insightRows = insights.map(ins => ({
+      const insightRows = insights.map((ins) => ({
         customer_id: conversation.customer_id,
         workspace_id,
         insight_type: ins.type,
@@ -300,7 +324,10 @@ ${threadText}`;
           .upsert(insightRows, { onConflict: 'customer_id,insight_type' });
 
         if (insightsError) {
-          console.warn('[ai-enrich] customer_insights upsert failed (table may not exist):', insightsError.message);
+          console.warn(
+            '[ai-enrich] customer_insights upsert failed (table may not exist):',
+            insightsError.message,
+          );
         }
       }
     }
@@ -308,22 +335,24 @@ ${threadText}`;
     const processingTime = Date.now() - startTime;
     console.log(`[ai-enrich] Conversation ${conversation_id} enriched in ${processingTime}ms`);
 
-    return new Response(JSON.stringify({
-      status: 'enriched',
-      processing_time_ms: processingTime,
-      summary: enrichment.summary,
-      decision_bucket: enrichment.decision_bucket,
-      has_draft: !!enrichment.draft_response,
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-
+    return new Response(
+      JSON.stringify({
+        status: 'enriched',
+        processing_time_ms: processingTime,
+        summary: enrichment.summary,
+        decision_bucket: enrichment.decision_bucket,
+        has_draft: !!enrichment.draft_response,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[ai-enrich] Error:', error);
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

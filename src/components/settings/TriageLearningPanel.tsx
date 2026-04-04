@@ -1,12 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { logger } from '@/lib/logger';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Brain, ArrowRight, Zap, Loader2, TrendingUp, RefreshCw, Mail, CheckCircle, RotateCcw, AlertCircle, ExternalLink } from 'lucide-react';
+import {
+  Brain,
+  ArrowRight,
+  Zap,
+  Loader2,
+  TrendingUp,
+  RefreshCw,
+  Mail,
+  CheckCircle,
+  RotateCcw,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
@@ -47,7 +60,7 @@ export function TriageLearningPanel() {
   const [loading, setLoading] = useState(true);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [creatingRule, setCreatingRule] = useState<string | null>(null);
-  
+
   // Bulk re-triage state
   const [isRetriaging, setIsRetriaging] = useState(false);
   const [retriageResults, setRetriageResults] = useState<RetriagedResult[]>([]);
@@ -65,7 +78,9 @@ export function TriageLearningPanel() {
 
   const fetchLowConfidenceCount = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -90,7 +105,7 @@ export function TriageLearningPanel() {
       setLowConfidenceCount(lowCount || 0);
       setTotalConversationCount(totalCount || 0);
     } catch (error) {
-      console.error('Error fetching low confidence count:', error);
+      logger.error('Error fetching low confidence count', error);
     }
   };
 
@@ -98,7 +113,9 @@ export function TriageLearningPanel() {
     setIsRetriaging(true);
     setRetriageResults([]);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -113,7 +130,7 @@ export function TriageLearningPanel() {
         description: 'Bulk re-triage has been migrated to n8n workflows.',
       });
     } catch (error) {
-      console.error('Error running bulk re-triage:', error);
+      logger.error('Error running bulk re-triage', error);
       toast({
         title: 'Re-triage failed',
         variant: 'destructive',
@@ -150,12 +167,12 @@ export function TriageLearningPanel() {
 
       // Sort by count descending
       const sorted = Object.values(grouped)
-        .filter(g => g.count >= 2) // Only show patterns with 2+ corrections
+        .filter((g) => g.count >= 2) // Only show patterns with 2+ corrections
         .sort((a, b) => b.count - a.count);
 
       setCorrections(sorted);
     } catch (error) {
-      console.error('Error fetching corrections:', error);
+      logger.error('Error fetching corrections', error);
     } finally {
       setLoading(false);
     }
@@ -164,7 +181,9 @@ export function TriageLearningPanel() {
   const fetchSuggestions = async () => {
     setLoadingSuggestions(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -180,7 +199,7 @@ export function TriageLearningPanel() {
       });
       setSuggestions([]);
     } catch (error) {
-      console.error('Error fetching suggestions:', error);
+      logger.error('Error fetching suggestions', error);
     } finally {
       setLoadingSuggestions(false);
     }
@@ -189,7 +208,9 @@ export function TriageLearningPanel() {
   const createRuleFromSuggestion = async (suggestion: SuggestedRule) => {
     setCreatingRule(suggestion.senderDomain);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -204,36 +225,34 @@ export function TriageLearningPanel() {
         .single();
 
       if (existingRule) {
-        toast({ 
-          title: 'Rule already exists', 
+        toast({
+          title: 'Rule already exists',
           description: `A rule for @${suggestion.senderDomain} already exists`,
         });
         return;
       }
 
-      const { error } = await supabase
-        .from('sender_rules')
-        .insert({
-          workspace_id: userData?.workspace_id,
-          sender_pattern: `@${suggestion.senderDomain}`,
-          default_classification: suggestion.suggestedClassification,
-          default_requires_reply: suggestion.requiresReply,
-          is_active: true,
-        });
+      const { error } = await supabase.from('sender_rules').insert({
+        workspace_id: userData?.workspace_id,
+        sender_pattern: `@${suggestion.senderDomain}`,
+        default_classification: suggestion.suggestedClassification,
+        default_requires_reply: suggestion.requiresReply,
+        is_active: true,
+      });
 
       if (error) throw error;
 
-      toast({ 
+      toast({
         title: 'Rule created',
         description: `Emails from @${suggestion.senderDomain} will now be classified as ${suggestion.suggestedClassification.replace('_', ' ')}`,
       });
-      
-      setSuggestions(suggestions.filter(s => s.senderDomain !== suggestion.senderDomain));
+
+      setSuggestions(suggestions.filter((s) => s.senderDomain !== suggestion.senderDomain));
     } catch (error) {
-      console.error('Error creating rule:', error);
-      toast({ 
-        title: 'Failed to create rule', 
-        variant: 'destructive' 
+      logger.error('Error creating rule', error);
+      toast({
+        title: 'Failed to create rule',
+        variant: 'destructive',
       });
     } finally {
       setCreatingRule(null);
@@ -243,7 +262,9 @@ export function TriageLearningPanel() {
   const createRuleFromPattern = async (pattern: CorrectionGroup) => {
     setCreatingRule(pattern.sender_domain);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -258,8 +279,8 @@ export function TriageLearningPanel() {
         .single();
 
       if (existingRule) {
-        toast({ 
-          title: 'Rule already exists', 
+        toast({
+          title: 'Rule already exists',
           description: `A rule for @${pattern.sender_domain} already exists`,
         });
         return;
@@ -268,30 +289,28 @@ export function TriageLearningPanel() {
       // Determine if it requires reply based on the correction pattern
       const requiresReply = pattern.new_classification === 'customer_inquiry';
 
-      const { error } = await supabase
-        .from('sender_rules')
-        .insert({
-          workspace_id: userData?.workspace_id,
-          sender_pattern: `@${pattern.sender_domain}`,
-          default_classification: pattern.new_classification,
-          default_requires_reply: requiresReply,
-          is_active: true,
-        });
+      const { error } = await supabase.from('sender_rules').insert({
+        workspace_id: userData?.workspace_id,
+        sender_pattern: `@${pattern.sender_domain}`,
+        default_classification: pattern.new_classification,
+        default_requires_reply: requiresReply,
+        is_active: true,
+      });
 
       if (error) throw error;
 
-      toast({ 
+      toast({
         title: 'Rule created',
         description: `Emails from @${pattern.sender_domain} will now be classified as ${pattern.new_classification}`,
       });
-      
+
       // Remove from list
-      setCorrections(corrections.filter(c => c.sender_domain !== pattern.sender_domain));
+      setCorrections(corrections.filter((c) => c.sender_domain !== pattern.sender_domain));
     } catch (error) {
-      console.error('Error creating rule:', error);
-      toast({ 
-        title: 'Failed to create rule', 
-        variant: 'destructive' 
+      logger.error('Error creating rule', error);
+      toast({
+        title: 'Failed to create rule',
+        variant: 'destructive',
       });
     } finally {
       setCreatingRule(null);
@@ -310,10 +329,14 @@ export function TriageLearningPanel() {
 
   const getBucketColor = (bucket: string) => {
     switch (bucket) {
-      case 'auto_handled': return 'bg-green-500/10 text-green-600 border-green-500/20';
-      case 'quick_win': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
-      case 'act_now': return 'bg-orange-500/10 text-orange-600 border-orange-500/20';
-      default: return 'bg-muted text-muted-foreground';
+      case 'auto_handled':
+        return 'bg-green-500/10 text-green-600 border-green-500/20';
+      case 'quick_win':
+        return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+      case 'act_now':
+        return 'bg-orange-500/10 text-orange-600 border-orange-500/20';
+      default:
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -343,21 +366,20 @@ export function TriageLearningPanel() {
                 Apply the new misdirected fix to every email ({totalConversationCount} total)
               </p>
             </div>
-            <Switch
-              checked={retriageAll}
-              onCheckedChange={setRetriageAll}
-            />
+            <Switch checked={retriageAll} onCheckedChange={setRetriageAll} />
           </div>
 
           {!retriageAll && lowConfidenceCount > 0 && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
               <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
               <span className="text-sm text-amber-700 dark:text-amber-300">
-                <span className="font-semibold">{lowConfidenceCount}</span> conversations have low confidence (below {Math.round(confidenceThreshold * 100)}%) and could benefit from re-triaging.
+                <span className="font-semibold">{lowConfidenceCount}</span> conversations have low
+                confidence (below {Math.round(confidenceThreshold * 100)}%) and could benefit from
+                re-triaging.
               </span>
             </div>
           )}
-          
+
           {!retriageAll && (
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -379,11 +401,9 @@ export function TriageLearningPanel() {
                   Only conversations below this confidence will be re-triaged
                 </p>
               </div>
-              
+
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">
-                  Batch Size: {retriageLimit}
-                </Label>
+                <Label className="text-sm text-muted-foreground">Batch Size: {retriageLimit}</Label>
                 <Slider
                   value={[retriageLimit]}
                   onValueChange={(value) => setRetriageLimit(value[0])}
@@ -417,13 +437,13 @@ export function TriageLearningPanel() {
               </p>
             </div>
           )}
-          
+
           <div className="flex items-center gap-3 pt-2">
             <Button
               onClick={runBulkRetriage}
               disabled={isRetriaging}
               className="min-w-[160px]"
-              variant={retriageAll ? "default" : "secondary"}
+              variant={retriageAll ? 'default' : 'secondary'}
             >
               {isRetriaging ? (
                 <>
@@ -433,17 +453,19 @@ export function TriageLearningPanel() {
               ) : (
                 <>
                   <RotateCcw className="h-4 w-4 mr-2" />
-                  {retriageAll ? `Re-Triage All (${Math.min(retriageLimit, totalConversationCount)})` : 'Re-Triage Now'}
+                  {retriageAll
+                    ? `Re-Triage All (${Math.min(retriageLimit, totalConversationCount)})`
+                    : 'Re-Triage Now'}
                 </>
               )}
             </Button>
             <span className="text-xs text-muted-foreground">
-              {retriageAll 
-                ? 'All conversations will be re-classified with the improved logic' 
+              {retriageAll
+                ? 'All conversations will be re-classified with the improved logic'
                 : 'This will update classifications using the improved AI logic'}
             </span>
           </div>
-          
+
           {retriageResults.length > 0 && (
             <div className="mt-4 space-y-2">
               <h4 className="text-sm font-medium flex items-center gap-2">
@@ -452,7 +474,7 @@ export function TriageLearningPanel() {
               </h4>
               <div className="max-h-48 overflow-y-auto space-y-2">
                 {retriageResults.map((r) => (
-                  <div 
+                  <div
                     key={r.id}
                     className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm"
                   >
@@ -527,17 +549,25 @@ export function TriageLearningPanel() {
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1">
-                        <span className="font-medium">{Math.round(suggestion.replyRate * 100)}%</span> reply rate
+                        <span className="font-medium">
+                          {Math.round(suggestion.replyRate * 100)}%
+                        </span>{' '}
+                        reply rate
                       </span>
                       <span>•</span>
-                      <Badge variant="outline" className={`text-xs ${getBucketColor(suggestion.suggestedBucket)}`}>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${getBucketColor(suggestion.suggestedBucket)}`}
+                      >
                         {suggestion.suggestedBucket.replace('_', ' ')}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs text-muted-foreground">Confidence:</span>
                       <Progress value={suggestion.confidence * 100} className="h-1.5 w-20" />
-                      <span className="text-xs text-muted-foreground">{Math.round(suggestion.confidence * 100)}%</span>
+                      <span className="text-xs text-muted-foreground">
+                        {Math.round(suggestion.confidence * 100)}%
+                      </span>
                     </div>
                   </div>
                   <Button
@@ -577,7 +607,8 @@ export function TriageLearningPanel() {
         <CardContent>
           {corrections.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No patterns detected yet. Keep correcting misclassified emails and suggestions will appear here.
+              No patterns detected yet. Keep correcting misclassified emails and suggestions will
+              appear here.
             </p>
           ) : (
             <div className="space-y-3">
@@ -597,9 +628,7 @@ export function TriageLearningPanel() {
                         <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
                           {pattern.new_classification.replace('_', ' ')}
                         </Badge>
-                        <span className="ml-2">
-                          ({pattern.count} corrections)
-                        </span>
+                        <span className="ml-2">({pattern.count} corrections)</span>
                       </div>
                     </div>
                   </div>

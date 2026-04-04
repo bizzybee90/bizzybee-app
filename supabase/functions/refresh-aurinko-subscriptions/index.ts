@@ -1,12 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,18 +17,23 @@ serve(async (req) => {
   if (!isServiceRole) {
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
   }
@@ -70,19 +74,22 @@ serve(async (req) => {
       console.error('❌ Error fetching email configs:', configError);
       return new Response(JSON.stringify({ error: configError.message }), {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     if (!configs || configs.length === 0) {
       console.log('ℹ️ No email configs found to refresh');
-      return new Response(JSON.stringify({ 
-        success: true, 
-        message: 'No email configs found',
-        refreshed: 0 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'No email configs found',
+          refreshed: 0,
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
     }
 
     console.log(`📧 Found ${configs.length} email config(s) to refresh`);
@@ -96,41 +103,40 @@ serve(async (req) => {
         console.log(`🔧 Refreshing subscription for: ${config.email_address}`);
 
         // Get decrypted access token securely
-        const { data: accessToken, error: tokenError } = await supabase
-          .rpc('get_decrypted_access_token', { p_config_id: config.id });
+        const { data: accessToken, error: tokenError } = await supabase.rpc(
+          'get_decrypted_access_token',
+          { p_config_id: config.id },
+        );
 
         if (tokenError || !accessToken) {
           console.error(`❌ Failed to get access token for ${config.email_address}:`, tokenError);
-          results.push({ 
-            configId: config.id, 
-            email: config.email_address, 
-            success: false, 
-            error: 'Failed to retrieve access token' 
+          results.push({
+            configId: config.id,
+            email: config.email_address,
+            success: false,
+            error: 'Failed to retrieve access token',
           });
           continue;
         }
 
         // First, delete any existing subscriptions to avoid duplicates
-        const deleteResponse = await fetch(
-          `https://api.aurinko.io/v1/subscriptions`,
-          {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-            },
-          }
-        );
+        const deleteResponse = await fetch(`https://api.aurinko.io/v1/subscriptions`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
 
         if (deleteResponse.ok) {
           const existingSubs = await deleteResponse.json();
           console.log(`📋 Found ${existingSubs.records?.length || 0} existing subscriptions`);
-          
+
           // Delete each existing subscription
           for (const sub of existingSubs.records || []) {
             await fetch(`https://api.aurinko.io/v1/subscriptions/${sub.id}`, {
               method: 'DELETE',
               headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                Authorization: `Bearer ${accessToken}`,
               },
             });
             console.log(`🗑️ Deleted old subscription: ${sub.id}`);
@@ -138,30 +144,27 @@ serve(async (req) => {
         }
 
         // Create new subscription for email messages (created + updated events)
-        const createResponse = await fetch(
-          'https://api.aurinko.io/v1/subscriptions',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              resource: '/email/messages',
-              notificationUrl: webhookUrl,
-              events: ['message.created', 'message.updated'],
-            }),
-          }
-        );
+        const createResponse = await fetch('https://api.aurinko.io/v1/subscriptions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            resource: '/email/messages',
+            notificationUrl: webhookUrl,
+            events: ['message.created', 'message.updated'],
+          }),
+        });
 
         if (!createResponse.ok) {
           const errorText = await createResponse.text();
           console.error(`❌ Failed to create subscription for ${config.email_address}:`, errorText);
-          results.push({ 
-            configId: config.id, 
-            email: config.email_address, 
-            success: false, 
-            error: errorText 
+          results.push({
+            configId: config.id,
+            email: config.email_address,
+            success: false,
+            error: errorText,
           });
           continue;
         }
@@ -183,42 +186,43 @@ serve(async (req) => {
           })
           .eq('id', config.id);
 
-        results.push({ 
-          configId: config.id, 
-          email: config.email_address, 
-          success: true 
+        results.push({
+          configId: config.id,
+          email: config.email_address,
+          success: true,
         });
-
       } catch (error: any) {
         console.error(`❌ Error refreshing ${config.email_address}:`, error);
-        results.push({ 
-          configId: config.id, 
-          email: config.email_address, 
-          success: false, 
-          error: error.message 
+        results.push({
+          configId: config.id,
+          email: config.email_address,
+          success: false,
+          error: error.message,
         });
       }
     }
 
-    const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
 
     console.log(`🏁 Refresh complete: ${successCount} success, ${failCount} failed`);
 
-    return new Response(JSON.stringify({
-      success: true,
-      refreshed: successCount,
-      failed: failCount,
-      results,
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        refreshed: successCount,
+        failed: failCount,
+        results,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   } catch (error: any) {
     console.error('❌ Error in refresh-aurinko-subscriptions:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

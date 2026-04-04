@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,7 +41,7 @@ const AUTO_HANDLED_SENDER_PATTERNS = [
   /^donotreply@/i,
   /^do-not-reply@/i,
   /^mailer-daemon@/i,
-  
+
   // Payment & Financial notifications
   /notifications?@stripe\.com$/i,
   /receipts?@stripe\.com$/i,
@@ -54,7 +53,7 @@ const AUTO_HANDLED_SENDER_PATTERNS = [
   /notifications?@.*freeagent\.com$/i,
   /@.*quickbooks\.intuit\.com$/i,
   /noreply@.*tide\.co$/i,
-  
+
   // Shipping & Logistics
   /pkginfo@ups\.com$/i,
   /noreply@.*ups\.com$/i,
@@ -62,30 +61,30 @@ const AUTO_HANDLED_SENDER_PATTERNS = [
   /noreply@.*royalmail\.com$/i,
   /noreply@.*dpd\.co\.uk$/i,
   /noreply@.*hermes.*\.com$/i,
-  
+
   // Social & Marketing platforms
   /noreply@.*linkedin\.com$/i,
   /noreply@.*facebook\.com$/i,
   /noreply@.*twitter\.com$/i,
   /noreply@.*instagram\.com$/i,
   /noreply@.*google\.com$/i,
-  
+
   // Job boards
   /noreply@.*indeed\.com$/i,
   /noreply@.*totaljobs\.com$/i,
   /noreply@.*reed\.co\.uk$/i,
-  
+
   // Business tools
   /noreply@.*calendly\.com$/i,
   /noreply@.*slack\.com$/i,
   /noreply@.*zoom\.us$/i,
   /noreply@.*teams\.microsoft\.com$/i,
-  
+
   // System notifications
   /noreply@.*circleloop\.com$/i,
   /alerts?@.*cloudflare\.com$/i,
   /noreply@.*github\.com$/i,
-  
+
   // Own company system emails
   /noreply@mac-cleaning\.co\.uk$/i,
 ];
@@ -97,7 +96,7 @@ const AUTO_HANDLED_SUBJECT_PATTERNS = [
   /^invoice #?\d+/i,
   /^your payment/i,
   /^transaction (complete|confirmed)/i,
-  
+
   // Shipping notifications
   /^your order (has shipped|is on its way)/i,
   /^shipping confirmation/i,
@@ -105,24 +104,24 @@ const AUTO_HANDLED_SUBJECT_PATTERNS = [
   /^tracking number/i,
   /^out for delivery/i,
   /^delivered:/i,
-  
+
   // Subscriptions
   /^subscription (confirmed|renewed|updated)/i,
   /^welcome to/i,
   /^thank you for (your order|signing up|subscribing)/i,
-  
+
   // Calendar
   /^calendar (invitation|reminder)/i,
   /^meeting (reminder|scheduled)/i,
   /^invitation:/i,
-  
+
   // Security/Auth
   /^security (alert|notification)/i,
   /^sign-in (attempt|notification)/i,
   /^password (reset|changed)/i,
   /^verify your email/i,
   /^confirm your email/i,
-  
+
   // Reports
   /^weekly (report|summary|digest)/i,
   /^monthly (report|summary|digest)/i,
@@ -201,19 +200,19 @@ function extractDomain(email: string): string {
 async function runPreTriageRules(
   email: EmailInput,
   senderRules: any[],
-  senderBehaviourStats: any | null
+  senderBehaviourStats: any | null,
 ): Promise<PreTriageResult> {
   const fromEmail = email.from_email.toLowerCase();
   const domain = extractDomain(fromEmail);
   const subject = email.subject || '';
   const body = email.body || '';
-  
+
   console.log('[PreTriage] Checking email from:', fromEmail);
 
   // ----------------------------------------
   // Priority 1: Check sender_rules table first (user-defined rules)
   // ----------------------------------------
-  const matchedRule = senderRules.find(rule => {
+  const matchedRule = senderRules.find((rule) => {
     if (!rule.is_active) return false;
     const pattern = rule.sender_pattern.toLowerCase();
     // Match domain or full email
@@ -222,15 +221,17 @@ async function runPreTriageRules(
 
   if (matchedRule) {
     console.log('[PreTriage] Matched sender rule:', matchedRule.sender_pattern);
-    const classification = matchedRule.override_classification || matchedRule.default_classification;
-    const requiresReply = matchedRule.override_requires_reply ?? matchedRule.default_requires_reply ?? false;
-    
+    const classification =
+      matchedRule.override_classification || matchedRule.default_classification;
+    const requiresReply =
+      matchedRule.override_requires_reply ?? matchedRule.default_requires_reply ?? false;
+
     return {
       matched: true,
       rule_type: 'sender_rule',
       decision_bucket: requiresReply ? 'quick_win' : 'auto_handled',
-      why_this_needs_you: requiresReply 
-        ? 'Known sender - review recommended' 
+      why_this_needs_you: requiresReply
+        ? 'Known sender - review recommended'
         : 'Known sender - auto-handled by rule',
       classification,
       requires_reply: requiresReply,
@@ -298,7 +299,10 @@ async function runPreTriageRules(
   // ----------------------------------------
   const autoBodyPattern = matchesAnyPattern(body, AUTO_HANDLED_BODY_PATTERNS);
   if (autoBodyPattern) {
-    console.log('[PreTriage] Matched auto-handled body pattern (newsletter):', autoBodyPattern.toString());
+    console.log(
+      '[PreTriage] Matched auto-handled body pattern (newsletter):',
+      autoBodyPattern.toString(),
+    );
     return {
       matched: true,
       rule_type: 'newsletter_pattern',
@@ -324,7 +328,7 @@ async function runPreTriageRules(
       why_this_needs_you: 'Simple confirmation request',
       classification: 'customer_inquiry',
       requires_reply: true,
-      confidence: 0.80,
+      confidence: 0.8,
       skip_llm: false, // Still send to LLM for drafting
     };
   }
@@ -335,7 +339,7 @@ async function runPreTriageRules(
   if (senderBehaviourStats) {
     const replyRate = senderBehaviourStats.reply_rate || 0;
     const ignoredRate = senderBehaviourStats.ignored_rate || 0;
-    
+
     // High ignore rate = likely auto-handled
     if (ignoredRate > 0.8 && senderBehaviourStats.total_messages >= 3) {
       console.log('[PreTriage] High ignore rate sender:', ignoredRate);
@@ -350,7 +354,7 @@ async function runPreTriageRules(
         skip_llm: true,
       };
     }
-    
+
     // VIP sender (high reply rate)
     if (replyRate > 0.8 && senderBehaviourStats.total_messages >= 3) {
       console.log('[PreTriage] High reply-rate sender (VIP):', replyRate);
@@ -387,7 +391,7 @@ async function runPreTriageRules(
 // HTTP HANDLER
 // ============================================
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -398,18 +402,23 @@ serve(async (req) => {
   if (!isServiceRole) {
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
     const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
   }
@@ -419,11 +428,11 @@ serve(async (req) => {
 
   try {
     const { email, workspace_id } = await req.json();
-    
+
     if (!email?.from_email) {
       return new Response(JSON.stringify({ error: 'Missing email data' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -448,11 +457,7 @@ serve(async (req) => {
       .maybeSingle();
 
     // Run pre-triage rules
-    const result = await runPreTriageRules(
-      email,
-      senderRules || [],
-      behaviourStats
-    );
+    const result = await runPreTriageRules(email, senderRules || [], behaviourStats);
 
     const processingTime = Date.now() - startTime;
     console.log('[PreTriage] Result:', {
@@ -460,26 +465,31 @@ serve(async (req) => {
       rule_type: result.rule_type,
       bucket: result.decision_bucket,
       skip_llm: result.skip_llm,
-      processing_time_ms: processingTime
+      processing_time_ms: processingTime,
     });
 
-    return new Response(JSON.stringify({
-      ...result,
-      processing_time_ms: processingTime
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-
+    return new Response(
+      JSON.stringify({
+        ...result,
+        processing_time_ms: processingTime,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[PreTriage] Error:', error);
-    return new Response(JSON.stringify({ 
-      error: errorMessage,
-      matched: false,
-      skip_llm: false 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({
+        error: errorMessage,
+        matched: false,
+        skip_llm: false,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   }
 });

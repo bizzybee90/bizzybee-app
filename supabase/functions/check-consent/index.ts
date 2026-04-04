@@ -1,13 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { validateAuth, AuthError, authErrorResponse } from "../_shared/auth.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -25,7 +24,7 @@ serve(async (req) => {
     if (!customer_identifier || !channel) {
       return new Response(
         JSON.stringify({ error: 'customer_identifier and channel are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
@@ -51,10 +50,10 @@ serve(async (req) => {
 
     if (!customer) {
       console.log('Customer not found');
-      return new Response(
-        JSON.stringify({ has_consent: false }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ has_consent: false }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Check consent for this channel
@@ -69,10 +68,10 @@ serve(async (req) => {
 
     if (!consent) {
       console.log('No consent found for customer');
-      return new Response(
-        JSON.stringify({ has_consent: false }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ has_consent: false }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('Consent found:', consent);
@@ -80,18 +79,18 @@ serve(async (req) => {
       JSON.stringify({
         has_consent: true,
         consent_date: consent.consent_date,
-        consent_method: consent.consent_method
+        consent_method: consent.consent_method,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
     if (error instanceof AuthError) {
       return authErrorResponse(error);
     }
     console.error('Error checking consent:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

@@ -1,45 +1,52 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { ConversationThread } from "@/components/conversations/ConversationThread";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import type { Conversation } from "@/lib/types";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { ThreeColumnLayout } from "@/components/layout/ThreeColumnLayout";
-import { MobilePageLayout } from "@/components/layout/MobilePageLayout";
-import { Sidebar } from "@/components/sidebar/Sidebar";
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { ConversationThread } from '@/components/conversations/ConversationThread';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+import type { Conversation } from '@/lib/types';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
+import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
+import { Sidebar } from '@/components/sidebar/Sidebar';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 export default function ConversationView() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isMobile = useIsMobile();
+  const { workspace } = useWorkspace();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const conversationId = useMemo(() => id ?? "", [id]);
+  const conversationId = useMemo(() => id ?? '', [id]);
 
   useEffect(() => {
-    document.title = "Conversation • Inbox";
+    document.title = 'Conversation • Inbox';
   }, []);
 
   useEffect(() => {
     const run = async () => {
-      if (!conversationId) {
+      if (!conversationId || !workspace?.id) {
         setLoading(false);
         return;
       }
 
       setLoading(true);
-      const { data, error } = await supabase
-        .from("conversations")
-        .select("*")
-        .eq("id", conversationId)
+      setError(null);
+      const { data, error: fetchError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .eq('workspace_id', workspace.id)
         .single();
 
-      if (!error && data) {
+      if (fetchError) {
+        setError(fetchError.message);
+      } else if (data) {
         setConversation(data as Conversation);
       }
 
@@ -47,7 +54,7 @@ export default function ConversationView() {
     };
 
     run();
-  }, [conversationId]);
+  }, [conversationId, workspace?.id]);
 
   if (loading) {
     return (
@@ -75,7 +82,11 @@ export default function ConversationView() {
     return (
       <MobilePageLayout showBackButton onBackClick={() => navigate(-1)} backToText="Back">
         <div className="flex-1 flex flex-col overflow-hidden">
-          <ConversationThread conversation={conversation} onUpdate={() => {}} onBack={() => navigate(-1)} />
+          <ConversationThread
+            conversation={conversation}
+            onUpdate={() => {}}
+            onBack={() => navigate(-1)}
+          />
         </div>
       </MobilePageLayout>
     );
@@ -86,10 +97,13 @@ export default function ConversationView() {
       sidebar={<Sidebar />}
       main={
         <div className="flex flex-col h-screen overflow-hidden">
-          <ConversationThread conversation={conversation} onUpdate={() => {}} onBack={() => navigate(-1)} />
+          <ConversationThread
+            conversation={conversation}
+            onUpdate={() => {}}
+            onBack={() => navigate(-1)}
+          />
         </div>
       }
     />
   );
 }
-

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { Mail, CheckCircle2, Loader2 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -61,68 +62,68 @@ function mapImportProgressRowToMakeProgress(row: any): MakeProgress {
 }
 
 const emailProviders = [
-  { 
-    id: 'gmail' as Provider, 
-    name: 'Gmail', 
+  {
+    id: 'gmail' as Provider,
+    name: 'Gmail',
     icon: 'https://www.google.com/gmail/about/static-2.0/images/logo-gmail.png',
-    available: true 
+    available: true,
   },
-  { 
-    id: 'outlook' as Provider, 
-    name: 'Outlook', 
+  {
+    id: 'outlook' as Provider,
+    name: 'Outlook',
     icon: null,
     iconColor: 'text-blue-600',
-    available: true 
+    available: true,
   },
-  { 
-    id: 'icloud' as Provider, 
-    name: 'iCloud Mail', 
+  {
+    id: 'icloud' as Provider,
+    name: 'iCloud Mail',
     icon: null,
     iconColor: 'text-sky-500',
-    available: true
+    available: true,
   },
-  { 
-    id: 'yahoo' as Provider, 
-    name: 'Yahoo Mail', 
+  {
+    id: 'yahoo' as Provider,
+    name: 'Yahoo Mail',
     icon: null,
     iconColor: 'text-purple-600',
     available: false,
-    comingSoon: true
+    comingSoon: true,
   },
 ];
 
 const importModes = [
-  { 
-    value: 'all_history' as ImportMode, 
-    label: 'Entire email history', 
+  {
+    value: 'all_history' as ImportMode,
+    label: 'Entire email history',
     description: 'Import everything — best for maximum AI accuracy',
     timeEstimate: '~5 mins setup, deep learning continues in background',
-    recommended: false
+    recommended: false,
   },
-  { 
-    value: 'last_30000' as ImportMode, 
-    label: 'Last 30,000 emails', 
+  {
+    value: 'last_30000' as ImportMode,
+    label: 'Last 30,000 emails',
     description: 'Comprehensive learning with great coverage',
     timeEstimate: '~5 mins setup, deep learning continues in background',
-    recommended: true
+    recommended: true,
   },
-  { 
-    value: 'last_10000' as ImportMode, 
-    label: 'Last 10,000 emails', 
+  {
+    value: 'last_10000' as ImportMode,
+    label: 'Last 10,000 emails',
     description: 'Strong learning data with faster import',
-    timeEstimate: '~5 mins setup, continues in background'
+    timeEstimate: '~5 mins setup, continues in background',
   },
-  { 
-    value: 'last_1000' as ImportMode, 
-    label: 'Last 1,000 emails', 
+  {
+    value: 'last_1000' as ImportMode,
+    label: 'Last 1,000 emails',
     description: 'Quick start with decent learning data',
-    timeEstimate: '~3 mins'
+    timeEstimate: '~3 mins',
   },
-  { 
-    value: 'new_only' as ImportMode, 
-    label: 'New emails only', 
+  {
+    value: 'new_only' as ImportMode,
+    label: 'New emails only',
     description: 'Only receive new emails going forward (no history)',
-    timeEstimate: 'Instant'
+    timeEstimate: 'Instant',
   },
 ];
 
@@ -133,11 +134,11 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const PUBLISHED_URL = 'https://embrace-channel-pix.lovable.app';
 // Note: OAuth callback is now handled by edge function (aurinko-auth-callback)
 
-export function EmailConnectionStep({ 
-  workspaceId, 
-  onNext, 
+export function EmailConnectionStep({
+  workspaceId,
+  onNext,
   onBack,
-  onEmailConnected 
+  onEmailConnected,
 }: EmailConnectionStepProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
@@ -198,7 +199,7 @@ export function EmailConnectionStep({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const aurinko = params.get('aurinko');
-    
+
     if (aurinko === 'success') {
       toast.success('Email connected successfully');
       params.delete('aurinko');
@@ -231,7 +232,7 @@ export function EmailConnectionStep({
           .from('email_import_progress')
           .select('*')
           .eq('workspace_id', workspaceId)
-          .maybeSingle()
+          .maybeSingle(),
       ]);
 
       if (!progressResult.error && progressResult.data) {
@@ -252,14 +253,14 @@ export function EmailConnectionStep({
         const email = configResult.data.email_address;
         setConnectedEmail(email);
         onEmailConnected(email);
-        
+
         if (toastedEmailRef.current !== email && !isInitialLoad) {
           toastedEmailRef.current = email;
           toast.success(`Connected to ${email}`);
         }
       }
     } catch (error) {
-      console.error('Error checking connection:', error);
+      logger.error('Error checking connection', error);
     } finally {
       setInitialLoading(false);
       setIsConnecting(false);
@@ -277,19 +278,19 @@ export function EmailConnectionStep({
           workspaceId,
           provider,
           importMode,
-          origin: window.location.origin
-        }
+          origin: window.location.origin,
+        },
       });
 
       if (error) {
-        console.error('Error from aurinko-auth-start:', error);
+        logger.error('Error from aurinko-auth-start', error);
         toast.error('Failed to start email connection');
         setIsConnecting(false);
         return;
       }
 
       if (!data?.authUrl) {
-        console.error('No auth URL returned');
+        logger.error('No auth URL returned');
         toast.error('Failed to get authentication URL');
         setIsConnecting(false);
         return;
@@ -298,7 +299,7 @@ export function EmailConnectionStep({
       // Always use same-tab redirect for seamless experience
       window.location.href = data.authUrl;
     } catch (error) {
-      console.error('Error starting OAuth:', error);
+      logger.error('Error starting OAuth', error);
       toast.error('Failed to start email connection');
       setIsConnecting(false);
     }
@@ -306,9 +307,9 @@ export function EmailConnectionStep({
 
   const startImport = async () => {
     if (!workspaceId || importStarted) return;
-    
+
     setImportStarted(true);
-    
+
     try {
       // Trigger n8n workflows via edge function (avoids CORS issues from browser)
       const { data, error: fnError } = await supabase.functions.invoke('trigger-n8n-workflow', {
@@ -316,16 +317,14 @@ export function EmailConnectionStep({
       });
 
       if (fnError) {
-        console.error('Edge function error:', fnError);
+        logger.error('Edge function error', fnError);
         throw new Error('Failed to trigger AI training workflows');
       }
-
-      console.log('n8n workflows triggered:', data);
 
       toast.success('AI training started! This will take a few minutes...');
       onNext();
     } catch (error) {
-      console.error('Error triggering n8n workflows:', error);
+      logger.error('Error triggering n8n workflows', error);
       toast.error('Failed to start AI training');
       setImportStarted(false);
     }
@@ -335,7 +334,7 @@ export function EmailConnectionStep({
     try {
       await Promise.all([
         supabase.from('email_provider_configs').delete().eq('workspace_id', workspaceId),
-        supabase.from('email_import_progress').delete().eq('workspace_id', workspaceId)
+        supabase.from('email_import_progress').delete().eq('workspace_id', workspaceId),
       ]);
 
       setConnectedEmail(null);
@@ -360,7 +359,7 @@ export function EmailConnectionStep({
           updated_at: new Date().toISOString(),
         })
         .eq('workspace_id', workspaceId);
-      
+
       setImportStarted(false);
       setProgress(null);
       await startImport();
@@ -401,61 +400,78 @@ export function EmailConnectionStep({
       {!connectedEmail && !isConnecting && (
         <div className="flex items-start gap-3 p-3 bg-accent/50 dark:bg-accent/30 rounded-lg border border-border text-sm">
           <div className="shrink-0 mt-0.5">
-            <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="h-4 w-4 text-primary"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <div className="text-foreground">
-            <span className="font-medium">Heads up:</span> A secure login window will open in a popup or new tab.
+            <span className="font-medium">Heads up:</span> A secure login window will open in a
+            popup or new tab.
           </div>
         </div>
       )}
 
       {connectedEmail ? (
-          // Connected - show start button (no inline pipeline progress)
-          <div className="space-y-6">
-            {/* Connected status */}
-            <div className="flex items-center justify-between gap-3 p-4 bg-success/10 rounded-lg border border-success/30">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-6 w-6 text-success" />
-                <div>
-                  <p className="font-medium text-foreground">Email Connected!</p>
-                  <p className="text-sm text-muted-foreground">{connectedEmail}</p>
-                </div>
+        // Connected - show start button (no inline pipeline progress)
+        <div className="space-y-6">
+          {/* Connected status */}
+          <div className="flex items-center justify-between gap-3 p-4 bg-success/10 rounded-lg border border-success/30">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-6 w-6 text-success" />
+              <div>
+                <p className="font-medium text-foreground">Email Connected!</p>
+                <p className="text-sm text-muted-foreground">{connectedEmail}</p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-muted-foreground hover:text-destructive"
-                onClick={handleDisconnect}
-              >
-                Disconnect
-              </Button>
             </div>
-
-            {/* Fix B: simple Continue — email import is triggered automatically by aurinko-auth-callback */}
-            <div className="space-y-3">
-              <Button onClick={onNext} className="w-full gap-2">
-                Continue
-                <CheckCircle2 className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" onClick={onNext} className="w-full">
-                Skip for Now
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground hover:text-destructive"
+              onClick={handleDisconnect}
+            >
+              Disconnect
+            </Button>
           </div>
+
+          {/* Fix B: simple Continue — email import is triggered automatically by aurinko-auth-callback */}
+          <div className="space-y-3">
+            <Button onClick={onNext} className="w-full gap-2">
+              Continue
+              <CheckCircle2 className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" onClick={onNext} className="w-full">
+              Skip for Now
+            </Button>
+          </div>
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Import Mode Selection */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium">How much email history should we learn from?</Label>
-            <RadioGroup value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)} className="space-y-2">
+            <Label className="text-sm font-medium">
+              How much email history should we learn from?
+            </Label>
+            <RadioGroup
+              value={importMode}
+              onValueChange={(v) => setImportMode(v as ImportMode)}
+              className="space-y-2"
+            >
               {importModes.map((mode) => (
-                <div 
+                <div
                   key={mode.value}
                   className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    importMode === mode.value 
-                      ? 'border-primary bg-primary/5' 
+                    importMode === mode.value
+                      ? 'border-primary bg-primary/5'
                       : 'border-border hover:border-muted-foreground/50'
                   }`}
                   onClick={() => setImportMode(mode.value)}
@@ -500,7 +516,11 @@ export function EmailConnectionStep({
                   {isConnecting && selectedProvider === provider.id ? (
                     <Loader2 className="h-6 w-6 animate-spin" />
                   ) : provider.icon ? (
-                    <img src={provider.icon} alt={provider.name} className="h-6 w-6 object-contain" />
+                    <img
+                      src={provider.icon}
+                      alt={provider.name}
+                      className="h-6 w-6 object-contain"
+                    />
                   ) : (
                     <Mail className={`h-6 w-6 ${provider.iconColor || ''}`} />
                   )}

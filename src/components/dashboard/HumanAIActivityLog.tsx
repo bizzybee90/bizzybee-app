@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  Bot, 
-  User, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Bot,
+  User,
+  CheckCircle2,
+  XCircle,
   ArrowRightCircle,
   AlertTriangle,
-  Eye
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
@@ -70,7 +70,8 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
         // Get human responses (messages sent)
         const { data: sentMessages } = await supabase
           .from('messages')
-          .select(`
+          .select(
+            `
             id,
             created_at,
             actor_type,
@@ -79,7 +80,8 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
               workspace_id,
               title
             )
-          `)
+          `,
+          )
           .eq('direction', 'outbound')
           .eq('is_internal', false)
           .order('created_at', { ascending: false })
@@ -88,7 +90,7 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
         // Combine into log entries
         const allLogs: LogEntry[] = [];
 
-        corrections?.forEach(c => {
+        corrections?.forEach((c) => {
           allLogs.push({
             id: `correction-${c.id}`,
             actor: 'human',
@@ -100,7 +102,7 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
           });
         });
 
-        autoHandled?.forEach(c => {
+        autoHandled?.forEach((c) => {
           allLogs.push({
             id: `ai-handle-${c.id}`,
             actor: 'ai',
@@ -112,7 +114,7 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
           });
         });
 
-        reviews?.forEach(c => {
+        reviews?.forEach((c) => {
           allLogs.push({
             id: `review-${c.id}`,
             actor: 'human',
@@ -123,13 +125,14 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
           });
         });
 
-        sentMessages?.forEach(m => {
-          if ((m.conversations as any)?.workspace_id === workspace.id) {
+        sentMessages?.forEach((m) => {
+          const convJoin = m.conversations as { workspace_id?: string; title?: string } | null;
+          if (convJoin?.workspace_id === workspace.id) {
             allLogs.push({
               id: `sent-${m.id}`,
               actor: m.actor_type === 'ai' ? 'ai' : 'human',
               action: 'Sent response',
-              description: (m.conversations as any)?.title || 'Message sent',
+              description: convJoin?.title || 'Message sent',
               timestamp: new Date(m.created_at!),
               conversationId: m.conversation_id || undefined,
             });
@@ -157,9 +160,9 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
-        () => fetchLogs()
+        () => fetchLogs(),
       )
       .on(
         'postgres_changes',
@@ -167,9 +170,9 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
           event: '*',
           schema: 'public',
           table: 'triage_corrections',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
-        () => fetchLogs()
+        () => fetchLogs(),
       )
       .subscribe();
 
@@ -201,11 +204,10 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
     }
   };
 
-
   if (loading) {
     return (
       <div className="space-y-2">
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3, 4].map((i) => (
           <div key={i} className="flex items-center gap-2 py-2 animate-pulse">
             <div className="h-5 w-5 rounded-full bg-muted" />
             <div className="flex-1 space-y-1">
@@ -228,13 +230,13 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
 
   return (
     <div className="space-y-1">
-      {logs.map(log => (
+      {logs.map((log) => (
         <div
           key={log.id}
           className={cn(
-            "flex items-center gap-2 py-1.5 px-2 rounded text-xs transition-colors",
-            log.conversationId && "cursor-pointer hover:bg-accent/50",
-            log.wasOverridden && "bg-warning/5"
+            'flex items-center gap-2 py-1.5 px-2 rounded text-xs transition-colors',
+            log.conversationId && 'cursor-pointer hover:bg-accent/50',
+            log.wasOverridden && 'bg-warning/5',
           )}
           onClick={() => {
             if (log.conversationId && onNavigate) {
@@ -242,18 +244,12 @@ export function HumanAIActivityLog({ onNavigate, maxItems = 8 }: HumanAIActivity
             }
           }}
         >
-          <div className="flex-shrink-0">
-            {getLogIcon(log)}
-          </div>
+          <div className="flex-shrink-0">{getLogIcon(log)}</div>
           <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
             {getActionIcon(log.action)}
-            <span className="font-medium text-foreground truncate">
-              {log.action}
-            </span>
+            <span className="font-medium text-foreground truncate">{log.action}</span>
             <CategoryLabel classification={log.category} size="xs" />
-            <span className="text-muted-foreground truncate">
-              {log.description}
-            </span>
+            <span className="text-muted-foreground truncate">{log.description}</span>
           </div>
           <span className="text-muted-foreground/60 flex-shrink-0">
             {formatDistanceToNow(log.timestamp, { addSuffix: false })}

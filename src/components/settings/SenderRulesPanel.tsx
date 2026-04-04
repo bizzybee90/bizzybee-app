@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -42,12 +43,12 @@ export function SenderRulesPanel() {
   const [rules, setRules] = useState<SenderRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
+
   // New rule form
   const [newPattern, setNewPattern] = useState('');
   const [newClassification, setNewClassification] = useState('automated_notification');
   const [newRequiresReply, setNewRequiresReply] = useState(false);
-  
+
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editClassification, setEditClassification] = useState('');
@@ -67,7 +68,7 @@ export function SenderRulesPanel() {
       if (error) throw error;
       setRules(data || []);
     } catch (error) {
-      console.error('Error fetching sender rules:', error);
+      logger.error('Error fetching sender rules', error);
     } finally {
       setLoading(false);
     }
@@ -81,22 +82,22 @@ export function SenderRulesPanel() {
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
         .eq('id', user?.id)
         .single();
 
-      const { error } = await supabase
-        .from('sender_rules')
-        .insert({
-          workspace_id: userData?.workspace_id,
-          sender_pattern: newPattern.trim().toLowerCase(),
-          default_classification: newClassification,
-          default_requires_reply: newRequiresReply,
-          is_active: true,
-        });
+      const { error } = await supabase.from('sender_rules').insert({
+        workspace_id: userData?.workspace_id,
+        sender_pattern: newPattern.trim().toLowerCase(),
+        default_classification: newClassification,
+        default_requires_reply: newRequiresReply,
+        is_active: true,
+      });
 
       if (error) throw error;
 
@@ -106,11 +107,11 @@ export function SenderRulesPanel() {
       setNewRequiresReply(false);
       fetchRules();
     } catch (error) {
-      console.error('Error adding rule:', error);
-      toast({ 
-        title: 'Failed to add rule', 
+      logger.error('Error adding rule', error);
+      toast({
+        title: 'Failed to add rule',
         description: 'Please try again',
-        variant: 'destructive' 
+        variant: 'destructive',
       });
     } finally {
       setSaving(false);
@@ -125,26 +126,23 @@ export function SenderRulesPanel() {
         .eq('id', id);
 
       if (error) throw error;
-      
-      setRules(rules.map(r => r.id === id ? { ...r, is_active: isActive } : r));
+
+      setRules(rules.map((r) => (r.id === id ? { ...r, is_active: isActive } : r)));
     } catch (error) {
-      console.error('Error toggling rule:', error);
+      logger.error('Error toggling rule', error);
     }
   };
 
   const deleteRule = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('sender_rules')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('sender_rules').delete().eq('id', id);
 
       if (error) throw error;
-      
-      setRules(rules.filter(r => r.id !== id));
+
+      setRules(rules.filter((r) => r.id !== id));
       toast({ title: 'Rule deleted' });
     } catch (error) {
-      console.error('Error deleting rule:', error);
+      logger.error('Error deleting rule', error);
     }
   };
 
@@ -164,24 +162,30 @@ export function SenderRulesPanel() {
     try {
       const { error } = await supabase
         .from('sender_rules')
-        .update({ 
+        .update({
           default_classification: editClassification,
           default_requires_reply: editRequiresReply,
-          updated_at: new Date().toISOString() 
+          updated_at: new Date().toISOString(),
         })
         .eq('id', id);
 
       if (error) throw error;
-      
-      setRules(rules.map(r => r.id === id ? { 
-        ...r, 
-        default_classification: editClassification,
-        default_requires_reply: editRequiresReply 
-      } : r));
+
+      setRules(
+        rules.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                default_classification: editClassification,
+                default_requires_reply: editRequiresReply,
+              }
+            : r,
+        ),
+      );
       setEditingId(null);
       toast({ title: 'Rule updated' });
     } catch (error) {
-      console.error('Error updating rule:', error);
+      logger.error('Error updating rule', error);
       toast({ title: 'Failed to update rule', variant: 'destructive' });
     }
   };
@@ -204,8 +208,8 @@ export function SenderRulesPanel() {
           Sender Rules
         </CardTitle>
         <CardDescription>
-          Create rules to automatically classify emails from specific senders.
-          Rules are checked before AI classification.
+          Create rules to automatically classify emails from specific senders. Rules are checked
+          before AI classification.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -295,10 +299,16 @@ export function SenderRulesPanel() {
                     ) : (
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">
-                          {CLASSIFICATIONS.find(c => c.value === rule.default_classification)?.label}
+                          {
+                            CLASSIFICATIONS.find((c) => c.value === rule.default_classification)
+                              ?.label
+                          }
                         </Badge>
                         {rule.default_requires_reply ? (
-                          <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs bg-green-500/10 text-green-600"
+                          >
                             Needs Reply
                           </Badge>
                         ) : (
@@ -327,21 +337,13 @@ export function SenderRulesPanel() {
                       >
                         <Check className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={cancelEditing}
-                      >
+                      <Button variant="ghost" size="sm" onClick={cancelEditing}>
                         <X className="h-4 w-4" />
                       </Button>
                     </>
                   ) : (
                     <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => startEditing(rule)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => startEditing(rule)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button

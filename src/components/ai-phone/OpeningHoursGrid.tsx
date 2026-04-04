@@ -1,6 +1,12 @@
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { AiPhoneOpeningHours } from '@/lib/types';
 
 interface OpeningHoursGridProps {
@@ -8,7 +14,15 @@ interface OpeningHoursGridProps {
   onChange: (hours: AiPhoneOpeningHours) => void;
 }
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+const DAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+] as const;
 
 const TIME_OPTIONS: string[] = [];
 for (let h = 6; h <= 22; h++) {
@@ -38,9 +52,7 @@ export const OpeningHoursGrid = ({ hours, onChange }: OpeningHoursGridProps) => 
             key={day}
             className="grid grid-cols-[100px_1fr_auto_1fr_auto] items-center gap-3 md:grid-cols-[120px_140px_auto_140px_auto]"
           >
-            <Label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              {day}
-            </Label>
+            <Label className="text-sm font-medium text-foreground">{day}</Label>
 
             <Select
               value={isClosed ? '' : entry.open}
@@ -52,12 +64,14 @@ export const OpeningHoursGrid = ({ hours, onChange }: OpeningHoursGridProps) => 
               </SelectTrigger>
               <SelectContent>
                 {TIME_OPTIONS.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>to</span>
+            <span className="text-xs text-muted-foreground">to</span>
 
             <Select
               value={isClosed ? '' : entry.close}
@@ -69,7 +83,9 @@ export const OpeningHoursGrid = ({ hours, onChange }: OpeningHoursGridProps) => 
               </SelectTrigger>
               <SelectContent>
                 {TIME_OPTIONS.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -79,9 +95,7 @@ export const OpeningHoursGrid = ({ hours, onChange }: OpeningHoursGridProps) => 
                 checked={isClosed}
                 onCheckedChange={(checked) => updateDay(day, 'closed', checked)}
               />
-              <Label className="text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                Closed
-              </Label>
+              <Label className="text-xs whitespace-nowrap text-muted-foreground">Closed</Label>
             </div>
           </div>
         );

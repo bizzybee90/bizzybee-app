@@ -13,7 +13,7 @@ const Inbox = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  
+
   const initialFolder = (searchParams.get('folder') as InboxFolder) || 'inbox';
   const [folder, setFolder] = useState<InboxFolder>(initialFolder);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -38,10 +38,7 @@ const Inbox = () => {
     if (selectedEmail) {
       return (
         <div className="h-screen flex flex-col bg-background">
-          <ReadingPane
-            selectedEmailId={selectedEmail.id}
-            onBack={() => setSelectedEmail(null)}
-          />
+          <ReadingPane selectedEmailId={selectedEmail.id} onBack={() => setSelectedEmail(null)} />
         </div>
       );
     }
@@ -58,20 +55,34 @@ const Inbox = () => {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" style={{ backgroundColor: 'var(--bg-canvas)' }}>
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       {/* Stats Bar — glassmorphic */}
-      <div className="absolute top-0 left-0 right-0 h-12 glass-header flex items-center px-4 gap-4 text-[13px] z-10" style={{ color: 'var(--text-secondary)' }}>
-        <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[13px]" style={{ color: 'var(--accent-primary)' }} onClick={() => navigate('/')}>
+      <div className="absolute top-0 left-0 right-0 h-12 glass-header flex items-center px-4 gap-4 text-[13px] z-10 text-muted-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 gap-1 text-[13px] text-primary"
+          onClick={() => navigate('/')}
+        >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </Button>
-        <span className="font-semibold text-[17px]" style={{ color: 'var(--text-primary)' }}>Inbox</span>
+        <span className="font-semibold text-[17px] text-foreground">Inbox</span>
         <div className="flex-1" />
-        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.inbox?.toLocaleString() || 0}</strong> in inbox</span>
-        <span style={{ color: 'var(--separator)' }}>·</span>
-        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.needsReply?.toLocaleString() || 0}</strong> need reply</span>
-        <span style={{ color: 'var(--separator)' }}>·</span>
-        <span><strong style={{ color: 'var(--text-primary)' }}>{counts?.unread?.toLocaleString() || 0}</strong> unread</span>
+        <span>
+          <strong className="text-foreground">{counts?.inbox?.toLocaleString() || 0}</strong> in
+          inbox
+        </span>
+        <span className="text-border">·</span>
+        <span>
+          <strong className="text-foreground">{counts?.needsReply?.toLocaleString() || 0}</strong>{' '}
+          need reply
+        </span>
+        <span className="text-border">·</span>
+        <span>
+          <strong className="text-foreground">{counts?.unread?.toLocaleString() || 0}</strong>{' '}
+          unread
+        </span>
       </div>
 
       {/* Main Layout below stats bar */}

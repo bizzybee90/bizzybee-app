@@ -20,45 +20,45 @@ interface BusinessFact {
 // ── BizzyBee Brand — warm amber/honey + clean whites ──
 const C = {
   // Brand amber (from logo & app banners)
-  amber:        [245, 158, 11]  as [number, number, number],   // #F59E0B
-  amberDark:    [217, 119, 6]   as [number, number, number],   // #D97706
-  amberLight:   [252, 211, 77]  as [number, number, number],   // #FCD34D
-  amberPale:    [255, 251, 235] as [number, number, number],   // #FFFBEB - warm banner bg
-  amberSoft:    [254, 243, 199] as [number, number, number],   // #FEF3C7
+  amber: [245, 158, 11] as [number, number, number], // #F59E0B
+  amberDark: [217, 119, 6] as [number, number, number], // #D97706
+  amberLight: [252, 211, 77] as [number, number, number], // #FCD34D
+  amberPale: [255, 251, 235] as [number, number, number], // #FFFBEB - warm banner bg
+  amberSoft: [254, 243, 199] as [number, number, number], // #FEF3C7
 
   // Clean whites & backgrounds (from app cards)
-  white:        [255, 255, 255] as [number, number, number],
-  background:   [249, 250, 251] as [number, number, number],   // #F9FAFB
+  white: [255, 255, 255] as [number, number, number],
+  background: [249, 250, 251] as [number, number, number], // #F9FAFB
 
   // Text
-  foreground:   [26, 28, 34]    as [number, number, number],
-  slate:        [71, 85, 105]   as [number, number, number],   // #475569
-  muted:        [107, 114, 128] as [number, number, number],
-  subtle:       [156, 163, 175] as [number, number, number],
+  foreground: [26, 28, 34] as [number, number, number],
+  slate: [71, 85, 105] as [number, number, number], // #475569
+  muted: [107, 114, 128] as [number, number, number],
+  subtle: [156, 163, 175] as [number, number, number],
 
   // Borders
-  border:       [229, 231, 235] as [number, number, number],
+  border: [229, 231, 235] as [number, number, number],
 
   // Accent colours (from sidebar icons)
-  green:        [22, 163, 74]   as [number, number, number],   // success green
-  greenPale:    [220, 252, 231] as [number, number, number],   // #DCFCE7
-  orange:       [234, 88, 12]   as [number, number, number],   // warm orange  
-  violet:       [139, 92, 246]  as [number, number, number],
-  rose:         [225, 29, 72]   as [number, number, number],
-  sky:          [14, 165, 233]  as [number, number, number],
-  teal:         [20, 184, 166]  as [number, number, number],
+  green: [22, 163, 74] as [number, number, number], // success green
+  greenPale: [220, 252, 231] as [number, number, number], // #DCFCE7
+  orange: [234, 88, 12] as [number, number, number], // warm orange
+  violet: [139, 92, 246] as [number, number, number],
+  rose: [225, 29, 72] as [number, number, number],
+  sky: [14, 165, 233] as [number, number, number],
+  teal: [20, 184, 166] as [number, number, number],
 };
 
 const CAT_COLOURS: Record<string, [number, number, number]> = {
   services: C.amber,
-  pricing:  C.green,
-  booking:  C.violet,
+  pricing: C.green,
+  booking: C.violet,
   policies: C.rose,
   coverage: C.sky,
-  process:  C.amberDark,
-  trust:    C.teal,
-  contact:  C.orange,
-  general:  C.amber,
+  process: C.amberDark,
+  trust: C.teal,
+  contact: C.orange,
+  general: C.amber,
 };
 
 function catColour(cat: string): [number, number, number] {
@@ -69,7 +69,10 @@ function catColour(cat: string): [number, number, number] {
   return C.amber;
 }
 
-export async function generateKnowledgeBasePDF(workspaceId: string, companyName?: string): Promise<void> {
+export async function generateKnowledgeBasePDF(
+  workspaceId: string,
+  companyName?: string,
+): Promise<void> {
   const doc = new jsPDF();
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
@@ -77,14 +80,25 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
   const cw = pw - mx * 2;
   let y = mx;
 
-  const sb: any = supabase as any;
-
-  const fetchAll = async <T,>(table: string, select: string, build?: (q: any) => any): Promise<T[]> => {
-    const ps = 1000; let from = 0; const rows: T[] = [];
+  // Dynamic table pagination — tables may not be in generated Supabase types
+  const fetchAll = async <T>(
+    table: string,
+    select: string,
+    build?: (q: unknown) => unknown,
+  ): Promise<T[]> => {
+    const ps = 1000;
+    let from = 0;
+    const rows: T[] = [];
     while (true) {
-      let q = sb.from(table).select(select).eq('workspace_id', workspaceId).range(from, from + ps - 1);
+      let q: unknown = (supabase as unknown as { from: (t: string) => unknown }).from(table);
+      q = (q as { select: (s: string) => unknown }).select(select);
+      q = (q as { eq: (c: string, v: string) => unknown }).eq('workspace_id', workspaceId);
+      q = (q as { range: (f: number, t: number) => unknown }).range(from, from + ps - 1);
       if (build) q = build(q);
-      const { data, error } = await q;
+      const { data, error } = await (q as Promise<{
+        data: unknown[] | null;
+        error: { message: string } | null;
+      }>);
       if (error) throw error;
       const page = (data || []) as T[];
       rows.push(...page);
@@ -94,29 +108,51 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
     return rows;
   };
 
-  const ensureSpace = (n: number) => { if (y + n > ph - 22) { doc.addPage(); y = mx + 4; } };
-  const rRect = (x: number, ry: number, w: number, h: number, r: number, fill: [number, number, number]) => {
-    doc.setFillColor(...fill); doc.roundedRect(x, ry, w, h, r, r, 'F');
+  const ensureSpace = (n: number) => {
+    if (y + n > ph - 22) {
+      doc.addPage();
+      y = mx + 4;
+    }
+  };
+  const rRect = (
+    x: number,
+    ry: number,
+    w: number,
+    h: number,
+    r: number,
+    fill: [number, number, number],
+  ) => {
+    doc.setFillColor(...fill);
+    doc.roundedRect(x, ry, w, h, r, r, 'F');
   };
   const hLine = (ly: number, col: [number, number, number] = C.border, w = 0.3) => {
-    doc.setDrawColor(...col); doc.setLineWidth(w); doc.line(mx, ly, pw - mx, ly);
+    doc.setDrawColor(...col);
+    doc.setLineWidth(w);
+    doc.line(mx, ly, pw - mx, ly);
   };
 
   // ── fetch data ──
   const [faqs, facts, scrapingJob] = await Promise.all([
-    fetchAll<FAQItem>('faq_database', 'question, answer, category, priority, is_own_content, source_type', q =>
-      q.eq('is_active', true).eq('is_own_content', true).order('priority', { ascending: false })
+    fetchAll<FAQItem>(
+      'faq_database',
+      'question, answer, category, priority, is_own_content, source_type',
+      (q) =>
+        q.eq('is_active', true).eq('is_own_content', true).order('priority', { ascending: false }),
     ),
     fetchAll<BusinessFact>('business_facts', 'fact_key, fact_value, category'),
-    sb.from('scraping_jobs')
+    sb
+      .from('scraping_jobs')
       .select('website_url, total_pages_found, pages_processed, faqs_found, completed_at')
-      .eq('workspace_id', workspaceId).eq('status', 'completed')
-      .order('completed_at', { ascending: false }).limit(1).maybeSingle()
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
       .then((r: any) => r.data),
   ]);
 
   const faqsByCat: Record<string, FAQItem[]> = {};
-  faqs.forEach(f => {
+  faqs.forEach((f) => {
     // Normalize category to Title Case to prevent "Pricing" vs "pricing" duplication
     const raw = f.category || 'General';
     const c = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
@@ -125,7 +161,9 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
   const catOrder = Object.entries(faqsByCat).sort((a, b) => b[1].length - a[1].length);
 
   const factsByCat: Record<string, BusinessFact[]> = {};
-  facts.forEach(f => { (factsByCat[f.category] ??= []).push(f); });
+  facts.forEach((f) => {
+    (factsByCat[f.category] ??= []).push(f);
+  });
 
   // ════════════════════════════════════════
   //  COVER PAGE — warm, clean, BizzyBee
@@ -148,11 +186,16 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
     const img = new Image();
     img.crossOrigin = 'anonymous';
     await new Promise<void>((resolve) => {
-      img.onload = () => { doc.addImage(img, 'PNG', pw / 2 - 20, 52, 40, 40); resolve(); };
+      img.onload = () => {
+        doc.addImage(img, 'PNG', pw / 2 - 20, 52, 40, 40);
+        resolve();
+      };
       img.onerror = () => resolve();
       img.src = bizzybeeLogoSrc;
     });
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   // Title
   doc.setFont('helvetica', 'bold');
@@ -173,7 +216,12 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
   // Date
   doc.setFontSize(10);
   doc.setTextColor(...C.muted);
-  doc.text(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), pw / 2, 142, { align: 'center' });
+  doc.text(
+    new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    pw / 2,
+    142,
+    { align: 'center' },
+  );
 
   // ── Stats cards — white cards with amber accents (like app dashboard) ──
   const sY = 162;
@@ -276,10 +324,12 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
     ];
     let iy = y + 11;
     info.forEach(([label, value]) => {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
       doc.setTextColor(...C.amberDark);
       doc.text(label.toUpperCase(), mx + 8, iy);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
       doc.setTextColor(...C.foreground);
       doc.text(value, mx + 55, iy);
       iy += 9.5;
@@ -297,11 +347,13 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
     const col = catColour(cat);
     doc.setFillColor(...col);
     doc.roundedRect(mx + 4, y - 2.5, 3, 8, 1, 1, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
     doc.setTextColor(...C.foreground);
     const label = cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, ' ');
     doc.text(label, mx + 11, y + 3);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.setTextColor(...C.muted);
     doc.text(`${items.length} FAQs`, mx + 11 + doc.getTextWidth(label) + 4, y + 3);
     y += 10;
@@ -320,10 +372,12 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
 
     // Category header — clean rounded pill
     rRect(mx, y, cw, 14, 5, col);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
     doc.setTextColor(...C.white);
     doc.text(label, mx + 8, y + 10);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text(`${items.length} questions`, pw - mx - 8, y + 10, { align: 'right' });
     y += 20;
 
@@ -343,18 +397,21 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
       // Q badge
       doc.setFillColor(...col);
       doc.roundedRect(mx + 4, y + 1, 13, 6, 2, 2, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
       doc.setTextColor(...C.white);
       doc.text(`Q${idx + 1}`, mx + 10.5, y + 5.5, { align: 'center' });
 
       // Question
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
       doc.setTextColor(...C.foreground);
       doc.text(qLines, mx + 20, y + 6);
       y += qLines.length * 5 + 6;
 
       // Answer
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
       doc.setTextColor(...C.slate);
       doc.text(aLines, mx + 20, y);
       y += aLines.length * 5 + 8;
@@ -371,16 +428,18 @@ export async function generateKnowledgeBasePDF(workspaceId: string, companyName?
 
     Object.entries(factsByCat).forEach(([cat, items]) => {
       ensureSpace(16);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
       doc.setTextColor(...C.foreground);
       doc.text(cat.charAt(0).toUpperCase() + cat.slice(1).replace(/_/g, ' '), mx + 4, y + 4);
       y += 10;
 
-      items.forEach(f => {
+      items.forEach((f) => {
         ensureSpace(12);
         doc.setFillColor(...C.amber);
         doc.circle(mx + 6, y + 1.5, 1.2, 'F');
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
         doc.setTextColor(...C.foreground);
         const keyText = f.fact_key.replace(/_/g, ' ');
         doc.text(keyText, mx + 11, y + 3);

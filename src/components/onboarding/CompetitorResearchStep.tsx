@@ -8,8 +8,19 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
-import { Search, Loader2, Sparkles, MapPin, Plus, X, ArrowRight, ArrowLeft, Lightbulb } from 'lucide-react';
+import {
+  Search,
+  Loader2,
+  Sparkles,
+  MapPin,
+  Plus,
+  X,
+  ArrowRight,
+  ArrowLeft,
+  Lightbulb,
+} from 'lucide-react';
 import { CompetitorPipelineProgress } from './CompetitorPipelineProgress';
 
 type FormStep = 'setup' | 'search-terms';
@@ -136,33 +147,28 @@ const BUSINESS_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-
 // Extract clean service area name (first location without radius)
 const parseServiceArea = (serviceArea?: string): string => {
   if (!serviceArea) return '';
   // Support both pipe and comma format
-  const parts = serviceArea.includes(' | ') 
-    ? serviceArea.split(' | ')
-    : serviceArea.split(',');
+  const parts = serviceArea.includes(' | ') ? serviceArea.split(' | ') : serviceArea.split(',');
   const first = parts[0]?.trim() || '';
   // Remove radius if present: "Luton (20 miles)" -> "Luton"
   return first.replace(/\s*\(\d+\s*miles?\)$/i, '').trim();
 };
 
-export function CompetitorResearchStep({ 
-  workspaceId, 
+export function CompetitorResearchStep({
+  workspaceId,
   businessContext,
-  onComplete, 
-  onBack 
+  onComplete,
+  onBack,
 }: CompetitorResearchStepProps) {
   const draftKey = `bizzybee:onboarding:${workspaceId}:competitorDraft`;
 
   const readDraft = () => {
     try {
       const raw = localStorage.getItem(draftKey);
-      return raw
-        ? (JSON.parse(raw) as { nicheQuery?: string; serviceArea?: string })
-        : {};
+      return raw ? (JSON.parse(raw) as { nicheQuery?: string; serviceArea?: string }) : {};
     } catch {
       return {};
     }
@@ -175,19 +181,23 @@ export function CompetitorResearchStep({
   const hasInitialArea = !!(draft.serviceArea || businessContext.serviceArea);
 
   const [status, setStatus] = useState<Status>('idle');
-  const [nicheQuery, setNicheQuery] = useState(draft.nicheQuery ?? businessContext.businessType ?? '');
-  const [serviceArea, setServiceArea] = useState(draft.serviceArea ?? parseServiceArea(businessContext.serviceArea) ?? '');
+  const [nicheQuery, setNicheQuery] = useState(
+    draft.nicheQuery ?? businessContext.businessType ?? '',
+  );
+  const [serviceArea, setServiceArea] = useState(
+    draft.serviceArea ?? parseServiceArea(businessContext.serviceArea) ?? '',
+  );
   const targetCount = 15;
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState(!hasInitialNiche);
   const [isCheckingResume, setIsCheckingResume] = useState(true); // Block render until resume check completes
-  
+
   // Form step state for two-step flow
   const [formStep, setFormStep] = useState<FormStep>('setup');
-  
+
   // Search query preview state
-  const [searchQueries, setSearchQueries] = useState<{query: string; enabled: boolean}[]>([]);
+  const [searchQueries, setSearchQueries] = useState<{ query: string; enabled: boolean }[]>([]);
   const [customQueryInput, setCustomQueryInput] = useState('');
 
   // Resume the latest in-progress job after refresh so the UI doesn't look "paused".
@@ -252,33 +262,34 @@ export function CompetitorResearchStep({
   // Filter business types based on search with fuzzy matching
   const filteredBusinessTypes = useMemo(() => {
     if (!nicheSearch || nicheSearch.trim().length < 1) return [];
-    
+
     const search = nicheSearch.toLowerCase().trim();
-    
-    const scored = BUSINESS_TYPES
-      .map(type => {
-        const label = type.label.toLowerCase();
-        const value = type.value.toLowerCase();
-        let score = 0;
-        
-        if (label === search || value === search) {
-          score = 100;
-        } else if (label.startsWith(search) || value.startsWith(search)) {
-          score = 80;
-        } else if (label.split(/[\s&]+/).some(word => word.startsWith(search)) || 
-                   value.split('_').some(word => word.startsWith(search))) {
-          score = 60;
-        } else if (label.includes(search) || value.includes(search)) {
-          score = 40;
-        }
-        
-        return { type, score };
-      })
-      .filter(item => item.score > 0)
+
+    const scored = BUSINESS_TYPES.map((type) => {
+      const label = type.label.toLowerCase();
+      const value = type.value.toLowerCase();
+      let score = 0;
+
+      if (label === search || value === search) {
+        score = 100;
+      } else if (label.startsWith(search) || value.startsWith(search)) {
+        score = 80;
+      } else if (
+        label.split(/[\s&]+/).some((word) => word.startsWith(search)) ||
+        value.split('_').some((word) => word.startsWith(search))
+      ) {
+        score = 60;
+      } else if (label.includes(search) || value.includes(search)) {
+        score = 40;
+      }
+
+      return { type, score };
+    })
+      .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
-      .map(item => item.type);
-    
+      .map((item) => item.type);
+
     return scored;
   }, [nicheSearch]);
 
@@ -295,7 +306,7 @@ export function CompetitorResearchStep({
       setIsLoadingContext(false);
       return;
     }
-    
+
     const fetchBusinessContext = async () => {
       setIsLoadingContext(true);
       try {
@@ -314,7 +325,7 @@ export function CompetitorResearchStep({
           }
         }
       } catch (err) {
-        console.error('Error fetching business context:', err);
+        logger.error('Error fetching business context', err);
       } finally {
         setIsLoadingContext(false);
       }
@@ -333,18 +344,18 @@ export function CompetitorResearchStep({
     setIsLoadingPlaces(true);
     try {
       const { data, error } = await supabase.functions.invoke('google-places-autocomplete', {
-        body: { input: input.trim() }
+        body: { input: input.trim() },
       });
 
       if (error) {
-        console.error('Places API error:', error);
+        logger.error('Places API error', error);
         setPlacePredictions([]);
         return;
       }
 
       setPlacePredictions(data.predictions || []);
     } catch (err) {
-      console.error('Error fetching places:', err);
+      logger.error('Error fetching places', err);
       setPlacePredictions([]);
     } finally {
       setIsLoadingPlaces(false);
@@ -367,9 +378,10 @@ export function CompetitorResearchStep({
   const handleSelectLocation = (location: string) => {
     // Clean up country suffix
     let cleanLocation = location.trim();
-    const countryPattern = /, (UK|United Kingdom|USA|United States|Australia|Canada|Ireland|Germany|France|Italy|Spain|Netherlands|New Zealand|India|Poland|Czechia|South Korea|Malaysia|Belarus|England|Scotland|Wales|Northern Ireland)$/i;
+    const countryPattern =
+      /, (UK|United Kingdom|USA|United States|Australia|Canada|Ireland|Germany|France|Italy|Spain|Netherlands|New Zealand|India|Poland|Czechia|South Korea|Malaysia|Belarus|England|Scotland|Wales|Northern Ireland)$/i;
     cleanLocation = cleanLocation.replace(countryPattern, '');
-    
+
     setServiceArea(cleanLocation);
     setServiceAreaSearch('');
     setPlacePredictions([]);
@@ -381,9 +393,11 @@ export function CompetitorResearchStep({
     try {
       localStorage.setItem(
         draftKey,
-        JSON.stringify({ nicheQuery, serviceArea, updatedAt: Date.now() })
+        JSON.stringify({ nicheQuery, serviceArea, updatedAt: Date.now() }),
       );
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [draftKey, nicheQuery, serviceArea, status]);
 
   // Generate search queries when industry or location changes
@@ -391,42 +405,42 @@ export function CompetitorResearchStep({
     if (nicheQuery && serviceArea) {
       const industry = nicheQuery.toLowerCase();
       const location = serviceArea.toLowerCase();
-      
+
       // Generate high-quality, distinct search terms
       const generated = generateSearchTerms(industry, location);
-      const variants = generated.map(q => ({ query: q, enabled: true }));
-      
+      const variants = generated.map((q) => ({ query: q, enabled: true }));
+
       setSearchQueries(variants);
     }
   }, [nicheQuery, serviceArea]);
 
   const toggleSearchQuery = (index: number, checked: boolean) => {
-    setSearchQueries(prev => 
-      prev.map((sq, i) => i === index ? { ...sq, enabled: checked } : sq)
+    setSearchQueries((prev) =>
+      prev.map((sq, i) => (i === index ? { ...sq, enabled: checked } : sq)),
     );
   };
 
   const addCustomQuery = () => {
     const trimmed = customQueryInput.trim().toLowerCase();
-    if (trimmed && !searchQueries.some(sq => sq.query.toLowerCase() === trimmed)) {
-      setSearchQueries(prev => [...prev, { query: trimmed, enabled: true }]);
+    if (trimmed && !searchQueries.some((sq) => sq.query.toLowerCase() === trimmed)) {
+      setSearchQueries((prev) => [...prev, { query: trimmed, enabled: true }]);
       setCustomQueryInput('');
     }
   };
 
   const removeQuery = (index: number) => {
-    setSearchQueries(prev => prev.filter((_, i) => i !== index));
+    setSearchQueries((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const enabledQueries = searchQueries.filter(sq => sq.enabled).map(sq => sq.query);
+  const enabledQueries = searchQueries.filter((sq) => sq.enabled).map((sq) => sq.query);
 
   // Quick-add suggestions - useful patterns not already in the list
   const quickSuggestions = useMemo(() => {
     if (!nicheQuery || !serviceArea) return [];
-    
+
     const industry = nicheQuery.toLowerCase();
     const location = serviceArea.toLowerCase();
-    
+
     const patterns = [
       `professional ${industry} ${location}`,
       `affordable ${industry} ${location}`,
@@ -435,13 +449,13 @@ export function CompetitorResearchStep({
       `emergency ${industry} ${location}`,
       `${industry} company ${location}`,
     ];
-    
-    const existingQueries = searchQueries.map(sq => sq.query.toLowerCase());
-    return patterns.filter(p => !existingQueries.includes(p));
+
+    const existingQueries = searchQueries.map((sq) => sq.query.toLowerCase());
+    return patterns.filter((p) => !existingQueries.includes(p));
   }, [nicheQuery, serviceArea, searchQueries]);
 
   const addQuickSuggestion = (suggestion: string) => {
-    setSearchQueries(prev => [...prev, { query: suggestion, enabled: true }]);
+    setSearchQueries((prev) => [...prev, { query: suggestion, enabled: true }]);
   };
 
   const startResearch = useCallback(async () => {
@@ -465,9 +479,7 @@ export function CompetitorResearchStep({
       //    - Filters out directories (40+ blocked domains)
       // 3. Phase 3: Quality scoring and priority tier assignment
       // Get enabled search queries
-      const customQueries = searchQueries
-        .filter(sq => sq.enabled)
-        .map(sq => sq.query);
+      const customQueries = searchQueries.filter((sq) => sq.enabled).map((sq) => sq.query);
 
       const { data, error: invokeError } = await supabase.functions.invoke('trigger-n8n-workflow', {
         body: {
@@ -478,7 +490,7 @@ export function CompetitorResearchStep({
           radiusMiles: 20,
           maxCompetitors: targetCount,
           customQueries: customQueries.length > 0 ? customQueries : undefined,
-        }
+        },
       });
 
       if (invokeError) throw invokeError;
@@ -490,9 +502,8 @@ export function CompetitorResearchStep({
       setJobId(data.jobId);
       setStatus('running');
       toast.success('Hybrid competitor research started!');
-
     } catch (err) {
-      console.error('Failed to start research:', err);
+      logger.error('Failed to start research', err);
       setStatus('error');
       setError(err instanceof Error ? err.message : 'Failed to start competitor research');
       toast.error('Failed to start research');
@@ -533,9 +544,7 @@ export function CompetitorResearchStep({
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
             Loading...
           </CardTitle>
-          <CardDescription className="mt-2">
-            Checking for active research...
-          </CardDescription>
+          <CardDescription className="mt-2">Checking for active research...</CardDescription>
         </div>
       </div>
     );
@@ -568,9 +577,7 @@ export function CompetitorResearchStep({
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
             Starting Research
           </CardTitle>
-          <CardDescription className="mt-2">
-            Setting up competitor discovery...
-          </CardDescription>
+          <CardDescription className="mt-2">Setting up competitor discovery...</CardDescription>
         </div>
 
         <div className="flex gap-3">
@@ -596,9 +603,7 @@ export function CompetitorResearchStep({
           </CardDescription>
         </div>
 
-        {error && (
-          <p className="text-center text-sm text-destructive">{error}</p>
-        )}
+        {error && <p className="text-center text-sm text-destructive">{error}</p>}
 
         <div className="flex gap-3">
           <Button variant="outline" onClick={onBack} className="flex-1">
@@ -670,7 +675,9 @@ export function CompetitorResearchStep({
             {nicheQuery && !nicheFocused && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Search className="h-3 w-3" />
-                <span>Selected: <strong className="text-foreground">{nicheQuery}</strong></span>
+                <span>
+                  Selected: <strong className="text-foreground">{nicheQuery}</strong>
+                </span>
               </div>
             )}
             <p className="text-xs text-muted-foreground">
@@ -721,24 +728,27 @@ export function CompetitorResearchStep({
             {serviceArea && !serviceAreaFocused && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <MapPin className="h-3 w-3" />
-                <span>Selected: <strong className="text-foreground">{serviceArea}</strong></span>
+                <span>
+                  Selected: <strong className="text-foreground">{serviceArea}</strong>
+                </span>
               </div>
             )}
             <p className="text-xs text-muted-foreground">
               We'll find real local competitors in your area using Google Places
             </p>
           </div>
-
         </div>
 
         <p className="text-sm text-muted-foreground">
-          We'll find and deeply analyse your top 15 local competitors — extracting every FAQ, pricing detail, and service they offer that your site doesn't cover yet.
+          We'll find and deeply analyse your top 15 local competitors — extracting every FAQ,
+          pricing detail, and service they offer that your site doesn't cover yet.
         </p>
 
         <div className="bg-primary/5 rounded-lg p-3 text-sm border border-primary/20">
           <p className="text-foreground">
-            <strong>What happens:</strong> We discover real {nicheQuery || 'businesses'} businesses near you, 
-            scrape their websites, and extract FAQ gaps — questions customers ask them that your site doesn't answer yet.
+            <strong>What happens:</strong> We discover real {nicheQuery || 'businesses'} businesses
+            near you, scrape their websites, and extract FAQ gaps — questions customers ask them
+            that your site doesn't answer yet.
           </p>
         </div>
 
@@ -749,9 +759,9 @@ export function CompetitorResearchStep({
           <Button variant="outline" onClick={handleSkip} className="flex-1">
             Skip
           </Button>
-          <Button 
-            onClick={() => setFormStep('search-terms')} 
-            disabled={!nicheQuery.trim() || !serviceArea.trim()} 
+          <Button
+            onClick={() => setFormStep('search-terms')}
+            disabled={!nicheQuery.trim() || !serviceArea.trim()}
             className="flex-1 gap-2"
           >
             Next: Review Search Terms
@@ -797,9 +807,11 @@ export function CompetitorResearchStep({
                 checked={sq.enabled}
                 onCheckedChange={(checked) => toggleSearchQuery(idx, !!checked)}
               />
-              <span className={`flex-1 text-sm font-mono px-2 py-1.5 rounded ${
-                sq.enabled ? 'bg-background border' : 'bg-muted/50 text-muted-foreground'
-              }`}>
+              <span
+                className={`flex-1 text-sm font-mono px-2 py-1.5 rounded ${
+                  sq.enabled ? 'bg-background border' : 'bg-muted/50 text-muted-foreground'
+                }`}
+              >
                 {sq.query}
               </span>
               <button
@@ -861,8 +873,8 @@ export function CompetitorResearchStep({
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 border border-border rounded-lg p-3">
         <Lightbulb className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
         <span>
-          Use the exact terms you'd type into Google to find competitors. 
-          More specific terms like "professional window cleaning luton" often find better quality results.
+          Use the exact terms you'd type into Google to find competitors. More specific terms like
+          "professional window cleaning luton" often find better quality results.
         </span>
       </div>
 
@@ -874,7 +886,11 @@ export function CompetitorResearchStep({
         <Button variant="outline" onClick={handleSkip} className="flex-1">
           Skip
         </Button>
-        <Button onClick={handleStart} disabled={enabledQueries.length === 0} className="flex-1 gap-2">
+        <Button
+          onClick={handleStart}
+          disabled={enabledQueries.length === 0}
+          className="flex-1 gap-2"
+        >
           <Search className="h-4 w-4" />
           Start Research
         </Button>

@@ -1,4 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from "react";
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Sentry } from '@/lib/sentry';
 
 interface Props {
   children: ReactNode;
@@ -20,7 +21,9 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    Sentry.captureException(error, {
+      extra: { componentStack: errorInfo.componentStack },
+    });
   }
 
   handleTryAgain = () => {
@@ -51,9 +54,7 @@ class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-              Something went wrong
-            </h1>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-2">Something went wrong</h1>
             <p className="text-gray-500 mb-8">
               An unexpected error occurred. You can try again or reload the page.
             </p>

@@ -34,30 +34,37 @@ const CATEGORY_LABELS: Record<string, string> = {
   additional_services: 'Additional Services',
 };
 
-export async function generateLearningReportPDF(workspaceId: string, companyName?: string): Promise<void> {
+export async function generateLearningReportPDF(
+  workspaceId: string,
+  companyName?: string,
+): Promise<void> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   const contentWidth = pageWidth - margin * 2;
   let y = margin;
 
-  // The backend client is strongly typed for known tables; PDF generation needs dynamic pagination.
-  // We intentionally use `any` here to avoid type-instantiation explosions.
-  const sb: any = supabase as any;
-
-  const fetchAll = async <T,>(
+  // Dynamic table pagination for PDF export — tables may not be in generated types.
+  // Internal query builder uses `unknown` with explicit result typing.
+  const fetchAll = async <T>(
     table: string,
     select: string,
-    build?: (q: any) => any
+    build?: (q: unknown) => unknown,
   ): Promise<T[]> => {
     const pageSize = 1000;
     let from = 0;
     const rows: T[] = [];
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      let q: any = sb.from(table).select(select).eq('workspace_id', workspaceId).range(from, from + pageSize - 1);
+      let q: unknown = (supabase as unknown as { from: (t: string) => unknown }).from(table);
+      q = (q as { select: (s: string) => unknown }).select(select);
+      q = (q as { eq: (c: string, v: string) => unknown }).eq('workspace_id', workspaceId);
+      q = (q as { range: (f: number, t: number) => unknown }).range(from, from + pageSize - 1);
       if (build) q = build(q);
-      const { data, error } = await q;
+      const { data, error } = await (q as Promise<{
+        data: unknown[] | null;
+        error: { message: string } | null;
+      }>);
       if (error) throw error;
       const page = (data || []) as T[];
       rows.push(...page);
@@ -121,7 +128,9 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
       .select('voice_dna, playbook, emails_analyzed')
       .eq('workspace_id', workspaceId)
       .single(),
-    fetchAll<{ category: string | null }>('email_import_queue', 'category', (q) => q.not('category', 'is', null)),
+    fetchAll<{ category: string | null }>('email_import_queue', 'category', (q) =>
+      q.not('category', 'is', null),
+    ),
     fetchAll<{ category: string | null }>('example_responses', 'category'),
   ]);
 
@@ -131,7 +140,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
 
   // Aggregate category counts
   const categoryCounts: Record<string, number> = {};
-  (emails || []).forEach(row => {
+  (emails || []).forEach((row) => {
     const cat = row.category || 'unknown';
     categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
   });
@@ -140,7 +149,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
 
   // Example counts by category
   const exampleCounts: Record<string, number> = {};
-  (examples || []).forEach(row => {
+  (examples || []).forEach((row) => {
     const cat = row.category || 'general';
     exampleCounts[cat] = (exampleCounts[cat] || 0) + 1;
   });
@@ -148,24 +157,30 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
   // ===== HEADER =====
   doc.setFillColor(245, 245, 250);
   doc.rect(0, 0, pageWidth, 45, 'F');
-  
+
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(0, 0, 0);
   doc.text('BizzyBee AI Learning Report', margin, 25);
-  
+
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 100, 100);
   doc.text(companyName || 'Your Business', margin, 35);
-  doc.text(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), pageWidth - margin - 50, 35);
-  
+  doc.text(
+    new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    pageWidth - margin - 50,
+    35,
+  );
+
   doc.setTextColor(0, 0, 0);
   y = 55;
 
   // ===== SUMMARY =====
   addTitle('Summary', 14);
-  addText(`Analyzed ${totalEmails.toLocaleString()} emails and ${emailsAnalyzed} conversation pairs to create your personalized AI assistant.`);
+  addText(
+    `Analyzed ${totalEmails.toLocaleString()} emails and ${emailsAnalyzed} conversation pairs to create your personalized AI assistant.`,
+  );
   addSpacer();
 
   // ===== CLASSIFICATION BREAKDOWN =====
@@ -183,7 +198,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
   // ===== VOICE DNA =====
   checkPageBreak(60);
   addTitle('Your Voice DNA', 14);
-  
+
   if (voiceDNA) {
     addText('BizzyBee learned your unique communication style:');
     addSpacer(4);
@@ -196,7 +211,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
 
     if (voiceDNA.openers?.length > 0) {
       addSubtitle('How you start emails');
-      voiceDNA.openers.slice(0, 3).forEach(opener => {
+      voiceDNA.openers.slice(0, 3).forEach((opener) => {
         const pct = Math.round(opener.frequency * 100);
         addBullet(`"${opener.phrase}" (${pct}% of emails)`);
       });
@@ -205,7 +220,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
 
     if (voiceDNA.closers?.length > 0) {
       addSubtitle('How you end emails');
-      voiceDNA.closers.slice(0, 3).forEach(closer => {
+      voiceDNA.closers.slice(0, 3).forEach((closer) => {
         const pct = Math.round(closer.frequency * 100);
         addBullet(`"${closer.phrase}" (${pct}% of emails)`);
       });
@@ -214,7 +229,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
 
     if (voiceDNA.tics?.length > 0) {
       addSubtitle('Your unique style');
-      voiceDNA.tics.slice(0, 4).forEach(tic => {
+      voiceDNA.tics.slice(0, 4).forEach((tic) => {
         addBullet(tic.charAt(0).toUpperCase() + tic.slice(1));
       });
       addSpacer(4);
@@ -235,16 +250,22 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
   addSpacer(4);
 
   if (playbook && playbook.length > 0) {
-    playbook.slice(0, 3).forEach(entry => {
+    playbook.slice(0, 3).forEach((entry) => {
       checkPageBreak(50);
       const label = CATEGORY_LABELS[entry.category] || entry.category;
       addSubtitle(label);
-      
+
       if (entry.golden_example) {
         doc.setFont('helvetica', 'italic');
-        addText(`Customer: "${entry.golden_example.customer.slice(0, 120)}${entry.golden_example.customer.length > 120 ? '...' : ''}"`, 5);
+        addText(
+          `Customer: "${entry.golden_example.customer.slice(0, 120)}${entry.golden_example.customer.length > 120 ? '...' : ''}"`,
+          5,
+        );
         doc.setFont('helvetica', 'normal');
-        addText(`You replied: "${entry.golden_example.owner.slice(0, 150)}${entry.golden_example.owner.length > 150 ? '...' : ''}"`, 5);
+        addText(
+          `You replied: "${entry.golden_example.owner.slice(0, 150)}${entry.golden_example.owner.length > 150 ? '...' : ''}"`,
+          5,
+        );
       }
       addSpacer(4);
     });
@@ -255,7 +276,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
   // ===== CONFIDENCE ASSESSMENT =====
   checkPageBreak(50);
   addTitle('AI Confidence Assessment', 14);
-  
+
   const totalExamples = Object.values(exampleCounts).reduce((a, b) => a + b, 0);
   addText(`Based on ${totalExamples} example conversations:`);
   addSpacer(4);
@@ -298,7 +319,7 @@ export async function generateLearningReportPDF(workspaceId: string, companyName
       `Generated by BizzyBee • Page ${i} of ${pageCount}`,
       pageWidth / 2,
       doc.internal.pageSize.getHeight() - 10,
-      { align: 'center' }
+      { align: 'center' },
     );
   }
 

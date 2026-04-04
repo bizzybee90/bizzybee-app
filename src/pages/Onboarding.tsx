@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { isOnboardingComplete } from '@/lib/onboardingStatus';
 
@@ -28,7 +29,7 @@ export default function Onboarding() {
 
     const initializeOnboarding = async (userId: string) => {
       try {
-        console.log('[Onboarding] Initializing for user:', userId);
+        logger.debug('Initializing for user', { userId });
 
         // Get user's workspace and onboarding status
         const { data: userData, error: userError } = await supabase
@@ -38,18 +39,18 @@ export default function Onboarding() {
           .single();
 
         if (userError) {
-          console.error('[Onboarding] Error fetching user:', userError);
+          logger.error('Error fetching user', userError);
           // User might not exist yet - wait a bit for trigger
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
           const { data: retryData, error: retryError } = await supabase
             .from('users')
             .select('workspace_id, onboarding_completed, onboarding_step')
             .eq('id', userId)
             .single();
-          
+
           if (retryError) {
-            console.error('[Onboarding] Retry failed:', retryError);
+            logger.error('Retry failed', retryError);
             if (isMounted) {
               clearSafetyTimeout(loadingSafetyTimeout);
               setError('Failed to load user data. Please refresh the page.');
@@ -57,12 +58,12 @@ export default function Onboarding() {
             }
             return;
           }
-          
+
           if (!isReset && isOnboardingComplete(retryData)) {
             navigate('/');
             return;
           }
-          
+
           if (retryData?.workspace_id) {
             if (isMounted) {
               clearSafetyTimeout(loadingSafetyTimeout);
@@ -73,11 +74,14 @@ export default function Onboarding() {
           }
         }
 
-        console.log('[Onboarding] User data:', userData);
+        logger.debug('User data loaded', {
+          workspaceId: userData?.workspace_id,
+          onboardingCompleted: userData?.onboarding_completed,
+        });
 
         // If already onboarded and NOT a reset, go to home
         if (!isReset && isOnboardingComplete(userData)) {
-          console.log('[Onboarding] Already completed, going home');
+          logger.debug('Already completed, going home');
           clearSafetyTimeout(loadingSafetyTimeout);
           navigate('/');
           return;
@@ -85,7 +89,7 @@ export default function Onboarding() {
 
         // If workspace exists, use it
         if (userData?.workspace_id) {
-          console.log('[Onboarding] Using existing workspace:', userData.workspace_id);
+          logger.debug('Using existing workspace', { workspaceId: userData.workspace_id });
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
             setWorkspaceId(userData.workspace_id);
@@ -95,7 +99,7 @@ export default function Onboarding() {
         }
 
         // Create a new workspace
-        console.log('[Onboarding] Creating workspace...');
+        logger.debug('Creating workspace');
         const { data: workspace, error: wsError } = await supabase
           .from('workspaces')
           .insert({
@@ -106,7 +110,7 @@ export default function Onboarding() {
           .single();
 
         if (wsError) {
-          console.error('[Onboarding] Error creating workspace:', wsError);
+          logger.error('Error creating workspace', wsError);
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
             setError('Failed to create workspace. Please refresh the page.');
@@ -122,17 +126,17 @@ export default function Onboarding() {
           .eq('id', userId);
 
         if (updateError) {
-          console.error('[Onboarding] Error updating user:', updateError);
+          logger.error('Error updating user', updateError);
         }
 
-        console.log('[Onboarding] Workspace created:', workspace.id);
+        logger.debug('Workspace created', { workspaceId: workspace.id });
         if (isMounted) {
           clearSafetyTimeout(loadingSafetyTimeout);
           setWorkspaceId(workspace.id);
           setLoading(false);
         }
       } catch (err) {
-        console.error('[Onboarding] Unexpected error:', err);
+        logger.error('Unexpected error', err);
         if (isMounted) {
           clearSafetyTimeout(loadingSafetyTimeout);
           setError('An unexpected error occurred. Please refresh the page.');
@@ -146,7 +150,7 @@ export default function Onboarding() {
       if (!isMounted) return;
 
       if (error) {
-        console.error('[Onboarding] getSession error:', error);
+        logger.error('getSession error', error);
       }
 
       if (!session?.user) {
@@ -160,8 +164,10 @@ export default function Onboarding() {
     });
 
     // 2) Keep listening for auth state changes (sign-in, refresh, sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[Onboarding] Auth event:', event);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      logger.debug('Auth event', { event });
 
       if (event === 'SIGNED_OUT' || !session?.user) {
         clearSafetyTimeout(loadingSafetyTimeout);
@@ -184,14 +190,16 @@ export default function Onboarding() {
 
   const handleComplete = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         // Mark onboarding as complete
         await supabase
           .from('users')
-          .update({ 
+          .update({
             onboarding_completed: true,
-            onboarding_step: 'complete'
+            onboarding_step: 'complete',
           })
           .eq('id', user.id);
 
@@ -212,15 +220,21 @@ export default function Onboarding() {
             .maybeSingle();
 
           if (emailConfig?.id) {
-            supabase.functions.invoke('start-email-import', {
-              body: { workspace_id: userData.workspace_id, config_id: emailConfig.id, mode: 'backfill' },
-            }).catch(err => console.error('Deep backfill trigger failed (non-blocking):', err));
+            supabase.functions
+              .invoke('start-email-import', {
+                body: {
+                  workspace_id: userData.workspace_id,
+                  config_id: emailConfig.id,
+                  mode: 'backfill',
+                },
+              })
+              .catch((err) => logger.error('Deep backfill trigger failed (non-blocking)', err));
           }
         }
       }
       navigate('/');
     } catch (err) {
-      console.error('Error completing onboarding:', err);
+      logger.error('Error completing onboarding', err);
       navigate('/');
     }
   };
@@ -231,8 +245,18 @@ export default function Onboarding() {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center max-w-md p-6">
           <div className="text-destructive mb-4">
-            <svg className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              className="h-12 w-12 mx-auto"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
           </div>
           <h2 className="text-lg font-semibold mb-2">Something went wrong</h2>
@@ -272,10 +296,5 @@ export default function Onboarding() {
     );
   }
 
-  return (
-    <OnboardingWizard 
-      workspaceId={workspaceId} 
-      onComplete={handleComplete} 
-    />
-  );
+  return <OnboardingWizard workspaceId={workspaceId} onComplete={handleComplete} />;
 }

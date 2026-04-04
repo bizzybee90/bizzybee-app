@@ -30,29 +30,20 @@ const AiPhone = () => {
   const content = (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="border-b px-6 pt-4" style={{ borderColor: 'var(--separator)' }}>
+      <div className="border-b border-border px-6 pt-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            AI Phone
-          </h1>
+          <h1 className="text-2xl font-semibold text-foreground">AI Phone</h1>
         </div>
         <div className="flex gap-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium rounded-full transition-all duration-200"
-              style={
+              className={`flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium rounded-full transition-all duration-200 ${
                 activeTab === tab.id
-                  ? {
-                      backgroundColor: 'var(--accent-primary)',
-                      color: '#FFFFFF',
-                    }
-                  : {
-                      backgroundColor: 'transparent',
-                      color: 'var(--text-secondary)',
-                    }
-              }
+                  ? 'bg-primary text-white'
+                  : 'bg-transparent text-muted-foreground'
+              }`}
             >
               {tab.icon}
               {tab.label}
@@ -74,10 +65,7 @@ const AiPhone = () => {
             <>
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div
-                    className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-                    style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }}
-                  />
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 </div>
               ) : config ? (
                 <PhoneSettingsForm />

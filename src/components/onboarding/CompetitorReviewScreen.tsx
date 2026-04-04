@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,12 +17,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { 
-  Search, 
-  Plus, 
-  Loader2, 
-  Globe, 
-  Star, 
+import {
+  Search,
+  Plus,
+  Loader2,
+  Globe,
+  Star,
   AlertTriangle,
   CheckCircle2,
   ArrowLeft,
@@ -33,7 +34,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
-  XCircle
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -67,9 +68,21 @@ interface CompetitorReviewScreenProps {
 
 // Known directories that might slip through - show warning badge
 const SUSPICIOUS_DOMAINS = [
-  'yell', 'checkatrade', 'bark', 'trustatrader', 'mybuilder',
-  'rated-people', 'ratedpeople', 'trustpilot', 'houzz', 'yelp',
-  'freeindex', 'gumtree', 'scoot', 'findatrade', 'hotfrog'
+  'yell',
+  'checkatrade',
+  'bark',
+  'trustatrader',
+  'mybuilder',
+  'rated-people',
+  'ratedpeople',
+  'trustpilot',
+  'houzz',
+  'yelp',
+  'freeindex',
+  'gumtree',
+  'scoot',
+  'findatrade',
+  'hotfrog',
 ];
 
 const ITEMS_PER_PAGE = 50;
@@ -104,7 +117,9 @@ export function CompetitorReviewScreen({
       try {
         const { data, error } = await supabase
           .from('competitor_sites')
-          .select('id, business_name, domain, url, rating, reviews_count, is_selected, discovery_source, location_data, distance_miles, match_reason, validation_status, relevance_score')
+          .select(
+            'id, business_name, domain, url, rating, reviews_count, is_selected, discovery_source, location_data, distance_miles, match_reason, validation_status, relevance_score',
+          )
           .eq('job_id', jobId)
           // Sort by distance first (closest competitors at top), then by relevance
           .order('distance_miles', { ascending: true, nullsFirst: false })
@@ -113,7 +128,7 @@ export function CompetitorReviewScreen({
         if (error) throw error;
         setCompetitors(data || []);
       } catch (err) {
-        console.error('Error fetching competitors:', err);
+        logger.error('Error fetching competitors', err);
         toast.error('Failed to load competitors');
       } finally {
         setIsLoading(false);
@@ -136,12 +151,12 @@ export function CompetitorReviewScreen({
         if (error) throw error;
 
         // search_queries is a JSON column; in our usage we store an array of strings.
-        const raw = (data as any)?.search_queries;
+        const raw = (data as { search_queries?: unknown } | null)?.search_queries;
         const parsed = Array.isArray(raw) ? raw.filter((q) => typeof q === 'string') : [];
         setQueriesUsed(parsed);
       } catch (err) {
         // Non-blocking; the screen should still work without this metadata.
-        console.warn('[CompetitorReviewScreen] Failed to load search queries used:', err);
+        logger.warn('Failed to load search queries used', { error: String(err) });
       }
     };
 
@@ -152,9 +167,9 @@ export function CompetitorReviewScreen({
   const filteredCompetitors = useMemo(() => {
     if (!searchQuery.trim()) return competitors;
     const search = searchQuery.toLowerCase();
-    return competitors.filter(c => 
-      c.business_name?.toLowerCase().includes(search) ||
-      c.domain.toLowerCase().includes(search)
+    return competitors.filter(
+      (c) =>
+        c.business_name?.toLowerCase().includes(search) || c.domain.toLowerCase().includes(search),
     );
   }, [competitors, searchQuery]);
 
@@ -167,9 +182,9 @@ export function CompetitorReviewScreen({
   const remainingCount = filteredCompetitors.length - displayLimit;
 
   // Calculate selected count
-  const selectedCount = useMemo(() => 
-    competitors.filter(c => c.is_selected).length,
-    [competitors]
+  const selectedCount = useMemo(
+    () => competitors.filter((c) => c.is_selected).length,
+    [competitors],
   );
 
   // Check if at limit
@@ -177,7 +192,7 @@ export function CompetitorReviewScreen({
 
   // Check if domain looks suspicious
   const isSuspiciousDomain = (domain: string): boolean => {
-    return SUSPICIOUS_DOMAINS.some(sus => domain.toLowerCase().includes(sus));
+    return SUSPICIOUS_DOMAINS.some((sus) => domain.toLowerCase().includes(sus));
   };
 
   // Get validation badge
@@ -192,7 +207,10 @@ export function CompetitorReviewScreen({
     }
     if (status === 'invalid' || status === 'timeout') {
       return (
-        <Badge variant="outline" className="text-xs text-destructive border-destructive/30 bg-destructive/10">
+        <Badge
+          variant="outline"
+          className="text-xs text-destructive border-destructive/30 bg-destructive/10"
+        >
           <XCircle className="h-3 w-3 mr-1" />
           Unreachable
         </Badge>
@@ -206,14 +224,14 @@ export function CompetitorReviewScreen({
     // Check limit when trying to select
     if (newValue && isAtLimit) {
       toast.error(`Limit reached (${targetCount} competitors)`, {
-        description: 'Deselect one to add another'
+        description: 'Deselect one to add another',
       });
       return;
     }
 
     // Optimistic update
-    setCompetitors(prev => 
-      prev.map(c => c.id === competitorId ? { ...c, is_selected: newValue } : c)
+    setCompetitors((prev) =>
+      prev.map((c) => (c.id === competitorId ? { ...c, is_selected: newValue } : c)),
     );
 
     // Persist to database
@@ -224,8 +242,8 @@ export function CompetitorReviewScreen({
 
     if (error) {
       // Revert on error
-      setCompetitors(prev => 
-        prev.map(c => c.id === competitorId ? { ...c, is_selected: !newValue } : c)
+      setCompetitors((prev) =>
+        prev.map((c) => (c.id === competitorId ? { ...c, is_selected: !newValue } : c)),
       );
       toast.error('Failed to update selection');
     }
@@ -235,20 +253,20 @@ export function CompetitorReviewScreen({
   const handleSelectAll = async () => {
     // Only select up to targetCount
     const toSelect = competitors
-      .filter(c => !c.is_selected)
+      .filter((c) => !c.is_selected)
       .slice(0, targetCount - selectedCount);
-    
+
     if (toSelect.length === 0) {
       toast.info('Already at maximum selection');
       return;
     }
 
-    const ids = toSelect.map(c => c.id);
-    
+    const ids = toSelect.map((c) => c.id);
+
     // Optimistic update
-    setCompetitors(prev => prev.map(c => 
-      ids.includes(c.id) ? { ...c, is_selected: true } : c
-    ));
+    setCompetitors((prev) =>
+      prev.map((c) => (ids.includes(c.id) ? { ...c, is_selected: true } : c)),
+    );
 
     // Persist to database
     const { error } = await supabase
@@ -265,10 +283,10 @@ export function CompetitorReviewScreen({
 
   // Clear all selections
   const handleClearAll = async () => {
-    const ids = competitors.filter(c => c.is_selected).map(c => c.id);
-    
+    const ids = competitors.filter((c) => c.is_selected).map((c) => c.id);
+
     // Optimistic update
-    setCompetitors(prev => prev.map(c => ({ ...c, is_selected: false })));
+    setCompetitors((prev) => prev.map((c) => ({ ...c, is_selected: false })));
 
     // Persist to database
     const { error } = await supabase
@@ -284,12 +302,9 @@ export function CompetitorReviewScreen({
   // Delete a competitor
   const handleDeleteCompetitor = async (competitorId: string) => {
     // Optimistic update
-    setCompetitors(prev => prev.filter(c => c.id !== competitorId));
+    setCompetitors((prev) => prev.filter((c) => c.id !== competitorId));
 
-    const { error } = await supabase
-      .from('competitor_sites')
-      .delete()
-      .eq('id', competitorId);
+    const { error } = await supabase.from('competitor_sites').delete().eq('id', competitorId);
 
     if (error) {
       toast.error('Failed to delete competitor');
@@ -303,7 +318,7 @@ export function CompetitorReviewScreen({
     // Check limit
     if (isAtLimit) {
       toast.error(`Limit reached (${targetCount} competitors)`, {
-        description: 'Deselect one to add another'
+        description: 'Deselect one to add another',
       });
       return;
     }
@@ -322,7 +337,7 @@ export function CompetitorReviewScreen({
     }
 
     // Check if already exists
-    if (competitors.some(c => c.domain === hostname || c.url === cleanUrl)) {
+    if (competitors.some((c) => c.domain === hostname || c.url === cleanUrl)) {
       toast.error('This website is already in the list');
       return;
     }
@@ -349,11 +364,11 @@ export function CompetitorReviewScreen({
 
       if (error) throw error;
 
-      setCompetitors(prev => [data as Competitor, ...prev]);
+      setCompetitors((prev) => [data as Competitor, ...prev]);
       setManualUrl('');
       toast.success('Competitor added');
     } catch (err) {
-      console.error('Error adding URL:', err);
+      logger.error('Error adding URL', err);
       toast.error('Failed to add competitor');
     } finally {
       setIsAddingUrl(false);
@@ -370,7 +385,7 @@ export function CompetitorReviewScreen({
     setIsSubmitting(true);
     try {
       const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'faq_generation', jobId, targetCount }
+        body: { workspace_id: workspaceId, workflow_type: 'faq_generation', jobId, targetCount },
       });
 
       if (error) throw error;
@@ -382,7 +397,7 @@ export function CompetitorReviewScreen({
       toast.success(`Deep analysis started for ${data.sitesCount} websites`);
       onConfirm(selectedCount);
     } catch (err) {
-      console.error('Error starting scrape:', err);
+      logger.error('Error starting scrape', err);
       toast.error('Failed to start analysis');
     } finally {
       setIsSubmitting(false);
@@ -391,19 +406,23 @@ export function CompetitorReviewScreen({
 
   // Show more items
   const handleShowMore = () => {
-    setDisplayLimit(prev => prev + ITEMS_PER_PAGE);
+    setDisplayLimit((prev) => prev + ITEMS_PER_PAGE);
   };
 
   // Estimate cost based on selected count
   const estimatedCost = useMemo(() => {
-    const costPerSite = 0.10;
+    const costPerSite = 0.1;
     return (selectedCount * costPerSite).toFixed(2);
   }, [selectedCount]);
 
   // Count invalid sites
-  const invalidCount = useMemo(() => 
-    competitors.filter(c => c.is_selected && (c.validation_status === 'invalid' || c.validation_status === 'timeout')).length,
-    [competitors]
+  const invalidCount = useMemo(
+    () =>
+      competitors.filter(
+        (c) =>
+          c.is_selected && (c.validation_status === 'invalid' || c.validation_status === 'timeout'),
+      ).length,
+    [competitors],
   );
 
   if (isLoading) {
@@ -421,7 +440,8 @@ export function CompetitorReviewScreen({
       <div className="text-center space-y-1">
         <h2 className="text-xl font-semibold text-foreground">Review Competitors</h2>
         <p className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{selectedCount}</span> of <span className="font-medium text-foreground">{targetCount}</span> selected
+          <span className="font-medium text-foreground">{selectedCount}</span> of{' '}
+          <span className="font-medium text-foreground">{targetCount}</span> selected
           <span className="mx-2">•</span>
           <span className="text-muted-foreground">{competitors.length} found in your area</span>
         </p>
@@ -475,19 +495,10 @@ export function CompetitorReviewScreen({
             className="pl-9"
           />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSelectAll}
-          disabled={isAtLimit}
-        >
+        <Button variant="outline" size="sm" onClick={handleSelectAll} disabled={isAtLimit}>
           Select All
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClearAll}
-        >
+        <Button variant="outline" size="sm" onClick={handleClearAll}>
           Clear
         </Button>
       </div>
@@ -504,7 +515,10 @@ export function CompetitorReviewScreen({
       {invalidCount > 0 && (
         <div className="flex items-center gap-2 p-2 rounded-lg bg-muted border text-sm text-muted-foreground">
           <XCircle className="h-4 w-4 flex-shrink-0" />
-          <span>{invalidCount} selected site{invalidCount > 1 ? 's' : ''} could not be reached — they'll be replaced automatically</span>
+          <span>
+            {invalidCount} selected site{invalidCount > 1 ? 's' : ''} could not be reached — they'll
+            be replaced automatically
+          </span>
         </div>
       )}
 
@@ -522,19 +536,19 @@ export function CompetitorReviewScreen({
                   key={competitor.id}
                   className={cn(
                     'flex items-center gap-3 p-3 rounded-lg border transition-colors',
-                    competitor.is_selected 
-                      ? 'bg-primary/5 border-primary/20' 
-                      : 'bg-muted/30 border-transparent opacity-60'
+                    competitor.is_selected
+                      ? 'bg-primary/5 border-primary/20'
+                      : 'bg-muted/30 border-transparent opacity-60',
                   )}
                 >
                   <Checkbox
                     checked={competitor.is_selected}
-                    onCheckedChange={(checked) => 
+                    onCheckedChange={(checked) =>
                       handleToggleSelection(competitor.id, checked === true)
                     }
                     disabled={!competitor.is_selected && isAtLimit}
                   />
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-foreground truncate">
@@ -553,28 +567,37 @@ export function CompetitorReviewScreen({
                       )}
                       {getValidationBadge(competitor.validation_status)}
                       {competitor.match_reason && !competitor.match_reason.startsWith('Weak') && (
-                        <Badge 
+                        <Badge
                           variant={
-                            competitor.match_reason === 'Local business' ? 'secondary' :
-                            competitor.match_reason === 'Manual check' ? 'outline' :
-                            'default'
+                            competitor.match_reason === 'Local business'
+                              ? 'secondary'
+                              : competitor.match_reason === 'Manual check'
+                                ? 'outline'
+                                : 'default'
                           }
                           className={cn(
                             'text-xs',
-                            competitor.match_reason === 'Local business' && 'text-blue-600 border-blue-300 bg-blue-50',
-                            competitor.match_reason === 'Manual check' && 'text-muted-foreground'
+                            competitor.match_reason === 'Local business' &&
+                              'text-blue-600 border-blue-300 bg-blue-50',
+                            competitor.match_reason === 'Manual check' && 'text-muted-foreground',
                           )}
                         >
                           {competitor.match_reason}
                         </Badge>
                       )}
                       {competitor.match_reason?.startsWith('Weak') && (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
+                        <Badge
+                          variant="outline"
+                          className="text-xs text-amber-600 border-amber-300 bg-amber-50"
+                        >
                           {competitor.match_reason}
                         </Badge>
                       )}
                       {isSuspiciousDomain(competitor.domain) && (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                        <Badge
+                          variant="outline"
+                          className="text-xs text-amber-600 border-amber-300"
+                        >
                           <AlertTriangle className="h-3 w-3 mr-1" />
                           May be directory
                         </Badge>
@@ -599,12 +622,7 @@ export function CompetitorReviewScreen({
 
                   {/* Action buttons - always visible */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      asChild
-                    >
+                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                       <a href={competitor.url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4" />
                       </a>
@@ -620,14 +638,10 @@ export function CompetitorReviewScreen({
                   </div>
                 </div>
               ))}
-              
+
               {/* Show more button */}
               {hasMore && (
-                <Button
-                  variant="ghost"
-                  className="w-full mt-2"
-                  onClick={handleShowMore}
-                >
+                <Button variant="ghost" className="w-full mt-2" onClick={handleShowMore}>
                   <ChevronDown className="h-4 w-4 mr-2" />
                   Show {Math.min(remainingCount, ITEMS_PER_PAGE)} more competitors
                 </Button>
@@ -668,12 +682,11 @@ export function CompetitorReviewScreen({
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-success" />
             <span>
-              <span className="font-medium">{selectedCount}</span> of <span className="font-medium">{targetCount}</span> competitors selected
+              <span className="font-medium">{selectedCount}</span> of{' '}
+              <span className="font-medium">{targetCount}</span> competitors selected
             </span>
           </div>
-          <span className="text-muted-foreground">
-            Estimated analysis cost: ~${estimatedCost}
-          </span>
+          <span className="text-muted-foreground">Estimated analysis cost: ~${estimatedCost}</span>
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -681,7 +694,7 @@ export function CompetitorReviewScreen({
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
-          
+
           {onRestart && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -698,8 +711,8 @@ export function CompetitorReviewScreen({
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="space-y-3 py-4">
-                  <Button 
-                    className="w-full justify-start" 
+                  <Button
+                    className="w-full justify-start"
                     variant="outline"
                     onClick={() => {
                       onRestart();
@@ -709,11 +722,7 @@ export function CompetitorReviewScreen({
                     Restart & run discovery
                     <span className="ml-auto text-xs text-muted-foreground">Fresh search</span>
                   </Button>
-                  <Button 
-                    className="w-full justify-start" 
-                    variant="outline"
-                    onClick={onBack}
-                  >
+                  <Button className="w-full justify-start" variant="outline" onClick={onBack}>
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back to setup
                     <span className="ml-auto text-xs text-muted-foreground">Change niche/area</span>
@@ -725,13 +734,13 @@ export function CompetitorReviewScreen({
               </AlertDialogContent>
             </AlertDialog>
           )}
-          
+
           <Button variant="ghost" onClick={onSkip}>
             Skip
           </Button>
-          
-          <Button 
-            onClick={handleConfirm} 
+
+          <Button
+            onClick={handleConfirm}
             disabled={selectedCount === 0 || isSubmitting}
             className="flex-1"
           >

@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,29 +6,33 @@ const corsHeaders = {
 };
 
 // Verify HMAC signature
-async function verifyHmacSignature(payload: string, signature: string, secret: string): Promise<boolean> {
+async function verifyHmacSignature(
+  payload: string,
+  signature: string,
+  secret: string,
+): Promise<boolean> {
   const encoder = new TextEncoder();
   const keyData = encoder.encode(secret);
   const data = encoder.encode(payload);
-  
+
   const key = await crypto.subtle.importKey(
     'raw',
     keyData,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign']
+    ['sign'],
   );
-  
+
   const expectedSignature = await crypto.subtle.sign('HMAC', key, data);
   const expectedSignatureHex = Array.from(new Uint8Array(expectedSignature))
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-  
+
   // Constant-time comparison to prevent timing attacks
   if (signature.length !== expectedSignatureHex.length) {
     return false;
   }
-  
+
   let result = 0;
   for (let i = 0; i < signature.length; i++) {
     result |= signature.charCodeAt(i) ^ expectedSignatureHex.charCodeAt(i);
@@ -38,21 +41,24 @@ async function verifyHmacSignature(payload: string, signature: string, secret: s
 }
 
 // Verify and decode signed token
-async function verifySignedToken(token: string, secret: string): Promise<Record<string, unknown> | null> {
+async function verifySignedToken(
+  token: string,
+  secret: string,
+): Promise<Record<string, unknown> | null> {
   const parts = token.split('.');
   if (parts.length !== 2) {
     console.error('Invalid token format - expected payload.signature');
     return null;
   }
-  
+
   const [payload, signature] = parts;
-  
+
   const isValid = await verifyHmacSignature(payload, signature, secret);
   if (!isValid) {
     console.error('Invalid token signature - possible tampering detected');
     return null;
   }
-  
+
   try {
     return JSON.parse(atob(payload));
   } catch {
@@ -61,7 +67,7 @@ async function verifySignedToken(token: string, secret: string): Promise<Record<
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -75,46 +81,46 @@ serve(async (req) => {
 
     if (!gdprSecret) {
       console.error('GDPR_TOKEN_SECRET not configured');
-      return new Response(
-        JSON.stringify({ error: 'GDPR service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'GDPR service not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { token, action } = await req.json();
 
     if (!token || !action) {
-      return new Response(
-        JSON.stringify({ error: 'Token and action are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Token and action are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Verify and decode the signed token
     const requestData = await verifySignedToken(token, gdprSecret);
-    
+
     if (!requestData) {
       console.error('Token verification failed - rejecting request');
-      return new Response(
-        JSON.stringify({ error: 'Invalid or tampered token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Invalid or tampered token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Check expiration
     if (new Date(requestData.expires_at as string) < new Date()) {
-      return new Response(
-        JSON.stringify({ error: 'Token has expired' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Token has expired' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Verify action matches
     if (requestData.request_type !== action) {
-      return new Response(
-        JSON.stringify({ error: 'Action mismatch' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Action mismatch' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('Verified GDPR request:', { email: requestData.email, action });
@@ -130,12 +136,15 @@ serve(async (req) => {
       // Process data export
       if (customer) {
         // Invoke the existing export function
-        const { data: exportData, error: exportError } = await supabase.functions.invoke('export-customer-data', {
-          body: {
-            customer_identifier: requestData.email,
-            delivery_method: 'email'
-          }
-        });
+        const { data: exportData, error: exportError } = await supabase.functions.invoke(
+          'export-customer-data',
+          {
+            body: {
+              customer_identifier: requestData.email,
+              delivery_method: 'email',
+            },
+          },
+        );
 
         if (exportError) {
           console.error('Export error:', exportError);
@@ -145,13 +154,13 @@ serve(async (req) => {
         // Send export via email
         if (postmarkApiKey && exportData?.data) {
           const exportJson = JSON.stringify(exportData.data, null, 2);
-          
+
           await fetch('https://api.postmarkapp.com/email', {
             method: 'POST',
             headers: {
-              'Accept': 'application/json',
+              Accept: 'application/json',
               'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey
+              'X-Postmark-Server-Token': postmarkApiKey,
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
@@ -171,13 +180,15 @@ serve(async (req) => {
                   <li><strong>Right to Portability:</strong> This export is in JSON format for portability</li>
                 </ul>
               `,
-              Attachments: [{
-                Name: 'my-data-export.json',
-                Content: btoa(exportJson),
-                ContentType: 'application/json'
-              }],
-              MessageStream: 'outbound'
-            })
+              Attachments: [
+                {
+                  Name: 'my-data-export.json',
+                  Content: btoa(exportJson),
+                  ContentType: 'application/json',
+                },
+              ],
+              MessageStream: 'outbound',
+            }),
           });
         }
 
@@ -187,8 +198,8 @@ serve(async (req) => {
           customer_id: customer.id,
           metadata: {
             email: requestData.email,
-            export_size: JSON.stringify(exportData?.data || {}).length
-          }
+            export_size: JSON.stringify(exportData?.data || {}).length,
+          },
         });
       } else {
         // No customer found - send email saying no data
@@ -196,9 +207,9 @@ serve(async (req) => {
           await fetch('https://api.postmarkapp.com/email', {
             method: 'POST',
             headers: {
-              'Accept': 'application/json',
+              Accept: 'application/json',
               'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey
+              'X-Postmark-Server-Token': postmarkApiKey,
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
@@ -210,8 +221,8 @@ serve(async (req) => {
                 <p>After searching our records, we did not find any personal data associated with this email address.</p>
                 <p>If you believe this is an error, please contact us.</p>
               `,
-              MessageStream: 'outbound'
-            })
+              MessageStream: 'outbound',
+            }),
           });
         }
       }
@@ -219,14 +230,12 @@ serve(async (req) => {
       // Process deletion request
       if (customer) {
         // Create deletion request
-        const { error: insertError } = await supabase
-          .from('data_deletion_requests')
-          .insert({
-            customer_id: customer.id,
-            reason: (requestData.reason as string) || 'Customer portal request',
-            deletion_type: 'full',
-            status: 'pending'
-          });
+        const { error: insertError } = await supabase.from('data_deletion_requests').insert({
+          customer_id: customer.id,
+          reason: (requestData.reason as string) || 'Customer portal request',
+          deletion_type: 'full',
+          status: 'pending',
+        });
 
         if (insertError) {
           console.error('Error creating deletion request:', insertError);
@@ -236,13 +245,13 @@ serve(async (req) => {
         // Send confirmation email
         if (postmarkApiKey) {
           const estimatedDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-          
+
           await fetch('https://api.postmarkapp.com/email', {
             method: 'POST',
             headers: {
-              'Accept': 'application/json',
+              Accept: 'application/json',
               'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey
+              'X-Postmark-Server-Token': postmarkApiKey,
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
@@ -259,8 +268,8 @@ serve(async (req) => {
                   If you did not make this request, please contact us immediately.
                 </p>
               `,
-              MessageStream: 'outbound'
-            })
+              MessageStream: 'outbound',
+            }),
           });
         }
 
@@ -270,8 +279,8 @@ serve(async (req) => {
           customer_id: customer.id,
           metadata: {
             email: requestData.email,
-            reason: requestData.reason
-          }
+            reason: requestData.reason,
+          },
         });
       } else {
         // No customer found
@@ -279,9 +288,9 @@ serve(async (req) => {
           await fetch('https://api.postmarkapp.com/email', {
             method: 'POST',
             headers: {
-              'Accept': 'application/json',
+              Accept: 'application/json',
               'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey
+              'X-Postmark-Server-Token': postmarkApiKey,
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
@@ -293,8 +302,8 @@ serve(async (req) => {
                 <p>After searching our records, we did not find any personal data associated with this email address.</p>
                 <p>No further action is required on your part.</p>
               `,
-              MessageStream: 'outbound'
-            })
+              MessageStream: 'outbound',
+            }),
           });
         }
       }
@@ -304,16 +313,16 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         action,
-        customer_found: !!customer
+        customer_found: !!customer,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error verifying GDPR request:', error);
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

@@ -1,4 +1,19 @@
-import { Home, Mail, Archive, Clock, Send, Inbox, BarChart3, MessageSquare, Settings, ClipboardCheck, BookOpen, Zap, FileEdit, Phone } from 'lucide-react';
+import {
+  Home,
+  Mail,
+  Archive,
+  Clock,
+  Send,
+  Inbox,
+  BarChart3,
+  MessageSquare,
+  Settings,
+  ClipboardCheck,
+  BookOpen,
+  Zap,
+  FileEdit,
+  Phone,
+} from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,7 +28,12 @@ interface SidebarProps {
   isMobileDrawer?: boolean;
 }
 
-export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, isMobileDrawer = false }: SidebarProps = {}) => {
+export const Sidebar = ({
+  forceCollapsed = false,
+  onNavigate,
+  onFiltersClick,
+  isMobileDrawer = false,
+}: SidebarProps = {}) => {
   // In mobile drawer mode, show full sidebar with labels
   const isCollapsed = isMobileDrawer ? false : true; // Always icon rail on desktop
 
@@ -21,7 +41,9 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return { toReply: 0, done: 0, snoozed: 0, review: 0, workspaceId: null };
 
       const { data: userData } = await supabase
@@ -30,51 +52,53 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
         .eq('id', user.id)
         .single();
 
-      if (!userData?.workspace_id) return { toReply: 0, done: 0, snoozed: 0, review: 0, workspaceId: null };
+      if (!userData?.workspace_id)
+        return { toReply: 0, done: 0, snoozed: 0, review: 0, workspaceId: null };
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const [toReplyResult, doneResult, snoozedResult, reviewResult, unreadResult, draftsResult] = await Promise.all([
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .eq('requires_reply', true)
-          .in('status', ['new', 'open', 'waiting_internal', 'ai_handling', 'escalated']),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .or('decision_bucket.eq.auto_handled,status.eq.resolved')
-          .gte('updated_at', today.toISOString()),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .not('snoozed_until', 'is', null)
-          .gt('snoozed_until', new Date().toISOString()),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .eq('needs_review', true)
-          .is('reviewed_at', null),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .eq('requires_reply', true)
-          .eq('status', 'new'),
-        supabase
-          .from('conversations')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', userData.workspace_id)
-          .not('ai_draft_response', 'is', null)
-          .is('final_response', null)
-          .in('status', ['new', 'open', 'ai_handling'])
-          .eq('requires_reply', true),
-      ]);
+      const [toReplyResult, doneResult, snoozedResult, reviewResult, unreadResult, draftsResult] =
+        await Promise.all([
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .eq('requires_reply', true)
+            .in('status', ['new', 'open', 'waiting_internal', 'ai_handling', 'escalated']),
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .or('decision_bucket.eq.auto_handled,status.eq.resolved')
+            .gte('updated_at', today.toISOString()),
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .not('snoozed_until', 'is', null)
+            .gt('snoozed_until', new Date().toISOString()),
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .eq('needs_review', true)
+            .is('reviewed_at', null),
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .eq('requires_reply', true)
+            .eq('status', 'new'),
+          supabase
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', userData.workspace_id)
+            .not('ai_draft_response', 'is', null)
+            .is('final_response', null)
+            .in('status', ['new', 'open', 'ai_handling'])
+            .eq('requires_reply', true),
+        ]);
 
       return {
         toReply: toReplyResult.count || 0,
@@ -104,19 +128,55 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
             {[
               { to: '/', icon: Home, label: 'Home', end: true },
               { to: '/inbox', icon: Inbox, label: 'Inbox' },
-              { to: '/needs-action', icon: Zap, label: 'Needs Action', count: viewCounts?.toReply, color: 'text-destructive' },
-              { to: '/unread', icon: Mail, label: 'Unread', count: viewCounts?.unread, color: 'text-blue-500' },
-              { to: '/drafts', icon: FileEdit, label: 'Drafts', count: viewCounts?.drafts, color: 'text-amber-500' },
-              { to: '/review', icon: ClipboardCheck, label: 'Training', count: viewCounts?.review, color: 'text-purple-500' },
-              { to: '/snoozed', icon: Clock, label: 'Snoozed', count: viewCounts?.snoozed, color: 'text-amber-500' },
-              { to: '/done', icon: Archive, label: 'Cleared', count: viewCounts?.done, color: 'text-green-500' },
+              {
+                to: '/needs-action',
+                icon: Zap,
+                label: 'Needs Action',
+                count: viewCounts?.toReply,
+                color: 'text-destructive',
+              },
+              {
+                to: '/unread',
+                icon: Mail,
+                label: 'Unread',
+                count: viewCounts?.unread,
+                color: 'text-blue-500',
+              },
+              {
+                to: '/drafts',
+                icon: FileEdit,
+                label: 'Drafts',
+                count: viewCounts?.drafts,
+                color: 'text-amber-500',
+              },
+              {
+                to: '/review',
+                icon: ClipboardCheck,
+                label: 'Training',
+                count: viewCounts?.review,
+                color: 'text-purple-500',
+              },
+              {
+                to: '/snoozed',
+                icon: Clock,
+                label: 'Snoozed',
+                count: viewCounts?.snoozed,
+                color: 'text-amber-500',
+              },
+              {
+                to: '/done',
+                icon: Archive,
+                label: 'Cleared',
+                count: viewCounts?.done,
+                color: 'text-green-500',
+              },
               { to: '/sent', icon: Send, label: 'Sent' },
               { to: '/ai-phone', icon: Phone, label: 'AI Phone' },
               { to: '/channels', icon: MessageSquare, label: 'Channels' },
               { to: '/analytics', icon: BarChart3, label: 'Analytics' },
               { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
               { to: '/settings', icon: Settings, label: 'Settings' },
-            ].map(item => (
+            ].map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -128,7 +188,11 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
                 <item.icon className={`h-5 w-5 ${item.color || 'text-muted-foreground'}`} />
                 <span className="flex-1 flex items-center justify-between">
                   <span>{item.label}</span>
-                  {item.count ? <span className={`text-xs font-semibold ${item.color || ''}`}>{item.count}</span> : null}
+                  {item.count ? (
+                    <span className={`text-xs font-semibold ${item.color || ''}`}>
+                      {item.count}
+                    </span>
+                  ) : null}
                 </span>
               </NavLink>
             ))}
@@ -139,34 +203,50 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
   }
 
   // Desktop: Icon rail
-  const IconRailItem = ({ to, icon: Icon, label, count, color, end }: { to: string; icon: any; label: string; count?: number; color?: string; end?: boolean }) => (
+  const IconRailItem = ({
+    to,
+    icon: Icon,
+    label,
+    count,
+    color,
+    end,
+  }: {
+    to: string;
+    icon: any;
+    label: string;
+    count?: number;
+    color?: string;
+    end?: boolean;
+  }) => (
     <Tooltip>
       <TooltipTrigger asChild>
         <NavLink
           to={to}
           end={end}
           onClick={onNavigate}
-          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all relative"
+          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all relative text-muted-foreground"
           activeClassName="text-primary"
-          style={{ color: 'var(--text-secondary)' }}
         >
           <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
           {count ? (
-            <span className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none" style={{ backgroundColor: 'var(--system-red)' }}>
+            <span className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none bg-destructive">
               {count > 99 ? '99+' : count}
             </span>
           ) : null}
         </NavLink>
       </TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>
-        <p>{label}{count ? ` (${count})` : ''}</p>
+        <p>
+          {label}
+          {count ? ` (${count})` : ''}
+        </p>
       </TooltipContent>
     </Tooltip>
   );
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center h-full w-16 py-3 gap-1" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+      <div className="flex flex-col items-center h-full w-16 py-3 gap-1 bg-muted">
         {/* Logo */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -174,19 +254,57 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
               <img src={bizzybeelogo} alt="BizzyBee" className="h-8 w-8 object-contain" />
             </div>
           </TooltipTrigger>
-          <TooltipContent side="right"><p className="font-semibold">BizzyBee</p></TooltipContent>
+          <TooltipContent side="right">
+            <p className="font-semibold">BizzyBee</p>
+          </TooltipContent>
         </Tooltip>
 
         {/* Primary nav - top anchored */}
         <nav className="flex flex-col items-center gap-1">
           <IconRailItem to="/" icon={Home} label="Home" end />
           <IconRailItem to="/inbox" icon={Inbox} label="Inbox" />
-          <IconRailItem to="/needs-action" icon={Zap} label="Needs Action" count={viewCounts?.toReply} color="text-destructive" />
-          <IconRailItem to="/unread" icon={Mail} label="Unread" count={viewCounts?.unread} color="text-blue-500" />
-          <IconRailItem to="/drafts" icon={FileEdit} label="Drafts" count={viewCounts?.drafts} color="text-amber-500" />
-          <IconRailItem to="/review" icon={ClipboardCheck} label="Training" count={viewCounts?.review} color="text-purple-500" />
-          <IconRailItem to="/snoozed" icon={Clock} label="Snoozed" count={viewCounts?.snoozed} color="text-amber-500" />
-          <IconRailItem to="/done" icon={Archive} label="Cleared" count={viewCounts?.done} color="text-green-500" />
+          <IconRailItem
+            to="/needs-action"
+            icon={Zap}
+            label="Needs Action"
+            count={viewCounts?.toReply}
+            color="text-destructive"
+          />
+          <IconRailItem
+            to="/unread"
+            icon={Mail}
+            label="Unread"
+            count={viewCounts?.unread}
+            color="text-blue-500"
+          />
+          <IconRailItem
+            to="/drafts"
+            icon={FileEdit}
+            label="Drafts"
+            count={viewCounts?.drafts}
+            color="text-amber-500"
+          />
+          <IconRailItem
+            to="/review"
+            icon={ClipboardCheck}
+            label="Training"
+            count={viewCounts?.review}
+            color="text-purple-500"
+          />
+          <IconRailItem
+            to="/snoozed"
+            icon={Clock}
+            label="Snoozed"
+            count={viewCounts?.snoozed}
+            color="text-amber-500"
+          />
+          <IconRailItem
+            to="/done"
+            icon={Archive}
+            label="Cleared"
+            count={viewCounts?.done}
+            color="text-green-500"
+          />
           <IconRailItem to="/sent" icon={Send} label="Sent" color="text-blue-500" />
           <IconRailItem to="/ai-phone" icon={Phone} label="AI Phone" />
         </nav>
@@ -198,7 +316,7 @@ export const Sidebar = ({ forceCollapsed = false, onNavigate, onFiltersClick, is
         <div className="flex-1" />
 
         {/* Secondary nav - bottom anchored */}
-        <nav className="flex flex-col items-center gap-1 pt-2" style={{ borderTop: '0.5px solid var(--separator)' }}>
+        <nav className="flex flex-col items-center gap-1 pt-2 border-t border-border">
           <IconRailItem to="/analytics" icon={BarChart3} label="Analytics" />
           <IconRailItem to="/knowledge-base" icon={BookOpen} label="Knowledge Base" />
           <IconRailItem to="/settings" icon={Settings} label="Settings" />

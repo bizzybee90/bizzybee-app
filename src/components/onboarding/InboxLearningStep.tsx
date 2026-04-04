@@ -3,23 +3,24 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useEmailImportStatus } from '@/hooks/useEmailImportStatus';
-import { 
-  ChevronLeft, 
-  Loader2, 
-  Brain, 
+import {
+  ChevronLeft,
+  Loader2,
+  Brain,
   CheckCircle2,
   Sparkles,
   Clock,
   Send,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface InboxLearningStepProps {
   workspaceId: string;
-  onComplete: (results: { 
-    emailsAnalyzed: number; 
+  onComplete: (results: {
+    emailsAnalyzed: number;
     patternsLearned: number;
     voiceProfileBuilt: boolean;
   }) => void;
@@ -42,15 +43,15 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
   const [status, setStatus] = useState<'idle' | 'running' | 'complete' | 'error'>('idle');
   const [result, setResult] = useState<LearningResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Check email import status
-  const { 
-    isImporting, 
-    phase: importPhase, 
+  const {
+    isImporting,
+    phase: importPhase,
     progress: importProgress,
     inboxCount,
     sentCount,
-    hasSentEmails 
+    hasSentEmails,
   } = useEmailImportStatus(workspaceId);
 
   const runLearning = async () => {
@@ -58,14 +59,14 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
     setError(null);
 
     try {
-      console.log('[InboxLearning] Starting voice learning with Claude...');
-      
+      logger.debug('Starting voice learning with Claude');
+
       const { data, error: fnError } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'voice_learning' }
+        body: { workspace_id: workspaceId, workflow_type: 'voice_learning' },
       });
 
       if (fnError) {
-        console.error('[InboxLearning] Function error:', fnError);
+        logger.error('Function error', fnError);
         throw fnError;
       }
 
@@ -80,8 +81,6 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
         throw new Error(data.error);
       }
 
-      console.log('[InboxLearning] Result:', data);
-      
       setResult({
         emailsAnalyzed: data.emailsAnalyzed || 0,
         totalConversations: data.totalConversations || 0,
@@ -89,12 +88,11 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
         profile: data.profile,
         topCategories: data.topCategories || [],
       });
-      
+
       setStatus('complete');
       toast.success('Voice learning complete!');
-
     } catch (err) {
-      console.error('[InboxLearning] Error:', err);
+      logger.error('Inbox learning error', err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setStatus('error');
       toast.error('Learning failed - you can try again or continue');
@@ -110,10 +108,10 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
   };
 
   const handleSkip = () => {
-    onComplete({ 
-      emailsAnalyzed: 0, 
-      patternsLearned: 0, 
-      voiceProfileBuilt: false 
+    onComplete({
+      emailsAnalyzed: 0,
+      patternsLearned: 0,
+      voiceProfileBuilt: false,
     });
   };
 
@@ -150,8 +148,8 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
             <div className="space-y-2">
               <h3 className="font-semibold">Waiting for your sent emails...</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Voice learning needs your sent emails to analyze your writing style. 
-                We're currently importing your inbox.
+                Voice learning needs your sent emails to analyze your writing style. We're currently
+                importing your inbox.
               </p>
             </div>
 
@@ -195,16 +193,15 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
             <div className="space-y-2">
               <h3 className="font-semibold">No sent emails found</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Voice learning requires examples of your replies to analyze your communication style. 
-                We couldn't find sent emails in your connected account.
+                Voice learning requires examples of your replies to analyze your communication
+                style. We couldn't find sent emails in your connected account.
               </p>
             </div>
             <p className="text-xs text-muted-foreground">
-              You can continue without voice learning - BizzyBee will use a default professional style.
+              You can continue without voice learning - BizzyBee will use a default professional
+              style.
             </p>
-            <Button onClick={handleSkip}>
-              Continue without voice profile
-            </Button>
+            <Button onClick={handleSkip}>Continue without voice profile</Button>
           </div>
         </Card>
       )}
@@ -217,17 +214,15 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
           </div>
           <h3 className="font-semibold mb-2">Ready to learn your style</h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-            We'll analyze your sent emails using Claude AI to understand your tone, 
-            common phrases, and how you handle different situations.
+            We'll analyze your sent emails using Claude AI to understand your tone, common phrases,
+            and how you handle different situations.
           </p>
           {sentCount > 0 && (
             <p className="text-xs text-muted-foreground mb-4">
               Found {sentCount.toLocaleString()} sent emails to analyze
             </p>
           )}
-          <p className="text-xs text-muted-foreground mb-4">
-            This usually takes about 15 seconds
-          </p>
+          <p className="text-xs text-muted-foreground mb-4">This usually takes about 15 seconds</p>
           <Button onClick={runLearning} size="lg">
             <Sparkles className="h-4 w-4 mr-2" />
             Start Learning
@@ -261,9 +256,7 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
             <Button variant="outline" onClick={runLearning}>
               Try Again
             </Button>
-            <Button onClick={handleSkip}>
-              Continue Anyway
-            </Button>
+            <Button onClick={handleSkip}>Continue Anyway</Button>
           </div>
         </Card>
       )}
@@ -285,9 +278,7 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
               {/* Summary stats */}
               <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto">
                 <div className="bg-muted/30 rounded-lg p-3 text-center">
-                  <div className="text-xl font-bold text-foreground">
-                    {result.emailsAnalyzed}
-                  </div>
+                  <div className="text-xl font-bold text-foreground">{result.emailsAnalyzed}</div>
                   <p className="text-xs text-muted-foreground">Emails analyzed</p>
                 </div>
                 <div className="bg-muted/30 rounded-lg p-3 text-center">
@@ -316,13 +307,12 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
               {/* Top categories */}
               {result.topCategories.length > 0 && (
                 <div className="text-left max-w-md mx-auto">
-                  <p className="text-xs text-muted-foreground mb-2">Common email types you handle</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Common email types you handle
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {result.topCategories.slice(0, 5).map((cat, i) => (
-                      <span 
-                        key={i}
-                        className="px-2 py-1 bg-muted/50 rounded text-xs capitalize"
-                      >
+                      <span key={i} className="px-2 py-1 bg-muted/50 rounded text-xs capitalize">
                         {cat.category.replace(/_/g, ' ')}
                       </span>
                     ))}
@@ -337,27 +327,27 @@ export function InboxLearningStep({ workspaceId, onComplete, onBack }: InboxLear
               <ChevronLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            <Button onClick={handleContinue}>
-              Continue
-            </Button>
+            <Button onClick={handleContinue}>Continue</Button>
           </div>
         </div>
       )}
 
       {/* Back button for idle and running states (when not waiting) */}
-      {(status === 'idle' || status === 'running') && !needsToWaitForSent && !importDoneButNoSent && (
-        <div className="flex justify-between">
-          <Button variant="outline" onClick={onBack}>
-            <ChevronLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          {status === 'running' && (
-            <Button variant="ghost" onClick={handleSkip}>
-              Skip for now
+      {(status === 'idle' || status === 'running') &&
+        !needsToWaitForSent &&
+        !importDoneButNoSent && (
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={onBack}>
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Back
             </Button>
-          )}
-        </div>
-      )}
+            {status === 'running' && (
+              <Button variant="ghost" onClick={handleSkip}>
+                Skip for now
+              </Button>
+            )}
+          </div>
+        )}
 
       {/* Back button when waiting for sent emails */}
       {needsToWaitForSent && status === 'idle' && (

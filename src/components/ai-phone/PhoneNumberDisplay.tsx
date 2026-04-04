@@ -20,18 +20,12 @@ export const PhoneNumberDisplay = ({ phoneNumber, isActive }: PhoneNumberDisplay
   };
 
   if (!phoneNumber) {
-    return (
-      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        No number provisioned yet
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">No number provisioned yet</p>;
   }
 
   return (
     <div className="flex items-center gap-4">
-      <span className="font-mono text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-        {phoneNumber}
-      </span>
+      <span className="font-mono text-2xl font-semibold text-foreground">{phoneNumber}</span>
 
       <Button variant="outline" size="icon" onClick={handleCopy} className="shrink-0">
         <Copy className="h-4 w-4" />
@@ -43,7 +37,7 @@ export const PhoneNumberDisplay = ({ phoneNumber, isActive }: PhoneNumberDisplay
             'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium',
             isActive
               ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
+              : 'bg-red-50 text-red-700 border border-red-200',
           )}
         >
           {isActive ? (

@@ -1,8 +1,15 @@
 import { Conversation } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { CheckCircle2, Clock, UserPlus, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { SnoozeDialog } from './SnoozeDialog';
@@ -22,9 +29,9 @@ interface TabletQuickActionsPanelProps {
   onCategoryChange: (filters: string[]) => void;
 }
 
-export const TabletQuickActionsPanel = ({ 
-  conversation, 
-  onUpdate, 
+export const TabletQuickActionsPanel = ({
+  conversation,
+  onUpdate,
   isOpen,
   statusFilter,
   priorityFilter,
@@ -33,7 +40,7 @@ export const TabletQuickActionsPanel = ({
   onStatusChange,
   onPriorityChange,
   onChannelChange,
-  onCategoryChange
+  onCategoryChange,
 }: TabletQuickActionsPanelProps) => {
   const { toast } = useToast();
   const [snoozeDialogOpen, setSnoozeDialogOpen] = useState(false);
@@ -41,57 +48,52 @@ export const TabletQuickActionsPanel = ({
   if (!isOpen) return null;
 
   const handleResolve = async () => {
-    console.log('Resolving conversation:', conversation.id);
-    
     const { error } = await supabase
       .from('conversations')
-      .update({ 
+      .update({
         status: 'resolved',
-        resolved_at: new Date().toISOString()
+        resolved_at: new Date().toISOString(),
       })
       .eq('id', conversation.id);
-    
+
     if (error) {
-      console.error('Failed to resolve conversation:', error);
-      toast({ 
-        title: "Failed to resolve", 
+      logger.error('Failed to resolve conversation', error);
+      toast({
+        title: 'Failed to resolve',
         description: error.message,
-        variant: "destructive" 
+        variant: 'destructive',
       });
       return;
     }
 
     // Mark the email as read in Gmail/Outlook
     if (conversation.channel === 'email') {
-      supabase.functions.invoke('mark-email-read', {
-        body: { conversationId: conversation.id, markAsRead: true }
-      }).catch(err => console.error('Failed to mark email as read:', err));
+      supabase.functions
+        .invoke('mark-email-read', {
+          body: { conversationId: conversation.id, markAsRead: true },
+        })
+        .catch((err) => logger.error('Failed to mark email as read', err));
     }
 
-    console.log('Conversation resolved successfully');
-    toast({ title: "Conversation resolved" });
+    toast({ title: 'Conversation resolved' });
     onUpdate();
   };
 
   const handleAssignToMe = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from('conversations')
-      .update({ assigned_to: user.id })
-      .eq('id', conversation.id);
-    
-    toast({ title: "Assigned to you" });
+    await supabase.from('conversations').update({ assigned_to: user.id }).eq('id', conversation.id);
+
+    toast({ title: 'Assigned to you' });
     onUpdate();
   };
 
   const handlePriorityChange = async (priority: string) => {
-    await supabase
-      .from('conversations')
-      .update({ priority })
-      .eq('id', conversation.id);
-    
+    await supabase.from('conversations').update({ priority }).eq('id', conversation.id);
+
     toast({ title: `Priority changed to ${priority}` });
     onUpdate();
   };
@@ -166,11 +168,7 @@ export const TabletQuickActionsPanel = ({
         </Button>
 
         {/* Assign to Me */}
-        <Button
-          onClick={handleAssignToMe}
-          variant="outline"
-          className="w-full h-11 rounded-xl"
-        >
+        <Button onClick={handleAssignToMe} variant="outline" className="w-full h-11 rounded-xl">
           <UserPlus className="h-4 w-4 mr-2" />
           Assign to Me
         </Button>

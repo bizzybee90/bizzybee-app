@@ -7,16 +7,16 @@ import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Mail, 
-  Flame, 
-  CheckCircle2, 
-  Clock, 
+import {
+  Mail,
+  Flame,
+  CheckCircle2,
+  Clock,
   Sparkles,
   Activity,
   FileEdit,
   Users,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
@@ -60,12 +60,12 @@ export const Home = () => {
         today.setHours(0, 0, 0, 0);
 
         const [
-          clearedResult, 
-          toReplyResult, 
-          atRiskResult, 
+          clearedResult,
+          toReplyResult,
+          atRiskResult,
           reviewResult,
           draftResult,
-          lastHandledResult
+          lastHandledResult,
         ] = await Promise.all([
           supabase
             .from('conversations')
@@ -116,8 +116,8 @@ export const Home = () => {
           atRiskCount: atRiskResult.count || 0,
           reviewCount: reviewResult.count || 0,
           draftCount: draftResult.count || 0,
-          lastHandled: lastHandledResult.data?.[0]?.auto_handled_at 
-            ? new Date(lastHandledResult.data[0].auto_handled_at) 
+          lastHandled: lastHandledResult.data?.[0]?.auto_handled_at
+            ? new Date(lastHandledResult.data[0].auto_handled_at)
             : null,
         });
       } catch (error) {
@@ -137,13 +137,17 @@ export const Home = () => {
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
-        () => { fetchStats(); }
+        () => {
+          fetchStats();
+        },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [workspace?.id]);
 
   const getGreeting = () => {
@@ -153,7 +157,9 @@ export const Home = () => {
     return 'Good evening';
   };
 
-  const handleNavigate = (path: string) => { navigate(path); };
+  const handleNavigate = (path: string) => {
+    navigate(path);
+  };
 
   // Metric card config — all identical card styling, colour only in icons
   const metrics = [
@@ -204,8 +210,10 @@ export const Home = () => {
           <>
             {/* ── Greeting ── */}
             <div className="mb-2">
-              <h1 className="text-[34px] font-bold tracking-[-0.022em]" style={{ color: 'var(--text-primary)' }}>{getGreeting()}</h1>
-              <p className="text-[17px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+              <h1 className="text-[34px] font-bold tracking-[-0.022em] text-foreground">
+                {getGreeting()}
+              </h1>
+              <p className="text-[17px] mt-1 text-muted-foreground">
                 {stats.atRiskCount > 0
                   ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
                   : stats.toReplyCount > 0
@@ -216,18 +224,19 @@ export const Home = () => {
 
             {/* ── Stat Cards ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {metrics.map(m => {
+              {metrics.map((m) => {
                 const Icon = m.icon;
                 return (
                   <div
                     key={m.label}
                     onClick={m.onClick}
-                    className="bg-card cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5"
-                    style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}
+                    className="bg-card cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5 rounded-2xl border border-border/40 shadow-sm"
                   >
                     <Icon className="h-5 w-5" style={{ color: m.iconColor }} />
-                    <p className="text-[34px] font-semibold tracking-tight mt-3 mb-1" style={{ color: 'var(--text-primary)' }}>{m.count}</p>
-                    <p className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>{m.label}</p>
+                    <p className="text-[34px] font-semibold tracking-tight mt-3 mb-1 text-foreground">
+                      {m.count}
+                    </p>
+                    <p className="text-[13px] text-muted-foreground">{m.label}</p>
                   </div>
                 );
               })}
@@ -236,18 +245,20 @@ export const Home = () => {
             {/* ── All caught up ── */}
             {stats.toReplyCount === 0 && stats.reviewCount === 0 && stats.atRiskCount === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                <Sparkles className="w-8 h-8 mb-4" style={{ color: 'var(--text-tertiary)' }} />
-                <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text-primary)' }}>You're all caught up</h3>
-                <p className="text-[15px] mt-1 max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>BizzyBee is actively monitoring your inbox.</p>
+                <Sparkles className="w-8 h-8 mb-4 text-muted-foreground/70" />
+                <h3 className="text-[17px] font-semibold text-foreground">You're all caught up</h3>
+                <p className="text-[15px] mt-1 max-w-sm mx-auto text-muted-foreground">
+                  BizzyBee is actively monitoring your inbox.
+                </p>
               </div>
             )}
 
             {/* ── Widget Grid ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Pending Drafts */}
-              <div className="bg-card p-5 flex flex-col" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+              <div className="bg-card p-5 flex flex-col rounded-2xl border border-border/40 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[20px] font-semibold" style={{ color: 'var(--text-primary)' }}>Pending Drafts</h2>
+                  <h2 className="text-[20px] font-semibold text-foreground">Pending Drafts</h2>
                 </div>
                 <div className="flex-1">
                   <DraftMessages onNavigate={handleNavigate} maxItems={4} />
@@ -255,8 +266,7 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full mt-3"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="w-full mt-3 text-muted-foreground"
                   onClick={() => navigate('/needs-action?filter=drafts')}
                 >
                   View all drafts
@@ -264,9 +274,9 @@ export const Home = () => {
               </div>
 
               {/* Recent Activity */}
-              <div className="bg-card p-5 flex flex-col" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+              <div className="bg-card p-5 flex flex-col rounded-2xl border border-border/40 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[20px] font-semibold" style={{ color: 'var(--text-primary)' }}>Recent Activity</h2>
+                  <h2 className="text-[20px] font-semibold text-foreground">Recent Activity</h2>
                 </div>
                 <div className="flex-1">
                   <ActivityFeed onNavigate={handleNavigate} maxItems={6} />
@@ -274,8 +284,7 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full mt-3"
-                  style={{ color: 'var(--text-secondary)' }}
+                  className="w-full mt-3 text-muted-foreground"
                   onClick={() => navigate('/activity')}
                 >
                   View all activity
@@ -290,8 +299,8 @@ export const Home = () => {
             </div>
 
             {/* System Status Footer */}
-            <div className="flex items-center justify-center gap-2 text-[13px] pt-4" style={{ color: 'var(--text-tertiary)' }}>
-              <CheckCircle2 className="h-3 w-3" style={{ color: 'var(--system-green)' }} />
+            <div className="flex items-center justify-center gap-2 text-[13px] pt-4 text-muted-foreground/70">
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
               <span>System active</span>
               <span>·</span>
               <Clock className="h-3 w-3" />
@@ -304,19 +313,10 @@ export const Home = () => {
   );
 
   if (isMobile) {
-    return (
-      <MobilePageLayout>
-        {mainContent}
-      </MobilePageLayout>
-    );
+    return <MobilePageLayout>{mainContent}</MobilePageLayout>;
   }
 
-  return (
-    <ThreeColumnLayout
-      sidebar={<Sidebar />}
-      main={mainContent}
-    />
-  );
+  return <ThreeColumnLayout sidebar={<Sidebar />} main={mainContent} />;
 };
 
 export default Home;

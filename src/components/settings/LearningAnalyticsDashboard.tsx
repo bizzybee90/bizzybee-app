@@ -1,18 +1,41 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
 } from 'recharts';
-import { 
-  TrendingUp, TrendingDown, Target, Brain, Mail, 
-  Clock, CheckCircle, AlertCircle, Users, Zap, 
-  ArrowUpRight, ArrowDownRight, Loader2
+import {
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Brain,
+  Mail,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Users,
+  Zap,
+  ArrowUpRight,
+  ArrowDownRight,
+  Loader2,
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import {
@@ -22,7 +45,7 @@ import {
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
-} from "@/components/ui/chart";
+} from '@/components/ui/chart';
 
 interface PerformanceMetrics {
   totalConversations: number;
@@ -85,7 +108,9 @@ export function LearningAnalyticsDashboard() {
   const [senderInsights, setSenderInsights] = useState<SenderInsight[]>([]);
   const [ruleEffectiveness, setRuleEffectiveness] = useState<RuleEffectiveness[]>([]);
   const [trendData, setTrendData] = useState<TrendData[]>([]);
-  const [correctionHeatmap, setCorrectionHeatmap] = useState<Array<{from: string; to: string; count: number}>>([]);
+  const [correctionHeatmap, setCorrectionHeatmap] = useState<
+    Array<{ from: string; to: string; count: number }>
+  >([]);
 
   useEffect(() => {
     if (workspace?.id) {
@@ -134,8 +159,9 @@ export function LearningAnalyticsDashboard() {
         .eq('workspace_id', workspace?.id)
         .not('triage_confidence', 'is', null);
 
-      const avgConfidence = confidenceData?.length 
-        ? confidenceData.reduce((sum, c) => sum + (c.triage_confidence || 0), 0) / confidenceData.length
+      const avgConfidence = confidenceData?.length
+        ? confidenceData.reduce((sum, c) => sum + (c.triage_confidence || 0), 0) /
+          confidenceData.length
         : 0;
 
       // Estimate time saved (avg 5 min per email × automated count)
@@ -152,7 +178,7 @@ export function LearningAnalyticsDashboard() {
         timeSavedHours: timeSaved,
       });
     } catch (error) {
-      console.error('Error fetching metrics:', error);
+      logger.error('Error fetching metrics', error);
     }
   };
 
@@ -181,7 +207,7 @@ export function LearningAnalyticsDashboard() {
 
       setClassificationData(breakdown);
     } catch (error) {
-      console.error('Error fetching classification breakdown:', error);
+      logger.error('Error fetching classification breakdown', error);
     }
   };
 
@@ -204,7 +230,7 @@ export function LearningAnalyticsDashboard() {
 
       setSenderInsights(insights);
     } catch (error) {
-      console.error('Error fetching sender insights:', error);
+      logger.error('Error fetching sender insights', error);
     }
   };
 
@@ -226,7 +252,7 @@ export function LearningAnalyticsDashboard() {
 
       setRuleEffectiveness(rules);
     } catch (error) {
-      console.error('Error fetching rule effectiveness:', error);
+      logger.error('Error fetching rule effectiveness', error);
     }
   };
 
@@ -251,8 +277,11 @@ export function LearningAnalyticsDashboard() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const dailyData: Record<string, { corrections: number; automated: number; confidences: number[] }> = {};
-      
+      const dailyData: Record<
+        string,
+        { corrections: number; automated: number; confidences: number[] }
+      > = {};
+
       corrections?.forEach((c) => {
         const date = new Date(c.corrected_at!).toISOString().split('T')[0];
         if (new Date(date) >= thirtyDaysAgo) {
@@ -275,15 +304,17 @@ export function LearningAnalyticsDashboard() {
           date,
           corrections: data.corrections,
           automated: data.automated,
-          confidence: data.confidences.length 
-            ? Math.round((data.confidences.reduce((a, b) => a + b, 0) / data.confidences.length) * 100)
+          confidence: data.confidences.length
+            ? Math.round(
+                (data.confidences.reduce((a, b) => a + b, 0) / data.confidences.length) * 100,
+              )
             : 0,
         }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       setTrendData(trends);
     } catch (error) {
-      console.error('Error fetching trend data:', error);
+      logger.error('Error fetching trend data', error);
     }
   };
 
@@ -313,7 +344,7 @@ export function LearningAnalyticsDashboard() {
 
       setCorrectionHeatmap(heatmap);
     } catch (error) {
-      console.error('Error fetching correction heatmap:', error);
+      logger.error('Error fetching correction heatmap', error);
     }
   };
 
@@ -326,9 +357,9 @@ export function LearningAnalyticsDashboard() {
   }
 
   const chartConfig = {
-    corrections: { label: "Corrections", color: "hsl(var(--destructive))" },
-    automated: { label: "Automated", color: "hsl(var(--primary))" },
-    confidence: { label: "Confidence", color: "hsl(var(--chart-3))" },
+    corrections: { label: 'Corrections', color: 'hsl(var(--destructive))' },
+    automated: { label: 'Automated', color: 'hsl(var(--primary))' },
+    confidence: { label: 'Confidence', color: 'hsl(var(--chart-3))' },
   } satisfies ChartConfig;
 
   return (
@@ -389,27 +420,32 @@ export function LearningAnalyticsDashboard() {
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <AreaChart data={trendData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
-                        tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(val) =>
+                          new Date(val).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
                         className="text-xs"
                       />
                       <YAxis className="text-xs" />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Area 
-                        type="monotone" 
-                        dataKey="automated" 
+                      <Area
+                        type="monotone"
+                        dataKey="automated"
                         stackId="1"
-                        stroke="hsl(var(--primary))" 
-                        fill="hsl(var(--primary))" 
+                        stroke="hsl(var(--primary))"
+                        fill="hsl(var(--primary))"
                         fillOpacity={0.3}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="corrections" 
+                      <Area
+                        type="monotone"
+                        dataKey="corrections"
                         stackId="2"
-                        stroke="hsl(var(--destructive))" 
-                        fill="hsl(var(--destructive))" 
+                        stroke="hsl(var(--destructive))"
+                        fill="hsl(var(--destructive))"
                         fillOpacity={0.3}
                       />
                     </AreaChart>
@@ -442,21 +478,23 @@ export function LearningAnalyticsDashboard() {
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value: number, name: string) => [`${value} emails`, name]}
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--popover))', 
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--popover))',
                           border: '1px solid hsl(var(--border))',
                           borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                         }}
                       />
-                      <Legend 
-                        layout="vertical" 
-                        align="right" 
+                      <Legend
+                        layout="vertical"
+                        align="right"
                         verticalAlign="middle"
                         wrapperStyle={{ fontSize: '12px', paddingLeft: '10px' }}
-                        formatter={(value) => <span className="text-xs text-foreground">{value}</span>}
+                        formatter={(value) => (
+                          <span className="text-xs text-foreground">{value}</span>
+                        )}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -478,7 +516,10 @@ export function LearningAnalyticsDashboard() {
               <CardContent>
                 <div className="space-y-2">
                   {correctionHeatmap.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div
+                      key={i}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                    >
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="text-xs">
                           {item.from.replace(/_/g, ' ')}
@@ -535,7 +576,10 @@ export function LearningAnalyticsDashboard() {
             <CardContent>
               <div className="space-y-3">
                 {senderInsights.map((sender, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-primary/10">
                         <Mail className="h-4 w-4 text-primary" />
@@ -578,9 +622,14 @@ export function LearningAnalyticsDashboard() {
             <CardContent>
               <div className="space-y-3">
                 {ruleEffectiveness.map((rule, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${rule.isActive ? 'bg-green-500/10 text-green-600' : 'bg-muted text-muted-foreground'}`}>
+                      <div
+                        className={`p-2 rounded-lg ${rule.isActive ? 'bg-green-500/10 text-green-600' : 'bg-muted text-muted-foreground'}`}
+                      >
                         <CheckCircle className="h-4 w-4" />
                       </div>
                       <div>
@@ -619,17 +668,22 @@ export function LearningAnalyticsDashboard() {
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <LineChart data={trendData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
-                        tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(val) =>
+                          new Date(val).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
                         className="text-xs"
                       />
                       <YAxis domain={[0, 100]} className="text-xs" />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Line 
-                        type="monotone" 
-                        dataKey="confidence" 
-                        stroke="hsl(var(--chart-3))" 
+                      <Line
+                        type="monotone"
+                        dataKey="confidence"
+                        stroke="hsl(var(--chart-3))"
                         strokeWidth={2}
                         dot={false}
                       />
@@ -649,14 +703,23 @@ export function LearningAnalyticsDashboard() {
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <BarChart data={trendData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
-                        tickFormatter={(val) => new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(val) =>
+                          new Date(val).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
                         className="text-xs"
                       />
                       <YAxis className="text-xs" />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="corrections" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
+                      <Bar
+                        dataKey="corrections"
+                        fill="hsl(var(--destructive))"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ChartContainer>
                 </div>

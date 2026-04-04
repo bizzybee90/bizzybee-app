@@ -3,9 +3,24 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Mail, Phone, MessageSquare, Crown, Clock, CheckCircle2, UserPlus, ChevronDown } from 'lucide-react';
+import {
+  Mail,
+  Phone,
+  MessageSquare,
+  Crown,
+  Clock,
+  CheckCircle2,
+  UserPlus,
+  ChevronDown,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
@@ -25,8 +40,9 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
 
   // Fallback to metadata if customer record is incomplete
-  const metadata = conversation.metadata as any || {};
-  const customerName = customer?.name || metadata.customer_name || metadata.customer_identifier || 'Unknown';
+  const metadata = conversation.metadata ?? {};
+  const customerName =
+    customer?.name || metadata.customer_name || metadata.customer_identifier || 'Unknown';
   const customerEmail = customer?.email || metadata.customer_email;
   const customerPhone = customer?.phone || metadata.customer_phone;
   const customerTier = customer?.tier || 'regular';
@@ -42,7 +58,12 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
   const getTierBadge = (tier: string) => {
     switch (tier) {
       case 'vip':
-        return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30"><Crown className="h-3 w-3 mr-1" />VIP</Badge>;
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30">
+            <Crown className="h-3 w-3 mr-1" />
+            VIP
+          </Badge>
+        );
       case 'at_risk':
         return <Badge variant="destructive">At Risk</Badge>;
       case 'trial':
@@ -59,24 +80,24 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
           <div className="flex-1 min-w-0">
             <h3 className="text-xl font-semibold leading-tight truncate">{customerName}</h3>
           </div>
-          <div className="flex-shrink-0">
-            {getTierBadge(customerTier)}
-          </div>
+          <div className="flex-shrink-0">{getTierBadge(customerTier)}</div>
         </div>
       </div>
 
       <Separator />
 
       <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Contact Info</h4>
-        
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Contact Info
+        </h4>
+
         {customerEmail && (
           <div className="flex items-center gap-3 text-sm min-w-0">
             <Mail className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="truncate text-foreground/90">{customerEmail}</span>
           </div>
         )}
-        
+
         {customerPhone && (
           <div className="flex items-center gap-3 text-sm">
             <Phone className="h-4 w-4 text-primary flex-shrink-0" />
@@ -95,12 +116,11 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
       <Separator />
 
       <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Activity Timeline</h4>
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Activity Timeline
+        </h4>
         {customer?.id && (
-          <CustomerTimeline 
-            customerId={customer.id} 
-            currentConversationId={conversation.id}
-          />
+          <CustomerTimeline customerId={customer.id} currentConversationId={conversation.id} />
         )}
       </div>
 
@@ -108,9 +128,13 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
         <>
           <Separator />
           <div className="space-y-2">
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes</h4>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Notes
+            </h4>
             <Card className="p-3 bg-muted/30 rounded-lg border-border/30">
-              <p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">{customer.notes}</p>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
+                {customer.notes}
+              </p>
             </Card>
           </div>
         </>
@@ -120,27 +144,31 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
 
       <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
         <CollapsibleTrigger className="flex items-center justify-between w-full py-1 group">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</h4>
-          <ChevronDown className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            quickActionsOpen && "rotate-180"
-          )} />
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Quick Actions
+          </h4>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 text-muted-foreground transition-transform',
+              quickActionsOpen && 'rotate-180',
+            )}
+          />
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="grid gap-2 pt-3">
             {conversation.status !== 'resolved' && (
-              <Button 
-                variant="default" 
+              <Button
+                variant="default"
                 className="w-full justify-start bg-success hover:bg-success/90"
                 onClick={async () => {
                   await supabase
                     .from('conversations')
-                    .update({ 
+                    .update({
                       status: 'resolved',
-                      resolved_at: new Date().toISOString()
+                      resolved_at: new Date().toISOString(),
                     })
                     .eq('id', conversation.id);
-                  toast({ title: "Conversation resolved" });
+                  toast({ title: 'Conversation resolved' });
                   onUpdate();
                 }}
               >
@@ -149,8 +177,8 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
               </Button>
             )}
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="w-full justify-start"
               onClick={() => setSnoozeOpen(true)}
             >
@@ -158,10 +186,7 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
               Snooze
             </Button>
 
-            <Select
-              value={conversation.priority}
-              onValueChange={(value) => updatePriority(value)}
-            >
+            <Select value={conversation.priority} onValueChange={(value) => updatePriority(value)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Change Priority" />
               </SelectTrigger>
@@ -172,10 +197,7 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
               </SelectContent>
             </Select>
 
-            <Select
-              value={conversation.status}
-              onValueChange={(value) => updateStatus(value)}
-            >
+            <Select value={conversation.status} onValueChange={(value) => updateStatus(value)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Change Status" />
               </SelectTrigger>
@@ -188,11 +210,7 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
             </Select>
 
             {!conversation.assigned_to && (
-              <Button 
-                variant="outline" 
-                className="w-full justify-start" 
-                onClick={handleAssignToMe}
-              >
+              <Button variant="outline" className="w-full justify-start" onClick={handleAssignToMe}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Assign to Me
               </Button>
@@ -211,35 +229,28 @@ export const CustomerContext = ({ conversation, onUpdate }: CustomerContextProps
   );
 
   async function updatePriority(priority: string) {
-    await supabase
-      .from('conversations')
-      .update({ priority })
-      .eq('id', conversation.id);
+    await supabase.from('conversations').update({ priority }).eq('id', conversation.id);
     onUpdate();
   }
 
   async function updateStatus(status: string) {
-    await supabase
-      .from('conversations')
-      .update({ status })
-      .eq('id', conversation.id);
+    await supabase.from('conversations').update({ status }).eq('id', conversation.id);
     onUpdate();
   }
 
   async function handleAssignToMe() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from('conversations')
-      .update({ assigned_to: user.id })
-      .eq('id', conversation.id);
-    
+    await supabase.from('conversations').update({ assigned_to: user.id }).eq('id', conversation.id);
+
     toast({
-      title: "Conversation assigned",
-      description: "This conversation has been assigned to you.",
+      title: 'Conversation assigned',
+      description: 'This conversation has been assigned to you.',
     });
-    
+
     onUpdate();
   }
 };

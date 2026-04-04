@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BizzyBee</string>
+    <string name="title_activity_main">BizzyBee</string>
+    <string name="package_name">com.bizzybee.app</string>
+    <string name="custom_url_scheme">com.bizzybee.app</string>
+</resources>

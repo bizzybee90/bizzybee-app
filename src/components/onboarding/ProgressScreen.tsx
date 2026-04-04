@@ -5,11 +5,12 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  CheckCircle2, 
-  Loader2, 
-  Search, 
-  FileCheck, 
+import { logger } from '@/lib/logger';
+import {
+  CheckCircle2,
+  Loader2,
+  Search,
+  FileCheck,
   Sparkles,
   AlertCircle,
   ChevronRight,
@@ -17,7 +18,7 @@ import {
   Download,
   Plus,
   Globe,
-  Play
+  Play,
 } from 'lucide-react';
 import { generateCompetitorResearchPDF } from '@/components/settings/knowledge-base/generateCompetitorResearchPDF';
 import { toast } from 'sonner';
@@ -76,14 +77,14 @@ const EMAIL_PHASES = [
 ];
 
 function getPhaseIndex(phases: typeof DISCOVERY_PHASES, currentStatus: string): number {
-  const index = phases.findIndex(p => p.key === currentStatus);
+  const index = phases.findIndex((p) => p.key === currentStatus);
   return index >= 0 ? index : 0;
 }
 
-function TrackProgress({ 
-  title, 
-  phases, 
-  currentStatus, 
+function TrackProgress({
+  title,
+  phases,
+  currentStatus,
   counts,
   error,
   currentCompetitor,
@@ -106,7 +107,7 @@ function TrackProgress({
   const isFailed = currentStatus === 'failed';
   const isWaiting = currentStatus === 'waiting';
   const totalPhases = phases.length - 1; // exclude 'failed'
-  
+
   let progressPercent: number;
   if (actualPercent !== undefined) {
     progressPercent = isComplete ? 100 : actualPercent;
@@ -121,56 +122,65 @@ function TrackProgress({
   const currentLabel = phases[currentIndex]?.label || 'Processing...';
 
   return (
-    <div className={cn(
-      "p-4 rounded-lg border",
-      isComplete && "border-success/30 bg-success/5",
-      isFailed && "border-destructive/30 bg-destructive/5",
-      !isComplete && !isFailed && "border-border bg-muted/30"
-    )}>
+    <div
+      className={cn(
+        'p-4 rounded-lg border',
+        isComplete && 'border-success/30 bg-success/5',
+        isFailed && 'border-destructive/30 bg-destructive/5',
+        !isComplete && !isFailed && 'border-border bg-muted/30',
+      )}
+    >
       <div className="flex items-center gap-3 mb-3">
-        <div className={cn(
-          "h-10 w-10 rounded-full flex items-center justify-center",
-          isComplete && "bg-success/10 text-success",
-          isFailed && "bg-destructive/10 text-destructive",
-          isWaiting && "bg-muted text-muted-foreground",
-          !isComplete && !isFailed && !isWaiting && "bg-primary/10 text-primary"
-        )}>
+        <div
+          className={cn(
+            'h-10 w-10 rounded-full flex items-center justify-center',
+            isComplete && 'bg-success/10 text-success',
+            isFailed && 'bg-destructive/10 text-destructive',
+            isWaiting && 'bg-muted text-muted-foreground',
+            !isComplete && !isFailed && !isWaiting && 'bg-primary/10 text-primary',
+          )}
+        >
           {isComplete ? (
             <CheckCircle2 className="h-5 w-5" />
           ) : isFailed ? (
             <AlertCircle className="h-5 w-5" />
           ) : (
-            <CurrentIcon className={cn(
-              "h-5 w-5",
-              !isWaiting && currentStatus !== 'pending' && "animate-spin"
-            )} />
+            <CurrentIcon
+              className={cn('h-5 w-5', !isWaiting && currentStatus !== 'pending' && 'animate-spin')}
+            />
           )}
         </div>
         <div className="flex-1">
           <h3 className="font-medium">{title}</h3>
-          <p className={cn(
-            "text-sm",
-            isComplete && "text-success",
-            isFailed && "text-destructive",
-            !isComplete && !isFailed && "text-muted-foreground"
-          )}>
-            {isFailed ? (error || 'An error occurred') : currentLabel}
+          <p
+            className={cn(
+              'text-sm',
+              isComplete && 'text-success',
+              isFailed && 'text-destructive',
+              !isComplete && !isFailed && 'text-muted-foreground',
+            )}
+          >
+            {isFailed ? error || 'An error occurred' : currentLabel}
           </p>
-          {(currentStatus === 'scraping' || currentStatus === 'extracting') && currentCompetitor && current && total && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Competitor {current} of {total}: <span className="font-medium">{currentCompetitor}</span>
-            </p>
-          )}
+          {(currentStatus === 'scraping' || currentStatus === 'extracting') &&
+            currentCompetitor &&
+            current &&
+            total && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Competitor {current} of {total}:{' '}
+                <span className="font-medium">{currentCompetitor}</span>
+              </p>
+            )}
         </div>
       </div>
 
-      <Progress 
-        value={progressPercent} 
+      <Progress
+        value={progressPercent}
         className={cn(
-          "h-2 mb-2",
-          isComplete && "[&>div]:bg-success",
-          isFailed && "[&>div]:bg-destructive"
-        )} 
+          'h-2 mb-2',
+          isComplete && '[&>div]:bg-success',
+          isFailed && '[&>div]:bg-destructive',
+        )}
       />
 
       {counts && counts.length > 0 && (
@@ -194,13 +204,13 @@ interface CompetitorItem {
   is_selected: boolean;
 }
 
-function InlineCompetitorReview({ 
-  workspaceId, 
+function InlineCompetitorReview({
+  workspaceId,
   onStartAnalysis,
   autoStarted = false,
   scrapeComplete = false,
-}: { 
-  workspaceId: string; 
+}: {
+  workspaceId: string;
   onStartAnalysis: () => void;
   autoStarted?: boolean;
   scrapeComplete?: boolean;
@@ -220,16 +230,24 @@ function InlineCompetitorReview({
         .eq('workspace_id', workspaceId)
         .in('status', ['discovered', 'validated', 'approved'])
         .order('relevance_score', { ascending: false, nullsFirst: false });
-      setCompetitors((data || []).map(c => ({ id: c.id, business_name: c.business_name, domain: c.domain, url: c.url, is_selected: c.is_selected ?? true })));
+      setCompetitors(
+        (data || []).map((c) => ({
+          id: c.id,
+          business_name: c.business_name,
+          domain: c.domain,
+          url: c.url,
+          is_selected: c.is_selected ?? true,
+        })),
+      );
       setIsLoading(false);
     };
     fetch();
   }, [workspaceId, scrapeComplete]);
 
-  const selectedCount = competitors.filter(c => c.is_selected).length;
+  const selectedCount = competitors.filter((c) => c.is_selected).length;
 
   const toggleSelection = async (id: string, value: boolean) => {
-    setCompetitors(prev => prev.map(c => c.id === id ? { ...c, is_selected: value } : c));
+    setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, is_selected: value } : c)));
     await supabase.from('competitor_sites').update({ is_selected: value }).eq('id', id);
   };
 
@@ -238,10 +256,14 @@ function InlineCompetitorReview({
     let cleanUrl = manualUrl.trim();
     if (!cleanUrl.startsWith('http')) cleanUrl = 'https://' + cleanUrl;
     let hostname: string;
-    try { hostname = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); }
-    catch { toast.error('Invalid URL'); return; }
+    try {
+      hostname = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      toast.error('Invalid URL');
+      return;
+    }
 
-    if (competitors.some(c => c.domain === hostname)) {
+    if (competitors.some((c) => c.domain === hostname)) {
       toast.error('Already in the list');
       return;
     }
@@ -272,9 +294,10 @@ function InlineCompetitorReview({
       .select('id, business_name, domain, url, is_selected')
       .single();
 
-    if (error) { toast.error('Failed to add'); }
-    else if (data) {
-      setCompetitors(prev => [data as CompetitorItem, ...prev]);
+    if (error) {
+      toast.error('Failed to add');
+    } else if (data) {
+      setCompetitors((prev) => [data as CompetitorItem, ...prev]);
       setManualUrl('');
       toast.success('Competitor added');
     }
@@ -282,11 +305,14 @@ function InlineCompetitorReview({
   };
 
   const handleStart = async () => {
-    if (selectedCount === 0) { toast.error('Select at least one competitor'); return; }
+    if (selectedCount === 0) {
+      toast.error('Select at least one competitor');
+      return;
+    }
     setIsStarting(true);
     try {
       const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'faq_generation' }
+        body: { workspace_id: workspaceId, workflow_type: 'faq_generation' },
       });
       if (error) throw error;
       toast.success(`Analysis started for ${data.competitors_count} competitors`);
@@ -310,9 +336,7 @@ function InlineCompetitorReview({
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
           Review your competitors
-          <span className="text-muted-foreground font-normal ml-1">
-            ({selectedCount} selected)
-          </span>
+          <span className="text-muted-foreground font-normal ml-1">({selectedCount} selected)</span>
         </p>
       </div>
 
@@ -321,8 +345,8 @@ function InlineCompetitorReview({
         <Input
           placeholder="Add a competitor URL..."
           value={manualUrl}
-          onChange={e => setManualUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addManualUrl()}
+          onChange={(e) => setManualUrl(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addManualUrl()}
           className="h-8 text-sm"
         />
         <Button
@@ -339,7 +363,7 @@ function InlineCompetitorReview({
       {/* Compact competitor list */}
       <ScrollArea className="h-[280px]">
         <div className="space-y-1">
-          {competitors.map(c => (
+          {competitors.map((c) => (
             <label
               key={c.id}
               className="flex items-center gap-2 p-1.5 rounded hover:bg-accent/50 cursor-pointer text-sm"
@@ -349,9 +373,7 @@ function InlineCompetitorReview({
                 onCheckedChange={(v) => toggleSelection(c.id, !!v)}
               />
               <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-              <span className="truncate flex-1">
-                {c.business_name || c.domain}
-              </span>
+              <span className="truncate flex-1">{c.business_name || c.domain}</span>
               <span className="text-xs text-muted-foreground truncate max-w-[120px]">
                 {c.domain}
               </span>
@@ -368,11 +390,7 @@ function InlineCompetitorReview({
           className="w-full gap-2"
           size="sm"
         >
-          {isStarting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
+          {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {scrapeComplete
             ? `Re-run Analysis (${selectedCount} competitors)`
             : `Start Analysis (${selectedCount} competitors)`}
@@ -389,7 +407,10 @@ function InlineCompetitorReview({
 }
 
 export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenProps) {
-  const [discoveryTrack, setDiscoveryTrack] = useState<TrackState>({ status: 'pending', counts: [] });
+  const [discoveryTrack, setDiscoveryTrack] = useState<TrackState>({
+    status: 'pending',
+    counts: [],
+  });
   const [scrapeTrack, setScrapeTrack] = useState<TrackState>({ status: 'waiting', counts: [] });
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [emailTrack, setEmailTrack] = useState<TrackState>({ status: 'pending', counts: [] });
@@ -400,7 +421,6 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   const [reviewDismissed, setReviewDismissed] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
   const autoTriggeredRef = useRef(false);
-  
 
   // Auto-trigger n8n workflows on mount (fire-and-forget)
   useEffect(() => {
@@ -410,34 +430,42 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     const autoTrigger = async () => {
       try {
         // Check competitor_discovery status
-        const { data: workflowRecords } = await supabase
+        const { data: workflowRecords } = (await supabase
           .from('n8n_workflow_progress' as 'allowed_webhook_ips')
           .select('workflow_type, status')
-          .eq('workspace_id', workspaceId) as unknown as { data: Array<{ workflow_type: string; status: string }> | null };
+          .eq('workspace_id', workspaceId)) as unknown as {
+          data: Array<{ workflow_type: string; status: string }> | null;
+        };
 
-        const discoveryRecord = workflowRecords?.find(r => r.workflow_type === 'competitor_discovery');
-        const emailRecord = workflowRecords?.find(r => r.workflow_type === 'email_import');
+        const discoveryRecord = workflowRecords?.find(
+          (r) => r.workflow_type === 'competitor_discovery',
+        );
+        const emailRecord = workflowRecords?.find((r) => r.workflow_type === 'email_import');
 
         // Trigger competitor_discovery if no record or status is pending
         if (!discoveryRecord || discoveryRecord.status === 'pending') {
-          supabase.functions.invoke('trigger-n8n-workflow', {
-            body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
-          }).catch(err => console.error('[ProgressScreen] competitor_discovery trigger failed:', err));
+          supabase.functions
+            .invoke('trigger-n8n-workflow', {
+              body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
+            })
+            .catch((err) => logger.error('competitor_discovery trigger failed', err));
         }
 
         // Check email import queue count — used for both guards below
-        const { count: emailQueueCount } = await supabase
+        const { count: emailQueueCount } = (await supabase
           .from('email_import_queue' as 'allowed_webhook_ips')
           .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', workspaceId) as unknown as { count: number | null };
+          .eq('workspace_id', workspaceId)) as unknown as { count: number | null };
 
         // Guarded email_classification trigger — only if emails exist in the queue
         if (!emailRecord || emailRecord.status === 'pending') {
           if ((emailQueueCount ?? 0) > 0) {
             // Emails already imported — trigger classification
-            supabase.functions.invoke('trigger-n8n-workflow', {
-              body: { workspace_id: workspaceId, workflow_type: 'email_classification' },
-            }).catch(err => console.error('[ProgressScreen] email_classification trigger failed:', err));
+            supabase.functions
+              .invoke('trigger-n8n-workflow', {
+                body: { workspace_id: workspaceId, workflow_type: 'email_classification' },
+              })
+              .catch((err) => logger.error('email_classification trigger failed', err));
           }
         }
 
@@ -445,21 +473,23 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         // Handles cases where start-email-import never ran (queue empty but config exists)
         // Also covers 'dispatched' status where classification ran on empty queue
         if ((emailQueueCount ?? 0) === 0) {
-          const { data: emailConfig } = await supabase
+          const { data: emailConfig } = (await supabase
             .from('email_provider_configs' as 'allowed_webhook_ips')
             .select('id, sync_status')
             .eq('workspace_id', workspaceId)
-            .maybeSingle() as unknown as { data: { id: string; sync_status: string } | null };
+            .maybeSingle()) as unknown as { data: { id: string; sync_status: string } | null };
 
           if (emailConfig && emailConfig.sync_status === 'pending') {
-            console.log('[ProgressScreen] Email queue empty + config pending — triggering start-email-import');
-            supabase.functions.invoke('start-email-import', {
-              body: { config_id: emailConfig.id, workspace_id: workspaceId, mode: 'onboarding' },
-            }).catch(err => console.error('[ProgressScreen] start-email-import trigger failed:', err));
+            logger.debug('Email queue empty + config pending, triggering start-email-import');
+            supabase.functions
+              .invoke('start-email-import', {
+                body: { config_id: emailConfig.id, workspace_id: workspaceId, mode: 'onboarding' },
+              })
+              .catch((err) => logger.error('start-email-import trigger failed', err));
           }
         }
       } catch (err) {
-        console.error('[ProgressScreen] Auto-trigger check failed:', err);
+        logger.error('Auto-trigger check failed', err);
       }
     };
 
@@ -499,8 +529,8 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           filter: `workspace_id=eq.${workspaceId}`,
         },
         () => {
-          setLiveFaqCount(prev => prev + 1);
-        }
+          setLiveFaqCount((prev) => prev + 1);
+        },
       )
       .subscribe();
 
@@ -526,17 +556,17 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
             .maybeSingle(),
         ]);
 
-        const records = ((workflowRes.data || []) as unknown as Array<{
+        const records = (workflowRes.data || []) as unknown as Array<{
           workflow_type: string;
           status: string;
           details: Record<string, unknown>;
           updated_at: string;
-        }>);
+        }>;
 
         // Stale detection: if a non-terminal track hasn't updated in 10 min, mark as failed
         const STALE_THRESHOLD_MS = 10 * 60 * 1000;
         const now = Date.now();
-        const isStale = (record: typeof records[0] | undefined) => {
+        const isStale = (record: (typeof records)[0] | undefined) => {
           if (!record?.updated_at) return false;
           const terminal = ['complete', 'failed', 'classification_complete'];
           if (terminal.includes(record.status)) return false;
@@ -544,20 +574,29 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         };
 
         // Bug 4 Fix: Track all three workflow types
-        const discoveryRecord = records.find(r => r.workflow_type === 'competitor_discovery');
-        const scrapeRecord = records.find(r => r.workflow_type === 'competitor_scrape');
-        const emailRecord = records.find(r => r.workflow_type === 'email_import');
+        const discoveryRecord = records.find((r) => r.workflow_type === 'competitor_discovery');
+        const scrapeRecord = records.find((r) => r.workflow_type === 'competitor_scrape');
+        const emailRecord = records.find((r) => r.workflow_type === 'email_import');
 
         // Discovery track (Workflow 1)
         const discoveryDetails = (discoveryRecord?.details || {}) as Record<string, unknown>;
-        const discoveryStatus = isStale(discoveryRecord) ? 'failed' : (discoveryRecord?.status || 'pending');
+        const discoveryStatus = isStale(discoveryRecord)
+          ? 'failed'
+          : discoveryRecord?.status || 'pending';
 
         setDiscoveryTrack({
           status: discoveryStatus,
-          counts: discoveryRecord ? [
-            { label: 'competitors found', value: (discoveryDetails.competitors_found as number) || 0 },
-          ] : [],
-          error: isStale(discoveryRecord) ? 'Timed out — the workflow may have failed. Please retry.' : (discoveryDetails.error as string | undefined),
+          counts: discoveryRecord
+            ? [
+                {
+                  label: 'competitors found',
+                  value: (discoveryDetails.competitors_found as number) || 0,
+                },
+              ]
+            : [],
+          error: isStale(discoveryRecord)
+            ? 'Timed out — the workflow may have failed. Please retry.'
+            : (discoveryDetails.error as string | undefined),
         });
 
         // faq_generation is now triggered manually via the InlineCompetitorReview "Start Analysis" button
@@ -565,14 +604,23 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
 
         // Scrape track (Workflow 2) — stays 'waiting' until discovery completes
         const scrapeDetails = (scrapeRecord?.details || {}) as Record<string, unknown>;
-        const scrapeStatus = scrapeRecord?.status || (discoveryStatus === 'complete' ? 'pending' : 'waiting');
+        const scrapeStatus =
+          scrapeRecord?.status || (discoveryStatus === 'complete' ? 'pending' : 'waiting');
 
         setScrapeTrack({
           status: scrapeStatus,
-          counts: scrapeRecord ? [
-            { label: 'scraped', value: (scrapeDetails.current as number) || (scrapeDetails.competitors_scraped as number) || 0 },
-            { label: 'FAQs generated', value: liveFaqCountRef.current },
-          ] : [],
+          counts: scrapeRecord
+            ? [
+                {
+                  label: 'scraped',
+                  value:
+                    (scrapeDetails.current as number) ||
+                    (scrapeDetails.competitors_scraped as number) ||
+                    0,
+                },
+                { label: 'FAQs generated', value: liveFaqCountRef.current },
+              ]
+            : [],
           error: scrapeDetails.error as string | undefined,
           currentCompetitor: scrapeDetails.current_competitor as string | undefined,
           current: scrapeDetails.current as number | undefined,
@@ -586,13 +634,18 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
 
         if (emailProgress || emailRecord) {
           // Prefer emails_received (live counter) over stale dispatcher snapshot
-          const totalEmails = (emailProgress?.emails_received as number) || 
-                             (emailProgress?.estimated_total_emails as number) || 
-                             (emailDetails.total_emails as number) || 0;
-          const rawClassified = (emailDetails.emails_classified as number) || 
-                                    (emailProgress?.emails_classified as number) || 0;
+          const totalEmails =
+            (emailProgress?.emails_received as number) ||
+            (emailProgress?.estimated_total_emails as number) ||
+            (emailDetails.total_emails as number) ||
+            0;
+          const rawClassified =
+            (emailDetails.emails_classified as number) ||
+            (emailProgress?.emails_classified as number) ||
+            0;
           // Cap classified to never exceed total (prevents >100% display bugs)
-          const classifiedEmails = totalEmails > 0 ? Math.min(rawClassified, totalEmails) : rawClassified;
+          const classifiedEmails =
+            totalEmails > 0 ? Math.min(rawClassified, totalEmails) : rawClassified;
 
           let effectiveEmailStatus = emailStatus;
 
@@ -600,13 +653,23 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           const currentPhase = emailProgress?.current_phase as string | undefined;
           const voiceComplete = emailProgress?.voice_profile_complete as boolean | undefined;
           const phase1Done = emailProgress?.phase1_status === 'complete';
-          
-          if (currentPhase === 'learning' || currentPhase === 'complete' || voiceComplete || phase1Done) {
+
+          if (
+            currentPhase === 'learning' ||
+            currentPhase === 'complete' ||
+            voiceComplete ||
+            phase1Done
+          ) {
             effectiveEmailStatus = 'complete';
           }
 
           // Auto-advance from pending if we can see classification is happening
-          if (totalEmails > 0 && classifiedEmails > 0 && classifiedEmails < totalEmails && effectiveEmailStatus === 'pending') {
+          if (
+            totalEmails > 0 &&
+            classifiedEmails > 0 &&
+            classifiedEmails < totalEmails &&
+            effectiveEmailStatus === 'pending'
+          ) {
             effectiveEmailStatus = 'classifying';
           }
           // 99% threshold to handle stragglers
@@ -614,20 +677,29 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
             effectiveEmailStatus = 'complete';
           }
 
-          // If emails were received but classification never started, 
+          // If emails were received but classification never started,
           // check if the phase is stuck on 'importing' with no classification progress
-          if (effectiveEmailStatus === 'pending' && totalEmails > 0 && classifiedEmails === 0 && currentPhase === 'importing') {
+          if (
+            effectiveEmailStatus === 'pending' &&
+            totalEmails > 0 &&
+            classifiedEmails === 0 &&
+            currentPhase === 'importing'
+          ) {
             effectiveEmailStatus = 'pending'; // Keep pending but show the count
           }
 
-          const percentage = totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : 0;
+          const percentage =
+            totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : 0;
 
           setEmailTrack({
             status: effectiveEmailStatus,
-            counts: totalEmails > 0 ? [
-              { label: 'total emails', value: totalEmails },
-              { label: `classified (${percentage}%)`, value: classifiedEmails },
-            ] : [],
+            counts:
+              totalEmails > 0
+                ? [
+                    { label: 'total emails', value: totalEmails },
+                    { label: `classified (${percentage}%)`, value: classifiedEmails },
+                  ]
+                : [],
             error: emailDetails.error as string | undefined,
             actualPercent: percentage,
           });
@@ -635,7 +707,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           setEmailTrack({ status: 'pending', counts: [] });
         }
       } catch (error) {
-        console.error('Error polling progress:', error);
+        logger.error('Error polling progress', error);
       } finally {
         setIsLoading(false);
       }
@@ -656,7 +728,8 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   // Bug 4 Fix: Require ALL three tracks to be complete
   const isDiscoveryComplete = discoveryTrack.status === 'complete';
   const isScrapeComplete = scrapeTrack.status === 'complete';
-  const isEmailComplete = emailTrack.status === 'complete' || emailTrack.status === 'classification_complete';
+  const isEmailComplete =
+    emailTrack.status === 'complete' || emailTrack.status === 'classification_complete';
   const allComplete = isDiscoveryComplete && isScrapeComplete && isEmailComplete;
 
   const formatTime = (seconds: number) => {
@@ -705,14 +778,15 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           error={discoveryTrack.error}
         />
         {/* Inline review gate — shown when discovery is done (review_ready or complete) */}
-        {(scrapeTrack.status === 'review_ready' || scrapeTrack.status === 'complete') && !reviewDismissed && (
-          <InlineCompetitorReview
-            workspaceId={workspaceId}
-            onStartAnalysis={() => setReviewDismissed(true)}
-            autoStarted={false}
-            scrapeComplete={scrapeTrack.status === 'complete'}
-          />
-        )}
+        {(scrapeTrack.status === 'review_ready' || scrapeTrack.status === 'complete') &&
+          !reviewDismissed && (
+            <InlineCompetitorReview
+              workspaceId={workspaceId}
+              onStartAnalysis={() => setReviewDismissed(true)}
+              autoStarted={false}
+              scrapeComplete={scrapeTrack.status === 'complete'}
+            />
+          )}
         <TrackProgress
           title="Analysing Competitors"
           phases={SCRAPE_PHASES}
@@ -734,7 +808,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
                   await generateCompetitorResearchPDF(workspaceId);
                   toast.success('Competitor Research PDF downloaded!');
                 } catch (err) {
-                  console.error('PDF error:', err);
+                  logger.error('PDF generation error', err);
                   toast.error('Failed to generate PDF');
                 } finally {
                   setDownloadingPDF(false);
@@ -743,7 +817,11 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
               disabled={downloadingPDF}
               className="gap-2"
             >
-              {downloadingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloadingPDF ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               Download Competitor Report
             </Button>
           </div>
@@ -767,20 +845,19 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
 
       {!allComplete && (
         <div className="text-center text-sm text-muted-foreground p-4 bg-muted/30 rounded-lg">
-          <p>{scrapeTrack.status === 'scraping' || scrapeTrack.status === 'extracting'
-            ? 'This may take 10-15 minutes depending on the number of competitors.'
-            : 'This typically takes 3-5 minutes for the initial setup.'}</p>
-          <p className="mt-1">Deep learning from your full email history will continue in the background.</p>
+          <p>
+            {scrapeTrack.status === 'scraping' || scrapeTrack.status === 'extracting'
+              ? 'This may take 10-15 minutes depending on the number of competitors.'
+              : 'This typically takes 3-5 minutes for the initial setup.'}
+          </p>
+          <p className="mt-1">
+            Deep learning from your full email history will continue in the background.
+          </p>
         </div>
       )}
 
       <div className="flex flex-col items-center gap-3 pt-4">
-        <Button 
-          onClick={onNext} 
-          disabled={!allComplete}
-          size="lg"
-          className="gap-2"
-        >
+        <Button onClick={onNext} disabled={!allComplete} size="lg" className="gap-2">
           {allComplete ? (
             <>
               Continue

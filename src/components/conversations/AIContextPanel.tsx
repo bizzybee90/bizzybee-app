@@ -15,19 +15,25 @@ export const AIContextPanel = ({ conversation, onUpdate, onUseDraft }: AIContext
 
   const getSentimentEmoji = (sentiment: string | null) => {
     switch (sentiment) {
-      case 'positive': return null;
-      case 'negative': return null;
-      case 'frustrated': return null;
-      case 'neutral': return null;
-      default: return null;
+      case 'positive':
+        return null;
+      case 'negative':
+        return null;
+      case 'frustrated':
+        return null;
+      case 'neutral':
+        return null;
+      default:
+        return null;
     }
   };
 
-  const briefingText = conversation.summary_for_human 
-    || (conversation as any).ai_why_flagged 
-    || (conversation as any).why_this_needs_you 
-    || conversation.ai_reason_for_escalation 
-    || 'AI is processing this conversation.';
+  const briefingText =
+    conversation.summary_for_human ||
+    conversation.ai_why_flagged ||
+    conversation.why_this_needs_you ||
+    conversation.ai_reason_for_escalation ||
+    'AI is processing this conversation.';
 
   const sentimentEmoji = getSentimentEmoji(conversation.ai_sentiment);
   const categoryBadge = conversation.category;
@@ -39,19 +45,22 @@ export const AIContextPanel = ({ conversation, onUpdate, onUseDraft }: AIContext
     >
       <Sparkles className="h-3 w-3 flex-shrink-0 mt-0.5 opacity-60" />
       <div className="min-w-0 flex-1">
-        <p className={cn(
-          "text-xs text-muted-foreground leading-relaxed",
-          !expanded && "line-clamp-1"
-        )}>
+        <p
+          className={cn(
+            'text-xs text-muted-foreground leading-relaxed',
+            !expanded && 'line-clamp-1',
+          )}
+        >
           {briefingText}
         </p>
       </div>
       <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-        {sentimentEmoji && (
-          <span className="text-xs">{sentimentEmoji}</span>
-        )}
+        {sentimentEmoji && <span className="text-xs">{sentimentEmoji}</span>}
         {categoryBadge && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-muted-foreground border-border/50">
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 h-4 font-normal text-muted-foreground border-border/50"
+          >
             {categoryBadge}
           </Badge>
         )}

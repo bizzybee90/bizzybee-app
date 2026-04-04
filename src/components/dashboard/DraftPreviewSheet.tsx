@@ -2,12 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -71,14 +66,16 @@ export function DraftPreviewSheet({
         // Fetch conversation details
         const { data: convData, error: convError } = await supabase
           .from('conversations')
-          .select(`
+          .select(
+            `
             id,
             title,
             ai_draft_response,
             email_classification,
             urgency,
             customers(name, email)
-          `)
+          `,
+          )
           .eq('id', conversationId)
           .single();
 
@@ -99,7 +96,7 @@ export function DraftPreviewSheet({
           ai_draft_response: convData.ai_draft_response || '',
           email_classification: convData.email_classification,
           urgency: convData.urgency,
-          customer: convData.customers as any,
+          customer: convData.customers as { name?: string; email?: string } | null,
         });
         setMessages(msgData || []);
         setDraftText(convData.ai_draft_response || '');
@@ -146,9 +143,11 @@ export function DraftPreviewSheet({
         .eq('id', conversation.id);
 
       // Mark the email as read in Gmail/Outlook
-      supabase.functions.invoke('mark-email-read', {
-        body: { conversationId: conversation.id, markAsRead: true }
-      }).catch(err => console.error('Failed to mark email as read:', err));
+      supabase.functions
+        .invoke('mark-email-read', {
+          body: { conversationId: conversation.id, markAsRead: true },
+        })
+        .catch((err) => console.error('Failed to mark email as read:', err));
 
       toast({
         title: 'Message sent',
@@ -203,27 +202,28 @@ export function DraftPreviewSheet({
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={cn(
-                      "flex gap-3",
-                      msg.direction === 'outbound' && "flex-row-reverse"
-                    )}
+                    className={cn('flex gap-3', msg.direction === 'outbound' && 'flex-row-reverse')}
                   >
-                    <div className={cn(
-                      "h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0",
-                      msg.direction === 'outbound' 
-                        ? "bg-primary/10 text-primary" 
-                        : "bg-muted text-muted-foreground"
-                    )}>
+                    <div
+                      className={cn(
+                        'h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0',
+                        msg.direction === 'outbound'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
                       {msg.actor_type === 'ai' ? (
                         <Bot className="h-4 w-4" />
                       ) : (
                         <User className="h-4 w-4" />
                       )}
                     </div>
-                    <div className={cn(
-                      "flex-1 max-w-[80%]",
-                      msg.direction === 'outbound' && "text-right"
-                    )}>
+                    <div
+                      className={cn(
+                        'flex-1 max-w-[80%]',
+                        msg.direction === 'outbound' && 'text-right',
+                      )}
+                    >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-medium">
                           {msg.actor_name || (msg.direction === 'outbound' ? 'You' : 'Customer')}
@@ -233,12 +233,14 @@ export function DraftPreviewSheet({
                           {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true })}
                         </span>
                       </div>
-                      <div className={cn(
-                        "rounded-lg p-3 text-sm",
-                        msg.direction === 'outbound'
-                          ? "bg-primary text-primary-foreground ml-auto"
-                          : "bg-muted"
-                      )}>
+                      <div
+                        className={cn(
+                          'rounded-lg p-3 text-sm',
+                          msg.direction === 'outbound'
+                            ? 'bg-primary text-primary-foreground ml-auto'
+                            : 'bg-muted',
+                        )}
+                      >
                         <p className="whitespace-pre-wrap">{msg.body}</p>
                       </div>
                     </div>
@@ -255,7 +257,9 @@ export function DraftPreviewSheet({
                 <Bot className="h-4 w-4" />
                 <span>AI Draft Response</span>
                 {draftText !== conversation?.ai_draft_response && (
-                  <Badge variant="outline" className="text-xs">Edited</Badge>
+                  <Badge variant="outline" className="text-xs">
+                    Edited
+                  </Badge>
                 )}
               </div>
               <Textarea
@@ -265,11 +269,7 @@ export function DraftPreviewSheet({
                 className="min-h-[120px] resize-none"
               />
               <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={sending}
-                >
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
                   Cancel
                 </Button>
                 <Button

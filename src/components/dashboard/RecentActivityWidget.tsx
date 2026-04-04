@@ -22,6 +22,28 @@ interface RecentActivity {
   category?: string;
 }
 
+interface RealtimeMessage {
+  id: string;
+  body: string;
+  actor_name: string | null;
+  actor_type: string;
+  channel: string;
+  created_at: string;
+  conversation_id: string;
+  is_internal: boolean;
+}
+
+interface RealtimeConversation {
+  id: string;
+  title: string | null;
+  status: string;
+  channel: string;
+  is_escalated: boolean;
+  escalated_at: string | null;
+  resolved_at: string | null;
+  updated_at: string;
+}
+
 export const RecentActivityWidget = () => {
   const navigate = useNavigate();
   const [activities, setActivities] = useState<RecentActivity[]>([]);
@@ -29,24 +51,28 @@ export const RecentActivityWidget = () => {
 
   const fetchRecentActivity = async () => {
     setLoading(true);
-    
+
     // Fetch 5 most recent inbound messages — true chronological feed
     const { data: messages } = await supabase
       .from('messages')
-      .select(`
+      .select(
+        `
         id, body, actor_name, actor_type, channel, created_at, conversation_id,
         conversations(email_classification)
-      `)
+      `,
+      )
       .eq('direction', 'inbound')
       .eq('is_internal', false)
       .order('created_at', { ascending: false })
       .limit(5);
 
-    const combined: RecentActivity[] = (messages?.map(m => ({
-      ...m,
-      type: 'message' as const,
-      category: (m.conversations as any)?.email_classification
-    })) || []);
+    const combined: RecentActivity[] =
+      messages?.map((m) => ({
+        ...m,
+        type: 'message' as const,
+        category: (m.conversations as { email_classification?: string } | null)
+          ?.email_classification,
+      })) || [];
 
     setActivities(combined);
     setLoading(false);
@@ -64,17 +90,22 @@ export const RecentActivityWidget = () => {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: 'direction=eq.inbound'
+          filter: 'direction=eq.inbound',
         },
         (payload) => {
-          const newMessage = payload.new as any;
+          const newMessage = payload.new as RealtimeMessage;
           if (!newMessage.is_internal) {
-            setActivities((prev) => [{
-              ...newMessage,
-              type: 'message'
-            }, ...prev].slice(0, 10));
+            setActivities((prev) =>
+              [
+                {
+                  ...newMessage,
+                  type: 'message',
+                },
+                ...prev,
+              ].slice(0, 10),
+            );
           }
-        }
+        },
       )
       .subscribe();
 
@@ -86,12 +117,12 @@ export const RecentActivityWidget = () => {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'conversations'
+          table: 'conversations',
         },
         (payload) => {
-          const conv = payload.new as any;
-          const oldConv = payload.old as any;
-          
+          const conv = payload.new as RealtimeConversation;
+          const oldConv = payload.old as RealtimeConversation;
+
           // New escalation
           if (conv.is_escalated && !oldConv.is_escalated) {
             const newActivity: RecentActivity = {
@@ -102,11 +133,11 @@ export const RecentActivityWidget = () => {
               actor_type: 'system',
               channel: conv.channel,
               created_at: conv.escalated_at || conv.updated_at,
-              conversation_id: conv.id
+              conversation_id: conv.id,
             };
             setActivities((prev) => [newActivity, ...prev].slice(0, 10));
           }
-          
+
           // New resolution
           if (conv.status === 'resolved' && oldConv.status !== 'resolved') {
             const newActivity: RecentActivity = {
@@ -117,11 +148,11 @@ export const RecentActivityWidget = () => {
               actor_type: 'system',
               channel: conv.channel,
               created_at: conv.resolved_at || conv.updated_at,
-              conversation_id: conv.id
+              conversation_id: conv.id,
             };
             setActivities((prev) => [newActivity, ...prev].slice(0, 10));
           }
-        }
+        },
       )
       .subscribe();
 
@@ -150,7 +181,6 @@ export const RecentActivityWidget = () => {
     if (activity.actor_type === 'ai_agent') return 'AI Reply';
     return 'New Message';
   };
-
 
   const handleActivityClick = (activity: RecentActivity) => {
     if (activity.conversation_id) {
@@ -196,14 +226,12 @@ export const RecentActivityWidget = () => {
                 <div
                   key={activity.id}
                   className={cn(
-                    "flex items-start gap-3 pb-3 border-b last:border-0 transition-colors rounded-lg p-2 -mx-2",
-                    activity.conversation_id && "cursor-pointer hover:bg-accent/50"
+                    'flex items-start gap-3 pb-3 border-b last:border-0 transition-colors rounded-lg p-2 -mx-2',
+                    activity.conversation_id && 'cursor-pointer hover:bg-accent/50',
                   )}
                   onClick={() => handleActivityClick(activity)}
                 >
-                  <div className="flex-shrink-0 mt-1">
-                    {getActivityIcon(activity)}
-                  </div>
+                  <div className="flex-shrink-0 mt-1">{getActivityIcon(activity)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-xs font-medium text-muted-foreground">
@@ -218,7 +246,10 @@ export const RecentActivityWidget = () => {
                           </p>
                         </>
                       )}
-                      <ChannelIcon channel={activity.channel} className="h-3.5 w-3.5 flex-shrink-0 ml-auto" />
+                      <ChannelIcon
+                        channel={activity.channel}
+                        className="h-3.5 w-3.5 flex-shrink-0 ml-auto"
+                      />
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
                       {activity.body}

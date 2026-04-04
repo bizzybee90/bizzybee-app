@@ -1,8 +1,15 @@
 import { Conversation } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { CheckCircle2, Clock, UserPlus, UserCheck, Tag } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { SnoozeDialog } from './SnoozeDialog';
@@ -23,7 +30,9 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setCurrentUserId(user?.id || null);
 
       // Fetch assigned user name if conversation is assigned
@@ -33,7 +42,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
           .select('name')
           .eq('id', conversation.assigned_to)
           .maybeSingle();
-        
+
         if (data) {
           setAssignedUserName(data.name);
         } else {
@@ -47,19 +56,18 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
   }, [conversation.assigned_to]);
 
   const handleAssignToMe = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from('conversations')
-      .update({ assigned_to: user.id })
-      .eq('id', conversation.id);
-    
+    await supabase.from('conversations').update({ assigned_to: user.id }).eq('id', conversation.id);
+
     toast({
-      title: "Assigned to you",
-      description: "This conversation is now yours.",
+      title: 'Assigned to you',
+      description: 'This conversation is now yours.',
     });
-    
+
     onUpdate();
   };
 
@@ -70,40 +78,38 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
       button.classList.add('animate-scale-out');
     }
 
-    console.log('Resolving conversation:', conversation.id);
-    
     const { error } = await supabase
       .from('conversations')
-      .update({ 
+      .update({
         status: 'resolved',
-        resolved_at: new Date().toISOString()
+        resolved_at: new Date().toISOString(),
       })
       .eq('id', conversation.id);
-    
+
     if (error) {
-      console.error('Failed to resolve conversation:', error);
+      logger.error('Failed to resolve conversation', error);
       toast({
-        title: "Failed to resolve",
+        title: 'Failed to resolve',
         description: error.message,
-        variant: "destructive"
+        variant: 'destructive',
       });
       return;
     }
 
     // Mark the email as read in Gmail/Outlook
     if (conversation.channel === 'email') {
-      supabase.functions.invoke('mark-email-read', {
-        body: { conversationId: conversation.id, markAsRead: true }
-      }).catch(err => console.error('Failed to mark email as read:', err));
+      supabase.functions
+        .invoke('mark-email-read', {
+          body: { conversationId: conversation.id, markAsRead: true },
+        })
+        .catch((err) => logger.error('Failed to mark email as read', err));
     }
 
-    console.log('Conversation resolved successfully');
-    
     toast({
-      title: "Resolved",
-      description: "Conversation marked as resolved.",
+      title: 'Resolved',
+      description: 'Conversation marked as resolved.',
     });
-    
+
     // Small delay for animation before updating
     setTimeout(() => {
       onUpdate();
@@ -112,49 +118,47 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
   };
 
   const handlePriorityChange = async (value: string) => {
-    await supabase
-      .from('conversations')
-      .update({ priority: value })
-      .eq('id', conversation.id);
+    await supabase.from('conversations').update({ priority: value }).eq('id', conversation.id);
     onUpdate();
   };
 
   const handleAssignChange = async (value: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const assignedTo = value === 'me' ? user.id : null;
-    
+
     await supabase
       .from('conversations')
       .update({ assigned_to: assignedTo })
       .eq('id', conversation.id);
-    
+
     if (value === 'me') {
       toast({
-        title: "Assigned to you",
-        description: "This conversation is now yours.",
+        title: 'Assigned to you',
+        description: 'This conversation is now yours.',
       });
     }
-    
+
     onUpdate();
   };
 
   const handleStatusChange = async (value: string) => {
-    await supabase
-      .from('conversations')
-      .update({ status: value })
-      .eq('id', conversation.id);
+    await supabase.from('conversations').update({ status: value }).eq('id', conversation.id);
     onUpdate();
   };
 
   return (
     <>
       <div className="space-y-3 mobile-section-spacing">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</h3>
-        
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Quick Actions
+        </h3>
+
         {conversation.status !== 'resolved' && (
-          <Button 
+          <Button
             onClick={handleResolve}
             className="w-full justify-center bg-success hover:bg-success/90 smooth-transition spring-press h-12 md:h-10 rounded-[18px] font-semibold text-base md:text-sm apple-shadow"
             size="lg"
@@ -199,7 +203,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
             </SelectContent>
           </Select>
 
-          <Button 
+          <Button
             onClick={() => setSnoozeOpen(true)}
             variant="outline"
             className="w-full justify-start smooth-transition spring-press h-11 md:h-9 rounded-[18px]"
@@ -209,7 +213,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
             Snooze
           </Button>
 
-          <Button 
+          <Button
             onClick={() => setCorrectionOpen(true)}
             variant="outline"
             className="w-full justify-start smooth-transition spring-press h-11 md:h-9 rounded-[18px]"
@@ -221,7 +225,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
 
           {conversation.assigned_to ? (
             conversation.assigned_to === currentUserId ? (
-              <Button 
+              <Button
                 variant="outline"
                 disabled
                 className="w-full justify-start h-11 md:h-9 rounded-[18px] bg-success/10 border-success/20"
@@ -231,7 +235,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
                 Assigned to You
               </Button>
             ) : (
-              <Button 
+              <Button
                 onClick={handleAssignToMe}
                 variant="outline"
                 className="w-full justify-start smooth-transition spring-press h-11 md:h-9 rounded-[18px]"
@@ -242,7 +246,7 @@ export const QuickActions = ({ conversation, onUpdate, onBack }: QuickActionsPro
               </Button>
             )
           ) : (
-            <Button 
+            <Button
               onClick={handleAssignToMe}
               variant="outline"
               className="w-full justify-start smooth-transition spring-press h-11 md:h-9 rounded-[18px]"

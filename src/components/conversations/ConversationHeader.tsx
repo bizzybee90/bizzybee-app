@@ -29,7 +29,13 @@ const getListName = (pathname: string): string => {
   return 'Conversations';
 };
 
-export const ConversationHeader = ({ conversation, onUpdate, onBack, hideBackButton = false, onReopen }: ConversationHeaderProps) => {
+export const ConversationHeader = ({
+  conversation,
+  onUpdate,
+  onBack,
+  hideBackButton = false,
+  onReopen,
+}: ConversationHeaderProps) => {
   const location = useLocation();
   const listName = getListName(location.pathname);
   const [showTeachModal, setShowTeachModal] = useState(false);
@@ -38,24 +44,34 @@ export const ConversationHeader = ({ conversation, onUpdate, onBack, hideBackBut
   const isCleared = conversation.status === 'resolved';
 
   const handleMarkCleared = async () => {
-    await supabase.from('conversations').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', conversation.id);
+    await supabase
+      .from('conversations')
+      .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+      .eq('id', conversation.id);
     if (conversation.channel === 'email') {
-      supabase.functions.invoke('mark-email-read', { body: { conversationId: conversation.id, markAsRead: true, archive: true } }).catch(console.error);
+      supabase.functions
+        .invoke('mark-email-read', {
+          body: { conversationId: conversation.id, markAsRead: true, archive: true },
+        })
+        .catch(console.error);
     }
-    toast({ title: "Cleared" });
+    toast({ title: 'Cleared' });
     onUpdate();
     onBack?.();
   };
 
   const handleMarkUnread = async () => {
     await supabase.from('conversations').update({ status: 'new' }).eq('id', conversation.id);
-    toast({ title: "Marked unread" });
+    toast({ title: 'Marked unread' });
     onUpdate();
   };
 
   const handleMoveToInbox = async () => {
-    await supabase.from('conversations').update({ status: 'open', resolved_at: null }).eq('id', conversation.id);
-    toast({ title: "Moved to Inbox" });
+    await supabase
+      .from('conversations')
+      .update({ status: 'open', resolved_at: null })
+      .eq('id', conversation.id);
+    toast({ title: 'Moved to Inbox' });
     onUpdate();
   };
 
@@ -82,15 +98,19 @@ export const ConversationHeader = ({ conversation, onUpdate, onBack, hideBackBut
             {conversation.title || 'No subject'}
           </h2>
           <div className="w-1" />
-          
+
           <div className="flex items-center gap-1">
-            {(conversation as any).ai_confidence != null && (
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                (conversation as any).ai_confidence >= 0.9 ? 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400' :
-                (conversation as any).ai_confidence >= 0.7 ? 'text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400' :
-                'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400'
-              }`}>
-                AI {Math.round((conversation as any).ai_confidence * 100)}%
+            {conversation.ai_confidence != null && (
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  conversation.ai_confidence >= 0.9
+                    ? 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400'
+                    : conversation.ai_confidence >= 0.7
+                      ? 'text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400'
+                }`}
+              >
+                AI {Math.round(conversation.ai_confidence * 100)}%
               </span>
             )}
 
@@ -98,7 +118,12 @@ export const ConversationHeader = ({ conversation, onUpdate, onBack, hideBackBut
             {isCleared ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={handleMoveToInbox}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    onClick={handleMoveToInbox}
+                  >
                     <Inbox className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
@@ -107,7 +132,12 @@ export const ConversationHeader = ({ conversation, onUpdate, onBack, hideBackBut
             ) : (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={handleMarkCleared}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    onClick={handleMarkCleared}
+                  >
                     <Archive className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>

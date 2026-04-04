@@ -60,7 +60,9 @@ export const AuditLogPanel = () => {
   if (!isAdmin) {
     return (
       <Card className="p-6">
-        <p className="text-center text-muted-foreground">Admin access required to view audit logs</p>
+        <p className="text-center text-muted-foreground">
+          Admin access required to view audit logs
+        </p>
       </Card>
     );
   }
@@ -84,15 +86,22 @@ export const AuditLogPanel = () => {
             const Icon = getActionIcon(log.action);
             return (
               <div key={log.id} className="flex items-center gap-3 p-3 border rounded-lg text-sm">
-                <Badge variant={getActionColor(log.action) as any} className="shrink-0">
+                <Badge
+                  variant={
+                    getActionColor(log.action) as
+                      | 'default'
+                      | 'secondary'
+                      | 'destructive'
+                      | 'outline'
+                  }
+                  className="shrink-0"
+                >
                   <Icon className="h-3 w-3 mr-1" />
                   {log.action.toUpperCase()}
                 </Badge>
-                
+
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">
-                    {log.user?.name || 'Unknown User'}
-                  </p>
+                  <p className="font-medium truncate">{log.user?.name || 'Unknown User'}</p>
                   <p className="text-xs text-muted-foreground truncate">
                     Customer: {log.customer?.name || 'Unknown'}
                   </p>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { logger } from '@/lib/logger';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,16 @@ import { PricingManager } from './knowledge-base/PricingManager';
 import { DocumentUpload } from '@/components/knowledge/DocumentUpload';
 import { generateKnowledgeBasePDF } from './knowledge-base/generateKnowledgeBasePDF';
 import { generateCompetitorResearchPDF } from './knowledge-base/generateCompetitorResearchPDF';
-import { HelpCircle, BookOpen, DollarSign, FileUp, Download, Loader2, FileSearch, Trash2 } from 'lucide-react';
+import {
+  HelpCircle,
+  BookOpen,
+  DollarSign,
+  FileUp,
+  Download,
+  Loader2,
+  FileSearch,
+  Trash2,
+} from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,7 +36,7 @@ export function KnowledgeBasePanel() {
       await generateKnowledgeBasePDF(workspace.id, workspace.name || undefined);
       toast.success('Knowledge Base PDF downloaded!');
     } catch (err) {
-      console.error('PDF generation error:', err);
+      logger.error('PDF generation error', err);
       toast.error('Failed to generate PDF');
     } finally {
       setDownloading(false);
@@ -40,7 +50,7 @@ export function KnowledgeBasePanel() {
       await generateCompetitorResearchPDF(workspace.id, workspace.name || undefined);
       toast.success('Competitor Research PDF downloaded!');
     } catch (err) {
-      console.error('Competitor PDF error:', err);
+      logger.error('Competitor PDF error', err);
       toast.error('Failed to generate competitor PDF');
     } finally {
       setDownloadingCompetitor(false);
@@ -50,31 +60,33 @@ export function KnowledgeBasePanel() {
   const handleDeleteAllScrapedData = async () => {
     if (!workspace?.id) return;
     const confirmed = window.confirm(
-      'This will delete ALL scraped FAQs (website + competitor). Manual and document FAQs will be kept. Are you sure?'
+      'This will delete ALL scraped FAQs (website + competitor). Manual and document FAQs will be kept. Are you sure?',
     );
     if (!confirmed) return;
 
     setDeleting(true);
     try {
-      const sb: any = supabase as any;
+      // Tables not in generated types — use typed cast for dynamic table access
+      const fromTable = (t: string) =>
+        (supabase as unknown as { from: (t: string) => Record<string, CallableFunction> }).from(t);
       // Delete scraped FAQs (priority 10 with is_own_content, and priority 5 competitor)
-      const { error } = await sb
-        .from('faq_database')
+      const { error } = (await fromTable('faq_database')
         .delete()
         .eq('workspace_id', workspace.id)
-        .in('priority', [10, 5]);
+        .in('priority', [10, 5])) as unknown as Promise<{ error: { message: string } | null }>;
 
       if (error) throw error;
 
       // Also reset scraping jobs
-      await sb
-        .from('scraping_jobs')
+      (await fromTable('scraping_jobs')
         .delete()
-        .eq('workspace_id', workspace.id);
+        .eq('workspace_id', workspace.id)) as unknown as Promise<{
+        error: { message: string } | null;
+      }>;
 
       toast.success('All scraped data deleted successfully');
     } catch (err) {
-      console.error('Delete error:', err);
+      logger.error('Delete scraped data error', err);
       toast.error('Failed to delete scraped data');
     } finally {
       setDeleting(false);
@@ -92,16 +104,43 @@ export function KnowledgeBasePanel() {
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <Button variant="outline" size="sm" onClick={handleDownloadPDF} disabled={downloading || !workspace?.id}>
-            {downloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadPDF}
+            disabled={downloading || !workspace?.id}
+          >
+            {downloading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
             Your KB PDF
           </Button>
-          <Button variant="outline" size="sm" onClick={handleDownloadCompetitorPDF} disabled={downloadingCompetitor || !workspace?.id}>
-            {downloadingCompetitor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSearch className="h-4 w-4 mr-2" />}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadCompetitorPDF}
+            disabled={downloadingCompetitor || !workspace?.id}
+          >
+            {downloadingCompetitor ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FileSearch className="h-4 w-4 mr-2" />
+            )}
             Competitor PDF
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleDeleteAllScrapedData} disabled={deleting || !workspace?.id}>
-            {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDeleteAllScrapedData}
+            disabled={deleting || !workspace?.id}
+          >
+            {deleting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 mr-2" />
+            )}
             Delete Scraped Data
           </Button>
         </div>
@@ -142,11 +181,11 @@ export function KnowledgeBasePanel() {
         <TabsContent value="documents">
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
-              Upload PDF documents, price lists, or manuals. BizzyBee will extract FAQs and 
-              key information to expand the knowledge base automatically.
+              Upload PDF documents, price lists, or manuals. BizzyBee will extract FAQs and key
+              information to expand the knowledge base automatically.
             </div>
             {workspace?.id && (
-              <DocumentUpload 
+              <DocumentUpload
                 workspaceId={workspace.id}
                 onDocumentProcessed={() => {
                   // Could trigger a refresh of FAQs here if needed

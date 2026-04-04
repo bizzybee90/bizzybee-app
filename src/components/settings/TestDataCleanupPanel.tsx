@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Trash2, AlertTriangle, RefreshCw, Loader2, Building2, ArrowRight, Zap, CheckCircle2, Bomb } from 'lucide-react';
+import {
+  Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Loader2,
+  Building2,
+  ArrowRight,
+  Zap,
+  CheckCircle2,
+  Bomb,
+} from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
@@ -16,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -40,28 +51,36 @@ export const TestDataCleanupPanel = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [resyncing, setResyncing] = useState(false);
-  const [counts, setCounts] = useState<{conversations: number; messages: number; customers: number} | null>(null);
+  const [counts, setCounts] = useState<{
+    conversations: number;
+    messages: number;
+    customers: number;
+  } | null>(null);
   const [deleteCustomers, setDeleteCustomers] = useState(false);
   const [companyName, setCompanyName] = useState('');
   const [savingContext, setSavingContext] = useState(false);
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
-  const [stepResults, setStepResults] = useState<Record<number, { deleted: number; remaining: number; message: string }>>({});
+  const [stepResults, setStepResults] = useState<
+    Record<number, { deleted: number; remaining: number; message: string }>
+  >({});
   const [nuclearResetOpen, setNuclearResetOpen] = useState(false);
   const [nuclearConfirmText, setNuclearConfirmText] = useState('');
   const [nuclearRunning, setNuclearRunning] = useState(false);
-  const [nuclearResult, setNuclearResult] = useState<{ success: boolean; result?: any } | null>(null);
+  const [nuclearResult, setNuclearResult] = useState<{ success: boolean; result?: any } | null>(
+    null,
+  );
 
   // Fetch existing business context
   const fetchBusinessContext = async () => {
     if (!workspace?.id) return;
-    
+
     const { data } = await supabase
       .from('business_context')
       .select('custom_flags')
       .eq('workspace_id', workspace.id)
       .single();
-    
+
     if (data?.custom_flags) {
       const flags = data.custom_flags as Record<string, unknown>;
       setCompanyName((flags.company_name as string) || '');
@@ -74,7 +93,7 @@ export const TestDataCleanupPanel = () => {
 
   const saveCompanyName = async () => {
     if (!workspace?.id || !companyName.trim()) return;
-    
+
     setSavingContext(true);
     try {
       const { data: existing } = await supabase
@@ -84,8 +103,8 @@ export const TestDataCleanupPanel = () => {
         .single();
 
       const updatedFlags = {
-        ...(existing?.custom_flags as Record<string, unknown> || {}),
-        company_name: companyName.trim()
+        ...((existing?.custom_flags as Record<string, unknown>) || {}),
+        company_name: companyName.trim(),
       };
 
       if (existing) {
@@ -104,7 +123,7 @@ export const TestDataCleanupPanel = () => {
         description: 'Your AI will now use this to classify emails correctly.',
       });
     } catch (error) {
-      console.error('Error saving company name:', error);
+      logger.error('Error saving company name', error);
       toast({
         title: 'Failed to save',
         description: 'Could not save company name.',
@@ -117,10 +136,10 @@ export const TestDataCleanupPanel = () => {
 
   const runCleanupStep = async (step: number) => {
     if (!workspace?.id) return;
-    
+
     setCleanupRunning(true);
     setCurrentStep(step);
-    
+
     try {
       // cleanup-duplicates edge function removed
       toast({
@@ -129,7 +148,7 @@ export const TestDataCleanupPanel = () => {
       });
       return;
     } catch (error: any) {
-      console.error('Cleanup error:', error);
+      logger.error('Cleanup error', error);
       toast({
         title: 'Cleanup failed',
         description: error?.message || 'Something went wrong',
@@ -145,9 +164,9 @@ export const TestDataCleanupPanel = () => {
     for (const step of CLEANUP_STEPS) {
       await runCleanupStep(step.id);
       // Small delay between steps
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    
+
     toast({
       title: 'All cleanup steps complete',
       description: 'Your database has been cleaned up.',
@@ -164,8 +183,8 @@ export const TestDataCleanupPanel = () => {
       const { data, error } = await supabase.functions.invoke('nuclear-reset', {
         body: {
           workspaceId: workspace.id,
-          confirm: 'CONFIRM_NUCLEAR_RESET'
-        }
+          confirm: 'CONFIRM_NUCLEAR_RESET',
+        },
       });
 
       if (error) throw error;
@@ -182,7 +201,7 @@ export const TestDataCleanupPanel = () => {
       setNuclearConfirmText('');
       setNuclearResetOpen(false);
     } catch (error: any) {
-      console.error('Nuclear reset error:', error);
+      logger.error('Nuclear reset error', error);
       toast({
         title: 'Nuclear reset failed',
         description: error?.message || 'Something went wrong',
@@ -198,9 +217,15 @@ export const TestDataCleanupPanel = () => {
 
     try {
       const [convResult, msgResult, custResult] = await Promise.all([
-        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id),
         supabase.from('messages').select('id', { count: 'exact', head: true }),
-        supabase.from('customers').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
+        supabase
+          .from('customers')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id),
       ]);
 
       setCounts({
@@ -209,13 +234,13 @@ export const TestDataCleanupPanel = () => {
         customers: custResult.count || 0,
       });
     } catch (error) {
-      console.error('Error fetching counts:', error);
+      logger.error('Error fetching counts', error);
     }
   };
 
   const handleClearData = async () => {
     if (!workspace?.id) return;
-    
+
     setLoading(true);
     try {
       const { data: conversations } = await supabase
@@ -223,7 +248,7 @@ export const TestDataCleanupPanel = () => {
         .select('id')
         .eq('workspace_id', workspace.id);
 
-      const conversationIds = conversations?.map(c => c.id) || [];
+      const conversationIds = conversations?.map((c) => c.id) || [];
 
       if (conversationIds.length > 0) {
         const { error: msgError } = await supabase
@@ -257,9 +282,8 @@ export const TestDataCleanupPanel = () => {
 
       setCounts(null);
       setDeleteCustomers(false);
-
     } catch (error) {
-      console.error('Error clearing data:', error);
+      logger.error('Error clearing data', error);
       toast({
         title: 'Failed to clear data',
         description: 'Some data may not have been deleted. Check console for details.',
@@ -272,7 +296,7 @@ export const TestDataCleanupPanel = () => {
 
   const handleResetAndResync = async () => {
     if (!workspace?.id) return;
-    
+
     setResyncing(true);
     try {
       // Step 1: Clear all conversations and messages
@@ -281,7 +305,7 @@ export const TestDataCleanupPanel = () => {
         .select('id')
         .eq('workspace_id', workspace.id);
 
-      const conversationIds = conversations?.map(c => c.id) || [];
+      const conversationIds = conversations?.map((c) => c.id) || [];
 
       if (conversationIds.length > 0) {
         await supabase.from('messages').delete().in('conversation_id', conversationIds);
@@ -303,12 +327,13 @@ export const TestDataCleanupPanel = () => {
       // email-sync edge function removed
       toast({
         title: 'Email sync migrated to n8n',
-        description: 'Email sync has been migrated to n8n workflows. Data was cleared but re-sync must be triggered from n8n.',
+        description:
+          'Email sync has been migrated to n8n workflows. Data was cleared but re-sync must be triggered from n8n.',
       });
 
       setCounts(null);
     } catch (error) {
-      console.error('Error in reset and resync:', error);
+      logger.error('Error in reset and resync', error);
       toast({
         title: 'Reset failed',
         description: 'Something went wrong. Please try again.',
@@ -330,7 +355,8 @@ export const TestDataCleanupPanel = () => {
               <div>
                 <h3 className="text-lg font-semibold">Company Identity</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Set your company name so AI can correctly classify invoices TO you vs. misdirected ones.
+                  Set your company name so AI can correctly classify invoices TO you vs. misdirected
+                  ones.
                 </p>
               </div>
 
@@ -341,8 +367,8 @@ export const TestDataCleanupPanel = () => {
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="max-w-xs"
                 />
-                <Button 
-                  onClick={saveCompanyName} 
+                <Button
+                  onClick={saveCompanyName}
                   disabled={savingContext || !companyName.trim()}
                   variant="outline"
                 >
@@ -367,8 +393,8 @@ export const TestDataCleanupPanel = () => {
               <div>
                 <h3 className="text-lg font-semibold">Reset & Re-sync Emails</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Clear all emails and re-import them with your current business context.
-                  This will re-triage everything using your company name and settings.
+                  Clear all emails and re-import them with your current business context. This will
+                  re-triage everything using your company name and settings.
                 </p>
               </div>
 
@@ -423,21 +449,25 @@ export const TestDataCleanupPanel = () => {
               <div>
                 <h3 className="text-lg font-semibold">Database Cleanup (Large Datasets)</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Clean up duplicate records in batches. Use this if you have millions of duplicate records
-                  from import issues. Run each step multiple times if needed.
+                  Clean up duplicate records in batches. Use this if you have millions of duplicate
+                  records from import issues. Run each step multiple times if needed.
                 </p>
               </div>
 
               <div className="space-y-2">
                 {CLEANUP_STEPS.map((step) => (
-                  <div 
+                  <div
                     key={step.id}
                     className="flex items-center justify-between p-3 bg-background/50 rounded-lg border"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        stepResults[step.id] ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
-                      }`}>
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                          stepResults[step.id]
+                            ? 'bg-green-500 text-white'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
                         {stepResults[step.id] ? <CheckCircle2 className="h-4 w-4" /> : step.id}
                       </div>
                       <div>
@@ -484,9 +514,7 @@ export const TestDataCleanupPanel = () => {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={runAllSteps}>
-                        Run All
-                      </AlertDialogAction>
+                      <AlertDialogAction onClick={runAllSteps}>Run All</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
@@ -503,8 +531,8 @@ export const TestDataCleanupPanel = () => {
               <div>
                 <h3 className="text-lg font-semibold text-red-700">Nuclear Reset</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  <strong>For 8M+ records that won't delete.</strong> Uses TRUNCATE to instantly 
-                  clear ALL messages, conversations, customers, and import data. This bypasses 
+                  <strong>For 8M+ records that won't delete.</strong> Uses TRUNCATE to instantly
+                  clear ALL messages, conversations, customers, and import data. This bypasses
                   timeout issues with DELETE statements.
                 </p>
               </div>
@@ -513,8 +541,8 @@ export const TestDataCleanupPanel = () => {
                 <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
                   <p className="text-sm text-green-700 font-medium">Nuclear reset complete!</p>
                   <p className="text-xs text-green-600 mt-1">
-                    Cleared {nuclearResult.result?.messages_cleared?.toLocaleString()} messages, 
-                    {nuclearResult.result?.conversations_cleared?.toLocaleString()} conversations, 
+                    Cleared {nuclearResult.result?.messages_cleared?.toLocaleString()} messages,
+                    {nuclearResult.result?.conversations_cleared?.toLocaleString()} conversations,
                     {nuclearResult.result?.customers_cleared?.toLocaleString()} customers
                   </p>
                 </div>
@@ -545,12 +573,13 @@ export const TestDataCleanupPanel = () => {
                         <li>ALL conversation pairs</li>
                       </ul>
                       <p className="text-sm text-muted-foreground">
-                        This uses TRUNCATE which is instant regardless of table size. 
-                        Use this when DELETE statements time out on large datasets.
+                        This uses TRUNCATE which is instant regardless of table size. Use this when
+                        DELETE statements time out on large datasets.
                       </p>
                       <div className="pt-3 border-t">
                         <p className="text-sm font-medium mb-2">
-                          Type <span className="font-mono bg-muted px-1 rounded">CONFIRM</span> to proceed:
+                          Type <span className="font-mono bg-muted px-1 rounded">CONFIRM</span> to
+                          proceed:
                         </p>
                         <Input
                           value={nuclearConfirmText}
@@ -597,8 +626,8 @@ export const TestDataCleanupPanel = () => {
             Clear Test Data
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Delete all test conversations, messages, and optionally customers to start fresh. 
-            This action cannot be undone.
+            Delete all test conversations, messages, and optionally customers to start fresh. This
+            action cannot be undone.
           </p>
         </div>
 
@@ -624,13 +653,13 @@ export const TestDataCleanupPanel = () => {
                 Warning: This will permanently delete all data
               </p>
               <p className="text-sm text-muted-foreground">
-                All conversations and messages will be deleted. This is useful for clearing 
-                test data before going live with real customers.
+                All conversations and messages will be deleted. This is useful for clearing test
+                data before going live with real customers.
               </p>
 
               <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="delete-customers" 
+                <Checkbox
+                  id="delete-customers"
                   checked={deleteCustomers}
                   onCheckedChange={(checked) => setDeleteCustomers(checked === true)}
                 />

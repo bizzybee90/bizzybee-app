@@ -34,7 +34,11 @@ export const DataDeletionPanel = () => {
   };
 
   const handleApprove = async (requestId: string, customerId: string) => {
-    if (!confirm('Are you sure you want to approve this deletion request? This will anonymize all customer data.')) {
+    if (
+      !confirm(
+        'Are you sure you want to approve this deletion request? This will anonymize all customer data.',
+      )
+    ) {
       return;
     }
 
@@ -65,7 +69,7 @@ export const DataDeletionPanel = () => {
       await supabase.from('data_access_logs').insert({
         customer_id: customerId,
         action: 'anonymize',
-        metadata: { request_id: requestId }
+        metadata: { request_id: requestId },
       });
 
       toast.success('Customer data anonymized successfully');
@@ -104,7 +108,7 @@ export const DataDeletionPanel = () => {
     const config = variants[status] || variants.pending;
     const Icon = config.icon;
     return (
-      <Badge variant={config.variant as any}>
+      <Badge variant={config.variant as 'default' | 'secondary' | 'destructive' | 'outline'}>
         <Icon className="h-3 w-3 mr-1" />
         {config.label}
       </Badge>
@@ -127,18 +131,19 @@ export const DataDeletionPanel = () => {
 
         <div className="space-y-3">
           {requests.map((request) => (
-            <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg">
+            <div
+              key={request.id}
+              className="flex items-center justify-between p-4 border rounded-lg"
+            >
               <div className="flex-1">
                 <p className="font-medium">{request.customer?.name || 'Unknown'}</p>
                 <p className="text-sm text-muted-foreground">{request.customer?.email}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Requested: {new Date(request.requested_at).toLocaleDateString()}
                 </p>
-                {request.reason && (
-                  <p className="text-sm mt-2 italic">Reason: {request.reason}</p>
-                )}
+                {request.reason && <p className="text-sm mt-2 italic">Reason: {request.reason}</p>}
               </div>
-              
+
               <div className="flex items-center gap-2">
                 {getStatusBadge(request.status)}
                 {request.status === 'pending' && isAdmin && (

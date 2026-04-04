@@ -38,7 +38,7 @@ export const GDPRDashboard = () => {
         .select('id')
         .eq('workspace_id', workspace.id);
 
-      const customerIdList = customerIds?.map(c => c.id) || [];
+      const customerIdList = customerIds?.map((c) => c.id) || [];
 
       const { count: pendingCount } = await supabase
         .from('data_deletion_requests')
@@ -49,10 +49,11 @@ export const GDPRDashboard = () => {
       // Get exports from last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const { count: exportCount } = await supabase
         .from('data_access_logs')
         .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', workspace.id)
         .eq('action', 'export')
         .gte('created_at', thirtyDaysAgo.toISOString());
 
@@ -84,7 +85,7 @@ export const GDPRDashboard = () => {
         .in('customer_id', customerIdList)
         .eq('consent_given', true);
 
-      const uniqueConsents = new Set(consentCustomers?.map(c => c.customer_id) || []).size;
+      const uniqueConsents = new Set(consentCustomers?.map((c) => c.customer_id) || []).size;
       const consentRate = totalCustomers ? (uniqueConsents / totalCustomers) * 100 : 0;
 
       setStats({
@@ -111,14 +112,18 @@ export const GDPRDashboard = () => {
   if (!isAdmin) {
     return (
       <Card className="p-6">
-        <p className="text-center text-muted-foreground">Admin access required to view GDPR dashboard</p>
+        <p className="text-center text-muted-foreground">
+          Admin access required to view GDPR dashboard
+        </p>
       </Card>
     );
   }
 
-  const getDataAgeColor = (): "default" | "destructive" | "secondary" => {
+  const getDataAgeColor = (): 'default' | 'destructive' | 'secondary' => {
     if (!stats.oldestConversation) return 'secondary';
-    const ageInDays = Math.floor((Date.now() - new Date(stats.oldestConversation).getTime()) / (1000 * 60 * 60 * 24));
+    const ageInDays = Math.floor(
+      (Date.now() - new Date(stats.oldestConversation).getTime()) / (1000 * 60 * 60 * 24),
+    );
     if (ageInDays > stats.retentionDays) return 'destructive';
     return 'default';
   };
@@ -144,7 +149,9 @@ export const GDPRDashboard = () => {
               <Trash2 className="h-5 w-5 text-muted-foreground" />
             </div>
             {stats.pendingDeletions > 0 && (
-              <Badge variant="destructive" className="mt-2">Action Required</Badge>
+              <Badge variant="destructive" className="mt-2">
+                Action Required
+              </Badge>
             )}
           </Card>
 
@@ -169,9 +176,13 @@ export const GDPRDashboard = () => {
               <Shield className="h-5 w-5 text-muted-foreground" />
             </div>
             {stats.consentRate === 100 ? (
-              <Badge variant="default" className="mt-2 bg-green-500">Full Compliance</Badge>
+              <Badge variant="default" className="mt-2 bg-green-500">
+                Full Compliance
+              </Badge>
             ) : (
-              <Badge variant="secondary" className="mt-2">{100 - stats.consentRate}% missing</Badge>
+              <Badge variant="secondary" className="mt-2">
+                {100 - stats.consentRate}% missing
+              </Badge>
             )}
           </Card>
 
@@ -196,9 +207,13 @@ export const GDPRDashboard = () => {
               <div>
                 <p className="text-sm text-muted-foreground">Oldest Conversation</p>
                 <p className="text-xl font-bold mt-1">
-                  {stats.oldestConversation 
-                    ? Math.floor((Date.now() - new Date(stats.oldestConversation).getTime()) / (1000 * 60 * 60 * 24))
-                    : 0} days
+                  {stats.oldestConversation
+                    ? Math.floor(
+                        (Date.now() - new Date(stats.oldestConversation).getTime()) /
+                          (1000 * 60 * 60 * 24),
+                      )
+                    : 0}{' '}
+                  days
                 </p>
               </div>
               <Database className="h-5 w-5 text-muted-foreground" />
@@ -213,34 +228,27 @@ export const GDPRDashboard = () => {
         <div className="space-y-3">
           <h4 className="font-semibold">Quick Actions</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Button 
-              onClick={() => window.location.href = '/settings?tab=deletion'}
+            <Button
+              onClick={() => (window.location.href = '/settings?tab=deletion')}
               variant="outline"
               disabled={stats.pendingDeletions === 0}
             >
               <AlertCircle className="h-4 w-4 mr-2" />
               Review Deletion Requests ({stats.pendingDeletions})
             </Button>
-            
-            <Button 
-              onClick={runManualCleanup}
-              variant="outline"
-              disabled={loading}
-            >
+
+            <Button onClick={runManualCleanup} variant="outline" disabled={loading}>
               <Trash2 className="h-4 w-4 mr-2" />
               Run Manual Cleanup
             </Button>
-            
-            <Button 
-              onClick={() => window.location.href = '/webhooks'}
-              variant="outline"
-            >
+
+            <Button onClick={() => (window.location.href = '/webhooks')} variant="outline">
               <FileText className="h-4 w-4 mr-2" />
               View GDPR Audit Logs
             </Button>
-            
-            <Button 
-              onClick={() => window.location.href = '/settings?tab=retention'}
+
+            <Button
+              onClick={() => (window.location.href = '/settings?tab=retention')}
               variant="outline"
             >
               <Shield className="h-4 w-4 mr-2" />

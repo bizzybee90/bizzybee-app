@@ -37,7 +37,9 @@ export function DraftReplyEditor({
   onSent,
 }: DraftReplyEditorProps) {
   const [draft, setDraft] = useState(aiDraft);
-  const [verificationStatus, setVerificationStatus] = useState<'pending' | 'passed' | 'failed' | 'needs_review' | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<
+    'pending' | 'passed' | 'failed' | 'needs_review' | null
+  >(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -111,7 +113,9 @@ export function DraftReplyEditor({
                 verificationStatus={verificationStatus}
                 onUseCorrectedDraft={(corrected) => setDraft(corrected)}
                 onVerificationComplete={(result) => {
-                  setVerificationStatus(result.status as any);
+                  setVerificationStatus(
+                    result.status as 'pending' | 'passed' | 'failed' | 'needs_review',
+                  );
                 }}
               />
             )}

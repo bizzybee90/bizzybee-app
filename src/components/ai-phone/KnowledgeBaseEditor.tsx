@@ -21,6 +21,9 @@ import type { AiPhoneKBEntry } from '@/lib/types';
 
 type KBCategory = AiPhoneKBEntry['category'];
 
+// Table not yet in generated Supabase types — use typed helper to avoid `as any`
+const KB_TABLE = 'ai_phone_knowledge_base' as unknown as 'call_logs';
+
 const CATEGORIES: { value: KBCategory; label: string }[] = [
   { value: 'faq', label: 'FAQ' },
   { value: 'pricing', label: 'Pricing' },
@@ -62,15 +65,12 @@ export const KnowledgeBaseEditor = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
 
   // --- Fetch entries ---
-  const {
-    data: entries = [],
-    isLoading,
-  } = useQuery<AiPhoneKBEntry[]>({
+  const { data: entries = [], isLoading } = useQuery<AiPhoneKBEntry[]>({
     queryKey: ['ai-phone-kb', configId],
     queryFn: async () => {
       if (!configId) return [];
       const { data, error } = await supabase
-        .from('ai_phone_knowledge_base' as any)
+        .from(KB_TABLE)
         .select('*')
         .eq('agent_id', configId)
         .order('created_at', { ascending: false });
@@ -92,7 +92,7 @@ export const KnowledgeBaseEditor = () => {
     mutationFn: async (entry: FormState) => {
       if (!configId) throw new Error('No config found');
       const { data, error } = await supabase
-        .from('ai_phone_knowledge_base' as any)
+        .from(KB_TABLE)
         .insert({
           agent_id: configId,
           title: entry.title,
@@ -120,7 +120,7 @@ export const KnowledgeBaseEditor = () => {
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...fields }: FormState & { id: string }) => {
       const { data, error } = await supabase
-        .from('ai_phone_knowledge_base' as any)
+        .from(KB_TABLE)
         .update({
           title: fields.title,
           content: fields.content,
@@ -147,10 +147,7 @@ export const KnowledgeBaseEditor = () => {
   // --- Delete mutation ---
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('ai_phone_knowledge_base' as any)
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from(KB_TABLE).delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -172,8 +169,7 @@ export const KnowledgeBaseEditor = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q)
+        (e) => e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q),
       );
     }
     return result;
@@ -215,13 +211,7 @@ export const KnowledgeBaseEditor = () => {
 
   // --- Render inline form ---
   const renderForm = () => (
-    <Card
-      className="border"
-      style={{
-        borderColor: 'var(--border-subtle)',
-        borderRadius: 'var(--radius-lg)',
-      }}
-    >
+    <Card className="border border-border/40 rounded-2xl">
       <CardContent className="p-5 space-y-4">
         <div className="space-y-2">
           <Label htmlFor="kb-title" className="text-[13px]">
@@ -247,12 +237,14 @@ export const KnowledgeBaseEditor = () => {
           />
           <div className="flex items-center justify-between">
             <p
-              className={cn('text-[12px]', wordCount > 500 ? 'text-red-500' : '')}
-              style={wordCount <= 500 ? { color: 'var(--text-tertiary)' } : undefined}
+              className={cn(
+                'text-[12px]',
+                wordCount > 500 ? 'text-red-500' : 'text-muted-foreground/70',
+              )}
             >
               {wordCount} word{wordCount !== 1 ? 's' : ''}
             </p>
-            <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
+            <p className="text-[12px] text-muted-foreground/70">
               Keep entries under 500 words for best results
             </p>
           </div>
@@ -278,11 +270,7 @@ export const KnowledgeBaseEditor = () => {
           </Select>
         </div>
         <div className="flex gap-2 pt-1">
-          <Button
-            onClick={handleSubmit}
-            disabled={isSaving}
-            style={{ backgroundColor: 'var(--accent-primary)' }}
-          >
+          <Button onClick={handleSubmit} disabled={isSaving} className="bg-primary">
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             {editingId ? 'Update' : 'Save'}
           </Button>
@@ -298,15 +286,9 @@ export const KnowledgeBaseEditor = () => {
     <div className="space-y-5 max-w-3xl">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-[20px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-          Knowledge Base
-        </h2>
+        <h2 className="text-[20px] font-semibold text-foreground">Knowledge Base</h2>
         {!isAdding && !editingId && (
-          <Button
-            onClick={startAdd}
-            size="sm"
-            style={{ backgroundColor: 'var(--accent-primary)' }}
-          >
+          <Button onClick={startAdd} size="sm" className="bg-primary">
             <Plus className="h-4 w-4 mr-1.5" />
             Add Entry
           </Button>
@@ -326,11 +308,8 @@ export const KnowledgeBaseEditor = () => {
               onClick={() => setActiveFilter(tab.value)}
               className={cn(
                 'px-3 py-1.5 rounded-full text-[13px] font-medium transition-colors',
-                isActive
-                  ? 'text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                isActive ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
               )}
-              style={isActive ? { backgroundColor: 'var(--accent-primary)' } : undefined}
             >
               {tab.label}
             </button>
@@ -340,10 +319,7 @@ export const KnowledgeBaseEditor = () => {
 
       {/* Search */}
       <div className="relative">
-        <Search
-          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
-          style={{ color: 'var(--text-tertiary)' }}
-        />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -355,7 +331,7 @@ export const KnowledgeBaseEditor = () => {
       {/* Loading state */}
       {isLoading && (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--accent-primary)' }} />
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       )}
 
@@ -369,44 +345,28 @@ export const KnowledgeBaseEditor = () => {
             const charCount = entry.content.length;
 
             return (
-              <Card
-                key={entry.id}
-                className="group border"
-                style={{
-                  borderColor: 'var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
-                }}
-              >
+              <Card key={entry.id} className="group border border-border/40 rounded-2xl">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <p
-                          className="text-[15px] font-medium truncate"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
+                        <p className="text-[15px] font-medium truncate text-foreground">
                           {entry.title}
                         </p>
                         <span
                           className={cn(
                             'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0',
                             colours.bg,
-                            colours.text
+                            colours.text,
                           )}
                         >
                           {CATEGORIES.find((c) => c.value === entry.category)?.label}
                         </span>
                       </div>
-                      <p
-                        className="text-[13px] line-clamp-2"
-                        style={{ color: 'var(--text-secondary)' }}
-                      >
+                      <p className="text-[13px] line-clamp-2 text-muted-foreground">
                         {entry.content}
                       </p>
-                      <p
-                        className="text-[11px] mt-2"
-                        style={{ color: 'var(--text-tertiary)' }}
-                      >
+                      <p className="text-[11px] mt-2 text-muted-foreground/70">
                         {charCount} character{charCount !== 1 ? 's' : ''}
                       </p>
                     </div>
@@ -417,7 +377,7 @@ export const KnowledgeBaseEditor = () => {
                         className="h-8 w-8"
                         onClick={() => startEdit(entry)}
                       >
-                        <Pencil className="h-3.5 w-3.5" style={{ color: 'var(--text-secondary)' }} />
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -439,30 +399,13 @@ export const KnowledgeBaseEditor = () => {
 
       {/* Empty state */}
       {!isLoading && entries.length === 0 && !isAdding && (
-        <div
-          className="bg-card flex flex-col items-center justify-center py-12 text-center"
-          style={{
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--border-subtle)',
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
-          <BookOpen className="h-8 w-8 mb-3" style={{ color: 'var(--text-tertiary)' }} />
-          <p className="text-[15px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-            No entries yet
-          </p>
-          <p
-            className="text-[13px] mt-1 max-w-sm"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
+        <div className="bg-card flex flex-col items-center justify-center py-12 text-center rounded-2xl border border-border/40 shadow-sm">
+          <BookOpen className="h-8 w-8 mb-3 text-muted-foreground/70" />
+          <p className="text-[15px] font-medium text-muted-foreground">No entries yet</p>
+          <p className="text-[13px] mt-1 max-w-sm text-muted-foreground/70">
             Add your first FAQ to help your AI phone assistant answer questions.
           </p>
-          <Button
-            onClick={startAdd}
-            className="mt-5"
-            size="sm"
-            style={{ backgroundColor: 'var(--accent-primary)' }}
-          >
+          <Button onClick={startAdd} className="mt-5 bg-primary" size="sm">
             <Plus className="h-4 w-4 mr-1.5" />
             Add Entry
           </Button>
@@ -471,7 +414,7 @@ export const KnowledgeBaseEditor = () => {
 
       {/* No results for filter/search */}
       {!isLoading && entries.length > 0 && filteredEntries.length === 0 && (
-        <p className="text-center py-8 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-center py-8 text-[14px] text-muted-foreground">
           No entries match your filters.
         </p>
       )}

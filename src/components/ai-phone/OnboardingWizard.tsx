@@ -39,20 +39,22 @@ interface FormData {
 }
 
 const DEFAULT_HOURS: AiPhoneOpeningHours = {
-  Monday:    { open: '09:00', close: '17:00', closed: false },
-  Tuesday:   { open: '09:00', close: '17:00', closed: false },
+  Monday: { open: '09:00', close: '17:00', closed: false },
+  Tuesday: { open: '09:00', close: '17:00', closed: false },
   Wednesday: { open: '09:00', close: '17:00', closed: false },
-  Thursday:  { open: '09:00', close: '17:00', closed: false },
-  Friday:    { open: '09:00', close: '17:00', closed: false },
-  Saturday:  { open: '09:00', close: '17:00', closed: true },
-  Sunday:    { open: '09:00', close: '17:00', closed: true },
+  Thursday: { open: '09:00', close: '17:00', closed: false },
+  Friday: { open: '09:00', close: '17:00', closed: false },
+  Saturday: { open: '09:00', close: '17:00', closed: true },
+  Sunday: { open: '09:00', close: '17:00', closed: true },
 };
 
 const INITIAL_FORM: FormData = {
   business_name: '',
   business_description: '',
   transfer_number: '',
-  services: [{ name: '', description: '', price_from: null, price_to: null, duration_minutes: null }],
+  services: [
+    { name: '', description: '', price_from: null, price_to: null, duration_minutes: null },
+  ],
   opening_hours: DEFAULT_HOURS,
   voice_id: '21m00Tcm4TlvDq8ikWAM',
   voice_name: 'Rachel',
@@ -131,7 +133,7 @@ export const OnboardingWizard = () => {
           value={form.transfer_number}
           onChange={(e) => update('transfer_number', e.target.value)}
         />
-        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-xs text-muted-foreground">
           If the caller asks to speak to a human, the AI will transfer to this number.
         </p>
       </div>
@@ -158,8 +160,9 @@ export const OnboardingWizard = () => {
 
   const renderKnowledgeBase = () => (
     <div className="space-y-4">
-      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-        Add answers to common questions your callers ask. The AI will use these to respond accurately.
+      <p className="text-sm text-muted-foreground">
+        Add answers to common questions your callers ask. The AI will use these to respond
+        accurately.
       </p>
       {form.kb_entries.map((entry, i) => (
         <Card key={i} className="p-4 space-y-3">
@@ -204,10 +207,8 @@ export const OnboardingWizard = () => {
       return (
         <div className="space-y-6 text-center">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-              Your AI Phone is Live
-            </h3>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <h3 className="text-lg font-semibold text-foreground">Your AI Phone is Live</h3>
+            <p className="text-sm text-muted-foreground">
               Calls to this number will be answered by your AI receptionist.
             </p>
           </div>
@@ -224,41 +225,40 @@ export const OnboardingWizard = () => {
     return (
       <div className="space-y-5">
         <Card className="p-4 space-y-3">
-          <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            Business
-          </h4>
+          <h4 className="text-sm font-semibold text-foreground">Business</h4>
           <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt style={{ color: 'var(--text-secondary)' }}>Name</dt>
-            <dd style={{ color: 'var(--text-primary)' }}>{form.business_name}</dd>
+            <dt className="text-muted-foreground">Name</dt>
+            <dd className="text-foreground">{form.business_name}</dd>
             {form.business_description && (
               <>
-                <dt style={{ color: 'var(--text-secondary)' }}>Description</dt>
-                <dd style={{ color: 'var(--text-primary)' }}>{form.business_description}</dd>
+                <dt className="text-muted-foreground">Description</dt>
+                <dd className="text-foreground">{form.business_description}</dd>
               </>
             )}
             {form.transfer_number && (
               <>
-                <dt style={{ color: 'var(--text-secondary)' }}>Transfer No.</dt>
-                <dd style={{ color: 'var(--text-primary)' }}>{form.transfer_number}</dd>
+                <dt className="text-muted-foreground">Transfer No.</dt>
+                <dd className="text-foreground">{form.transfer_number}</dd>
               </>
             )}
           </dl>
         </Card>
 
         <Card className="p-4 space-y-3">
-          <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h4 className="text-sm font-semibold text-foreground">
             Services ({filledServices.length})
           </h4>
           {filledServices.length === 0 ? (
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>No services added</p>
+            <p className="text-xs text-muted-foreground">No services added</p>
           ) : (
-            <ul className="space-y-1 text-sm" style={{ color: 'var(--text-primary)' }}>
+            <ul className="space-y-1 text-sm text-foreground">
               {filledServices.map((s, i) => (
                 <li key={i}>
                   {s.name}
                   {s.price_from != null && (
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      {' '}&mdash; from &pound;{s.price_from}
+                    <span className="text-muted-foreground">
+                      {' '}
+                      &mdash; from &pound;{s.price_from}
                       {s.price_to != null && <> to &pound;{s.price_to}</>}
                     </span>
                   )}
@@ -269,18 +269,18 @@ export const OnboardingWizard = () => {
         </Card>
 
         <Card className="p-4 space-y-3">
-          <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Voice</h4>
-          <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{form.voice_name}</p>
+          <h4 className="text-sm font-semibold text-foreground">Voice</h4>
+          <p className="text-sm text-foreground">{form.voice_name}</p>
         </Card>
 
         <Card className="p-4 space-y-3">
-          <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h4 className="text-sm font-semibold text-foreground">
             Knowledge Base ({filledKB.length} entries)
           </h4>
           {filledKB.length === 0 ? (
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>No entries added</p>
+            <p className="text-xs text-muted-foreground">No entries added</p>
           ) : (
-            <ul className="space-y-1 text-sm" style={{ color: 'var(--text-primary)' }}>
+            <ul className="space-y-1 text-sm text-foreground">
               {filledKB.map((e, i) => (
                 <li key={i}>{e.title}</li>
               ))}
@@ -325,9 +325,8 @@ export const OnboardingWizard = () => {
               <span
                 className={cn(
                   'hidden text-[10px] font-medium sm:block',
-                  isCurrent ? 'text-amber-600' : '',
+                  isCurrent ? 'text-amber-600' : 'text-muted-foreground',
                 )}
-                style={!isCurrent ? { color: 'var(--text-secondary)' } : undefined}
               >
                 {label}
               </span>
@@ -338,10 +337,8 @@ export const OnboardingWizard = () => {
 
       {/* Step heading */}
       <div>
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-          {STEPS[step]}
-        </h2>
-        <div className="mt-1 h-px w-full" style={{ background: 'var(--separator)' }} />
+        <h2 className="text-lg font-semibold text-foreground">{STEPS[step]}</h2>
+        <div className="mt-1 h-px w-full bg-border" />
       </div>
 
       {/* Step content */}
@@ -350,11 +347,7 @@ export const OnboardingWizard = () => {
       {/* Navigation */}
       {!provisionedNumber && (
         <div className="flex items-center justify-between pt-2">
-          <Button
-            variant="outline"
-            onClick={() => setStep((s) => s - 1)}
-            disabled={step === 0}
-          >
+          <Button variant="outline" onClick={() => setStep((s) => s - 1)} disabled={step === 0}>
             Back
           </Button>
 

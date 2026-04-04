@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,12 +16,12 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const n8nWebhookBaseUrl = Deno.env.get('N8N_WEBHOOK_URL');
-    
+
     if (!n8nWebhookBaseUrl) {
-      return new Response(
-        JSON.stringify({ error: 'N8N_WEBHOOK_URL not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'N8N_WEBHOOK_URL not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -31,8 +32,16 @@ Deno.serve(async (req) => {
     if (!workspace_id || !workflow_type) {
       return new Response(
         JSON.stringify({ error: 'workspace_id and workflow_type are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // Validate auth — supports both user JWT and service-to-service calls
+    try {
+      await validateAuth(req, workspace_id);
+    } catch (err) {
+      if (err instanceof AuthError) return authErrorResponse(err);
+      throw err;
     }
 
     console.log(`[trigger-n8n] workspace=${workspace_id} type=${workflow_type}`);
@@ -67,9 +76,11 @@ Deno.serve(async (req) => {
       let excludeDomains: string[] = [];
       if (businessContext?.website_url) {
         try {
-          const url = new URL(businessContext.website_url.startsWith('http') 
-            ? businessContext.website_url 
-            : `https://${businessContext.website_url}`);
+          const url = new URL(
+            businessContext.website_url.startsWith('http')
+              ? businessContext.website_url
+              : `https://${businessContext.website_url}`,
+          );
           excludeDomains = [url.hostname.replace(/^www\./, '')];
         } catch (e) {
           console.warn('[trigger-n8n] Could not parse website URL:', e);
@@ -92,10 +103,10 @@ Deno.serve(async (req) => {
 
       if (jobError || !researchJob) {
         console.error('[trigger-n8n] Failed to create research job:', jobError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create research job' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ error: 'Failed to create research job' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       // Build payload for n8n competitor discovery
@@ -113,7 +124,10 @@ Deno.serve(async (req) => {
         callback_url: callbackUrl,
       };
 
-      console.log('[trigger-n8n] Sending to competitor-discovery:', JSON.stringify(competitorPayload));
+      console.log(
+        '[trigger-n8n] Sending to competitor-discovery:',
+        JSON.stringify(competitorPayload),
+      );
 
       // Call n8n webhook
       const response = await fetch(`${n8nWebhookBaseUrl}/competitor-discovery`, {
@@ -127,24 +141,25 @@ Deno.serve(async (req) => {
         console.error('[trigger-n8n] n8n error:', errorText);
         return new Response(
           JSON.stringify({ error: 'Failed to trigger n8n workflow', details: errorText }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
       // Initialize progress record
-      await supabase.from('n8n_workflow_progress').upsert({
-        workspace_id,
-        workflow_type: 'competitor_discovery',
-        status: 'pending',
-        details: { message: 'Workflow triggered, waiting for n8n...' },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'workspace_id,workflow_type' });
-
-      return new Response(
-        JSON.stringify({ success: true, workflow: 'competitor_discovery' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      await supabase.from('n8n_workflow_progress').upsert(
+        {
+          workspace_id,
+          workflow_type: 'competitor_discovery',
+          status: 'pending',
+          details: { message: 'Workflow triggered, waiting for n8n...' },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'workspace_id,workflow_type' },
       );
 
+      return new Response(JSON.stringify({ success: true, workflow: 'competitor_discovery' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     } else if (workflow_type === 'email_classification') {
       // n8n email classification workflow reads emails directly from DB
       // No need for Aurinko credentials — just workspace_id and callback
@@ -166,32 +181,33 @@ Deno.serve(async (req) => {
         console.error('[trigger-n8n] n8n email error:', errorText);
         return new Response(
           JSON.stringify({ error: 'Failed to trigger email import workflow', details: errorText }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
       // Initialize progress record
-      await supabase.from('n8n_workflow_progress').upsert({
-        workspace_id,
-        workflow_type: 'email_import',
-        status: 'pending',
-        details: { message: 'Email classification triggered, waiting for n8n...' },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'workspace_id,workflow_type' });
-
-      return new Response(
-        JSON.stringify({ success: true, workflow: 'email_classification' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      await supabase.from('n8n_workflow_progress').upsert(
+        {
+          workspace_id,
+          workflow_type: 'email_import',
+          status: 'pending',
+          details: { message: 'Email classification triggered, waiting for n8n...' },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'workspace_id,workflow_type' },
       );
 
+      return new Response(JSON.stringify({ success: true, workflow: 'email_classification' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     } else if (workflow_type === 'own_website_scrape') {
       const websiteUrl = body.websiteUrl || body.website_url || businessContext?.website_url;
 
       if (!websiteUrl) {
-        return new Response(
-          JSON.stringify({ error: 'No website URL provided' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ error: 'No website URL provided' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       const websitePayload = {
@@ -216,10 +232,10 @@ Deno.serve(async (req) => {
 
       if (jobError) {
         console.error('[trigger-n8n] Failed to create scraping job:', jobError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create scraping job' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ error: 'Failed to create scraping job' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       console.log('[trigger-n8n] Sending to own-website-scrape:', JSON.stringify(websitePayload));
@@ -235,23 +251,25 @@ Deno.serve(async (req) => {
         console.error('[trigger-n8n] n8n website scrape error:', errorText);
         return new Response(
           JSON.stringify({ error: 'Failed to trigger website scrape', details: errorText }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
-      await supabase.from('n8n_workflow_progress').upsert({
-        workspace_id,
-        workflow_type: 'own_website_scrape',
-        status: 'pending',
-        details: { message: 'Website scrape triggered, waiting for n8n...' },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'workspace_id,workflow_type' });
+      await supabase.from('n8n_workflow_progress').upsert(
+        {
+          workspace_id,
+          workflow_type: 'own_website_scrape',
+          status: 'pending',
+          details: { message: 'Website scrape triggered, waiting for n8n...' },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'workspace_id,workflow_type' },
+      );
 
       return new Response(
         JSON.stringify({ success: true, workflow: 'own_website_scrape', jobId: job.id }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
-
     } else if (workflow_type === 'faq_generation') {
       // FAQ generation scrapes competitor websites and extracts FAQs
       // Called after competitor_discovery finds competitors
@@ -269,13 +287,13 @@ Deno.serve(async (req) => {
       if (!competitors || competitors.length === 0) {
         return new Response(
           JSON.stringify({ error: 'No competitors found. Run competitor discovery first.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
       const faqPayload = {
         workspace_id,
-        competitors: competitors.map(c => ({
+        competitors: competitors.map((c) => ({
           id: c.id,
           domain: c.domain,
           business_name: c.business_name,
@@ -297,36 +315,41 @@ Deno.serve(async (req) => {
         console.error('[trigger-n8n] n8n faq generation error:', errorText);
         return new Response(
           JSON.stringify({ error: 'Failed to trigger FAQ generation', details: errorText }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
-      await supabase.from('n8n_workflow_progress').upsert({
-        workspace_id,
-        workflow_type: 'faq_generation',
-        status: 'pending',
-        details: { message: `Scraping ${competitors.length} competitor websites for FAQs...` },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'workspace_id,workflow_type' });
-
-      return new Response(
-        JSON.stringify({ success: true, workflow: 'faq_generation', competitors_count: competitors.length }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      await supabase.from('n8n_workflow_progress').upsert(
+        {
+          workspace_id,
+          workflow_type: 'faq_generation',
+          status: 'pending',
+          details: { message: `Scraping ${competitors.length} competitor websites for FAQs...` },
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'workspace_id,workflow_type' },
       );
 
+      return new Response(
+        JSON.stringify({
+          success: true,
+          workflow: 'faq_generation',
+          competitors_count: competitors.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     } else {
-      return new Response(
-        JSON.stringify({ error: `Unknown workflow_type: ${workflow_type}` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: `Unknown workflow_type: ${workflow_type}` }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-
   } catch (error) {
     console.error('[trigger-n8n] Error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

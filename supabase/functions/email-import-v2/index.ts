@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { chainNextBatch } from '../_shared/batch-processor.ts';
 
 // =============================================================================
@@ -44,7 +43,7 @@ interface ImportJob {
 async function refreshQueueCounts(
   supabase: SupabaseClient,
   workspace_id: string,
-  job: ImportJob
+  job: ImportJob,
 ): Promise<void> {
   const [{ count: sentCount }, { count: inboxCount }] = await Promise.all([
     supabase
@@ -72,7 +71,7 @@ function folderToJobStatus(folder: 'SENT' | 'INBOX'): 'scanning_sent' | 'scannin
 // =============================================================================
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getBackoffDelay(attempt: number): number {
@@ -92,18 +91,16 @@ function shouldContinueProcessing(startTime: number): boolean {
 async function acquireLock(
   supabase: SupabaseClient,
   workspace_id: string,
-  function_name: string
+  function_name: string,
 ): Promise<boolean> {
   try {
     // Try to insert a lock - will fail if one exists (unique constraint)
-    const { error } = await supabase
-      .from('pipeline_locks')
-      .insert({
-        workspace_id,
-        function_name,
-        locked_at: new Date().toISOString(),
-        locked_by: `${function_name}-${Date.now()}`,
-      });
+    const { error } = await supabase.from('pipeline_locks').insert({
+      workspace_id,
+      function_name,
+      locked_at: new Date().toISOString(),
+      locked_by: `${function_name}-${Date.now()}`,
+    });
 
     if (error) {
       // Check if it's a duplicate key error (lock already exists)
@@ -126,7 +123,7 @@ async function acquireLock(
 async function releaseLock(
   supabase: SupabaseClient,
   workspace_id: string,
-  function_name: string
+  function_name: string,
 ): Promise<void> {
   try {
     await supabase
@@ -134,7 +131,7 @@ async function releaseLock(
       .delete()
       .eq('workspace_id', workspace_id)
       .eq('function_name', function_name);
-    
+
     console.log(`[${FUNCTION_NAME}] Released lock for workspace ${workspace_id}`);
   } catch (e) {
     console.error(`[${FUNCTION_NAME}] Lock release error:`, e);
@@ -144,7 +141,7 @@ async function releaseLock(
 async function refreshLock(
   supabase: SupabaseClient,
   workspace_id: string,
-  function_name: string
+  function_name: string,
 ): Promise<void> {
   try {
     await supabase
@@ -158,7 +155,7 @@ async function refreshLock(
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -170,17 +167,17 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-		const body = await req.json();
-		const {
-			workspace_id,
-			job_id,
-			import_mode = 'full',
-			speed_phase = false,
-			_relay_depth = 0,
-			_last_progress = 0,
-			_stalled_count = 0,
-			_sleep_ms = 0,
-		} = body;
+    const body = await req.json();
+    const {
+      workspace_id,
+      job_id,
+      import_mode = 'full',
+      speed_phase = false,
+      _relay_depth = 0,
+      _last_progress = 0,
+      _stalled_count = 0,
+      _sleep_ms = 0,
+    } = body;
 
     if (!workspace_id) {
       throw new Error('workspace_id is required');
@@ -191,7 +188,9 @@ serve(async (req) => {
     // -------------------------------------------------------------------------
     const lockAcquired = await acquireLock(supabase, workspace_id, FUNCTION_NAME);
     if (!lockAcquired) {
-      console.log(`[${FUNCTION_NAME}] Another worker is already processing this workspace, exiting`);
+      console.log(
+        `[${FUNCTION_NAME}] Another worker is already processing this workspace, exiting`,
+      );
       return createResponse({
         success: true,
         status: 'skipped',
@@ -199,17 +198,21 @@ serve(async (req) => {
       });
     }
 
-		// Optional backoff sleep used for self-invoked retries (e.g., rate limit handling)
-		// NOTE: Avoid relying on setTimeout in edge runtimes; do backoff at the start of the next invocation instead.
-		if (typeof _sleep_ms === 'number' && _sleep_ms > 0) {
-			const ms = Math.min(Math.max(_sleep_ms, 0), 30000);
-			console.log(`[${FUNCTION_NAME}] Backoff sleep ${ms}ms before continuing`);
-			await sleep(ms);
-		}
+    // Optional backoff sleep used for self-invoked retries (e.g., rate limit handling)
+    // NOTE: Avoid relying on setTimeout in edge runtimes; do backoff at the start of the next invocation instead.
+    if (typeof _sleep_ms === 'number' && _sleep_ms > 0) {
+      const ms = Math.min(Math.max(_sleep_ms, 0), 30000);
+      console.log(`[${FUNCTION_NAME}] Backoff sleep ${ms}ms before continuing`);
+      await sleep(ms);
+    }
 
     // Note: No more hard depth limit - we use stall detection instead
 
-    console.log(`[${FUNCTION_NAME}] Starting: relay_depth=${_relay_depth}`, { workspace_id, job_id, import_mode });
+    console.log(`[${FUNCTION_NAME}] Starting: relay_depth=${_relay_depth}`, {
+      workspace_id,
+      job_id,
+      import_mode,
+    });
 
     // -------------------------------------------------------------------------
     // Get Email Provider Config
@@ -225,8 +228,10 @@ serve(async (req) => {
     }
 
     // Get decrypted access token securely
-    const { data: accessToken, error: tokenError } = await supabase
-      .rpc('get_decrypted_access_token', { p_config_id: emailConfig.id });
+    const { data: accessToken, error: tokenError } = await supabase.rpc(
+      'get_decrypted_access_token',
+      { p_config_id: emailConfig.id },
+    );
 
     if (tokenError || !accessToken) {
       throw new Error('Email access token is missing. Please reconnect your email account.');
@@ -265,45 +270,54 @@ serve(async (req) => {
         job = existingJob as ImportJob;
         console.log(`[${FUNCTION_NAME}] Resuming existing job ${job.id}, status: ${job.status}`);
       } else {
-      // Create new job - use minimal insert, let DB defaults handle the rest
-      // Speed phase: cap at 2,500 regardless of import_mode for fast onboarding
-      const totalTarget = speed_phase ? 2500 :
-                          import_mode === 'last_100' ? 100 : 
-                          import_mode === 'last_1000' ? 1000 : 30000;
+        // Create new job - use minimal insert, let DB defaults handle the rest
+        // Speed phase: cap at 2,500 regardless of import_mode for fast onboarding
+        const totalTarget = speed_phase
+          ? 2500
+          : import_mode === 'last_100'
+            ? 100
+            : import_mode === 'last_1000'
+              ? 1000
+              : 30000;
 
-      console.log(`[${FUNCTION_NAME}] Creating new job for config_id: ${emailConfig.id}, mode: ${import_mode}, target: ${totalTarget}`);
+        console.log(
+          `[${FUNCTION_NAME}] Creating new job for config_id: ${emailConfig.id}, mode: ${import_mode}, target: ${totalTarget}`,
+        );
 
-      const { data, error } = await supabase
-        .from('email_import_jobs')
-        .insert({
-          workspace_id,
-          config_id: emailConfig.id,
-          import_mode,
-          total_target: totalTarget,
-          started_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+        const { data, error } = await supabase
+          .from('email_import_jobs')
+          .insert({
+            workspace_id,
+            config_id: emailConfig.id,
+            import_mode,
+            total_target: totalTarget,
+            started_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
-      if (error) {
-        console.error(`[${FUNCTION_NAME}] Job insert failed:`, JSON.stringify(error));
-        throw new Error(`Failed to create import job: ${error.message}`);
-      }
-      
-      job = data as ImportJob;
-      // Initialize defaults for tracking fields if not returned
-      job.inbox_imported = job.inbox_imported ?? 0;
-      job.sent_imported = job.sent_imported ?? 0;
-      job.current_folder = job.current_folder ?? 'SENT';
-      
-      console.log(`[${FUNCTION_NAME}] Created job ${job.id}, status: ${job.status}`);
+        if (error) {
+          console.error(`[${FUNCTION_NAME}] Job insert failed:`, JSON.stringify(error));
+          throw new Error(`Failed to create import job: ${error.message}`);
+        }
+
+        job = data as ImportJob;
+        // Initialize defaults for tracking fields if not returned
+        job.inbox_imported = job.inbox_imported ?? 0;
+        job.sent_imported = job.sent_imported ?? 0;
+        job.current_folder = job.current_folder ?? 'SENT';
+
+        console.log(`[${FUNCTION_NAME}] Created job ${job.id}, status: ${job.status}`);
       }
     }
 
     // Update job to active scanning status
     await supabase
       .from('email_import_jobs')
-      .update({ status: folderToJobStatus(job.current_folder), last_batch_at: new Date().toISOString() })
+      .update({
+        status: folderToJobStatus(job.current_folder),
+        last_batch_at: new Date().toISOString(),
+      })
       .eq('id', job.id);
 
     // -------------------------------------------------------------------------
@@ -351,7 +365,7 @@ serve(async (req) => {
 
       // Fetch batch from Aurinko
       const batchLimit = Math.min(BATCH_SIZE, targetPerFolder - imported);
-      
+
       let response: Response | undefined;
       let retryCount = 0;
 
@@ -366,7 +380,7 @@ serve(async (req) => {
         response = await fetch(url.toString(), {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
         });
@@ -378,31 +392,40 @@ serve(async (req) => {
         if (TRANSIENT_HTTP_STATUSES.has(response.status)) {
           const retryAfter = response.headers.get('Retry-After');
           const delay = retryAfter ? parseInt(retryAfter) * 1000 : getBackoffDelay(retryCount);
-          console.log(`[${FUNCTION_NAME}] Transient Aurinko error ${response.status}, waiting ${delay}ms`);
-          
+          console.log(
+            `[${FUNCTION_NAME}] Transient Aurinko error ${response.status}, waiting ${delay}ms`,
+          );
+
           // If delay would exceed timeout, save checkpoint and self-invoke
           if (!shouldContinueProcessing(startTime)) {
             await saveCheckpoint(supabase, job, folderToJobStatus(job.current_folder));
-            await updateProgress(supabase, workspace_id, 'importing', job.sent_imported + job.inbox_imported);
-            
-						console.log(`[${FUNCTION_NAME}] Timeout approaching, self-invoking with backoff ${delay}ms`);
-						
-						// Self-invoke immediately and let the next invocation perform the backoff sleep.
-						chainNextBatch(
-							supabaseUrl,
-							FUNCTION_NAME,
-							{
-								workspace_id,
-								job_id: job.id,
-								import_mode,
-								_relay_depth: _relay_depth + 1,
-								_last_progress: job.sent_imported + job.inbox_imported,
-								_stalled_count: _stalled_count,
-								_sleep_ms: delay,
-							},
-							supabaseServiceKey
-						);
-            
+            await updateProgress(
+              supabase,
+              workspace_id,
+              'importing',
+              job.sent_imported + job.inbox_imported,
+            );
+
+            console.log(
+              `[${FUNCTION_NAME}] Timeout approaching, self-invoking with backoff ${delay}ms`,
+            );
+
+            // Self-invoke immediately and let the next invocation perform the backoff sleep.
+            chainNextBatch(
+              supabaseUrl,
+              FUNCTION_NAME,
+              {
+                workspace_id,
+                job_id: job.id,
+                import_mode,
+                _relay_depth: _relay_depth + 1,
+                _last_progress: job.sent_imported + job.inbox_imported,
+                _stalled_count: _stalled_count,
+                _sleep_ms: delay,
+              },
+              supabaseServiceKey,
+            );
+
             return createResponse({
               success: true,
               status: 'continuing',
@@ -411,7 +434,7 @@ serve(async (req) => {
               progress: getProgress(job),
             });
           }
-          
+
           await sleep(delay);
           retryCount++;
           continue;
@@ -463,7 +486,7 @@ serve(async (req) => {
         is_read: Array.isArray(msg.sysLabels) ? !msg.sysLabels.includes('unread') : false,
       }));
 
-			const { error: insertError, data: insertedData } = await supabase
+      const { error: insertError, data: insertedData } = await supabase
         .from('email_import_queue')
         .upsert(emailsToSave, {
           onConflict: 'workspace_id,external_id',
@@ -475,9 +498,9 @@ serve(async (req) => {
         console.error(`[${FUNCTION_NAME}] Insert error:`, insertError.message);
       }
 
-			// Track how many were newly inserted this run (best-effort for telemetry)
-			const savedCount = insertedData?.length ?? 0;
-			totalImportedThisRun += savedCount;
+      // Track how many were newly inserted this run (best-effort for telemetry)
+      const savedCount = insertedData?.length ?? 0;
+      totalImportedThisRun += savedCount;
       batchesProcessed++;
 
       // Always advance page token even if this page was all duplicates.
@@ -494,9 +517,16 @@ serve(async (req) => {
       await saveCheckpoint(supabase, job, folderToJobStatus(job.current_folder));
 
       // Update progress for frontend UI
-      await updateProgress(supabase, workspace_id, 'importing', job.sent_imported + job.inbox_imported);
+      await updateProgress(
+        supabase,
+        workspace_id,
+        'importing',
+        job.sent_imported + job.inbox_imported,
+      );
 
-      console.log(`[${FUNCTION_NAME}] Batch ${batchesProcessed}: ${folder} +${savedCount}, total: ${job.sent_imported + job.inbox_imported}`);
+      console.log(
+        `[${FUNCTION_NAME}] Batch ${batchesProcessed}: ${folder} +${savedCount}, total: ${job.sent_imported + job.inbox_imported}`,
+      );
 
       // No more pages
       if (!data.nextPageToken) {
@@ -515,11 +545,15 @@ serve(async (req) => {
     // Only consider "no more pages" as complete if we actually fetched at least
     // one batch from the INBOX (inbox_imported > 0). Otherwise we just switched
     // folders and haven't started scanning INBOX yet.
-    const noMorePages = !job.inbox_page_token && !job.sent_page_token && 
-                        job.current_folder === 'INBOX' && job.inbox_imported > 0;
-    const isComplete = totalImported >= job.total_target || 
-                      (job.inbox_imported >= targetPerFolder && job.sent_imported >= targetPerFolder) ||
-                      noMorePages;
+    const noMorePages =
+      !job.inbox_page_token &&
+      !job.sent_page_token &&
+      job.current_folder === 'INBOX' &&
+      job.inbox_imported > 0;
+    const isComplete =
+      totalImported >= job.total_target ||
+      (job.inbox_imported >= targetPerFolder && job.sent_imported >= targetPerFolder) ||
+      noMorePages;
 
     if (isComplete) {
       // =========================================================================
@@ -538,25 +572,33 @@ serve(async (req) => {
 
       // If this was a speed phase, mark backfill as pending for later
       if (speed_phase) {
-        await supabase
-          .from('email_import_progress')
-          .upsert({
+        await supabase.from('email_import_progress').upsert(
+          {
             workspace_id,
             backfill_status: 'pending',
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'workspace_id' });
+          },
+          { onConflict: 'workspace_id' },
+        );
         console.log(`[${FUNCTION_NAME}] Speed phase complete, backfill_status set to 'pending'`);
       }
 
       // Release lock before chaining
       await releaseLock(supabase, workspace_id, FUNCTION_NAME);
 
-      console.log(`[${FUNCTION_NAME}] Import complete (${totalImported} emails), chaining to email-classify-bulk`);
+      console.log(
+        `[${FUNCTION_NAME}] Import complete (${totalImported} emails), chaining to email-classify-bulk`,
+      );
 
       // Chain to simplified bulk classification (ONE Gemini call for all emails)
-      chainNextBatch(supabaseUrl, 'email-classify-bulk', {
-        workspace_id,
-      }, supabaseServiceKey);
+      chainNextBatch(
+        supabaseUrl,
+        'email-classify-bulk',
+        {
+          workspace_id,
+        },
+        supabaseServiceKey,
+      );
 
       return createResponse({
         success: true,
@@ -580,34 +622,48 @@ serve(async (req) => {
     const newStalledCount = totalImported <= _last_progress ? _stalled_count + 1 : 0;
 
     if (newStalledCount >= MAX_STALLED_RELAYS) {
-      console.error(`[${FUNCTION_NAME}] Stalled for ${MAX_STALLED_RELAYS} consecutive relays, stopping`);
+      console.error(
+        `[${FUNCTION_NAME}] Stalled for ${MAX_STALLED_RELAYS} consecutive relays, stopping`,
+      );
       await releaseLock(supabase, workspace_id, FUNCTION_NAME);
-      await supabase
-        .from('email_import_progress')
-        .upsert({
+      await supabase.from('email_import_progress').upsert(
+        {
           workspace_id,
           current_phase: 'error',
           last_error: `Import stalled - no progress for ${MAX_STALLED_RELAYS} consecutive attempts`,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'workspace_id' });
-      return createResponse({ success: false, error: 'Import stalled', progress: getProgress(job) });
+        },
+        { onConflict: 'workspace_id' },
+      );
+      return createResponse({
+        success: false,
+        error: 'Import stalled',
+        progress: getProgress(job),
+      });
     }
 
     // Release lock before self-invoking (next invocation will acquire its own)
     await releaseLock(supabase, workspace_id, FUNCTION_NAME);
 
-    console.log(`[${FUNCTION_NAME}] Self-invoking: depth=${_relay_depth + 1}, progress=${totalImported}/${job.total_target}, stalled=${newStalledCount}`);
+    console.log(
+      `[${FUNCTION_NAME}] Self-invoking: depth=${_relay_depth + 1}, progress=${totalImported}/${job.total_target}, stalled=${newStalledCount}`,
+    );
 
     // Fire and forget - self invoke
-    chainNextBatch(supabaseUrl, FUNCTION_NAME, {
-      workspace_id,
-      job_id: job.id,
-      import_mode,
-      speed_phase,
-      _relay_depth: _relay_depth + 1,
-      _last_progress: totalImported,
-      _stalled_count: newStalledCount,
-    }, supabaseServiceKey);
+    chainNextBatch(
+      supabaseUrl,
+      FUNCTION_NAME,
+      {
+        workspace_id,
+        job_id: job.id,
+        import_mode,
+        speed_phase,
+        _relay_depth: _relay_depth + 1,
+        _last_progress: totalImported,
+        _stalled_count: newStalledCount,
+      },
+      supabaseServiceKey,
+    );
 
     return createResponse({
       success: true,
@@ -618,31 +674,37 @@ serve(async (req) => {
       progress: getProgress(job),
       relay_depth: _relay_depth,
     });
-
   } catch (error: any) {
     console.error(`[${FUNCTION_NAME}] Error:`, error.message);
-    
+
     // Update progress with error and release lock
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-      const body = await req.clone().json().catch(() => ({}));
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      const body = await req
+        .clone()
+        .json()
+        .catch(() => ({}));
       if (body.workspace_id) {
         // Release lock on error
         await releaseLock(supabase, body.workspace_id, FUNCTION_NAME);
-        
-        await supabase
-          .from('email_import_progress')
-          .upsert({
+
+        await supabase.from('email_import_progress').upsert(
+          {
             workspace_id: body.workspace_id,
             current_phase: 'error',
             last_error: error.message,
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'workspace_id' });
+          },
+          { onConflict: 'workspace_id' },
+        );
       }
     } catch (e) {
       // Ignore error logging errors
     }
-    
+
     return new Response(
       JSON.stringify({
         success: false,
@@ -650,7 +712,7 @@ serve(async (req) => {
         function: FUNCTION_NAME,
         duration_ms: Date.now() - startTime,
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });
@@ -662,7 +724,7 @@ serve(async (req) => {
 async function saveCheckpoint(
   supabase: SupabaseClient,
   job: ImportJob,
-  status: string
+  status: string,
 ): Promise<void> {
   await supabase
     .from('email_import_jobs')
@@ -683,19 +745,25 @@ async function updateProgress(
   supabase: SupabaseClient,
   workspace_id: string,
   phase: string,
-  emails_received: number
+  emails_received: number,
 ): Promise<void> {
-  await supabase
-    .from('email_import_progress')
-    .upsert({
+  await supabase.from('email_import_progress').upsert(
+    {
       workspace_id,
       current_phase: phase,
       emails_received,
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'workspace_id' });
+    },
+    { onConflict: 'workspace_id' },
+  );
 }
 
-function getProgress(job: ImportJob): { sent: number; inbox: number; total: number; percent: number } {
+function getProgress(job: ImportJob): {
+  sent: number;
+  inbox: number;
+  total: number;
+  percent: number;
+} {
   const total = job.sent_imported + job.inbox_imported;
   return {
     sent: job.sent_imported,
@@ -706,8 +774,8 @@ function getProgress(job: ImportJob): { sent: number; inbox: number; total: numb
 }
 
 function createResponse(data: Record<string, unknown>): Response {
-  return new Response(
-    JSON.stringify(data),
-    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }

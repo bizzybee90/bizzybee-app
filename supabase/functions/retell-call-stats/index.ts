@@ -1,5 +1,5 @@
-import { validateAuth, AuthError, authErrorResponse } from "../_shared/auth.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,14 +37,14 @@ Deno.serve(async (req) => {
       .from('call_logs')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
-      .gte('start_time', todayMidnight);
+      .gte('created_at', todayMidnight);
 
     // Calls this week
     const { count: callsThisWeek } = await supabase
       .from('call_logs')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
-      .gte('start_time', sevenDaysAgo);
+      .gte('created_at', sevenDaysAgo);
 
     // Average duration and resolution rate from completed calls
     const { data: completedCalls } = await supabase
@@ -58,14 +58,14 @@ Deno.serve(async (req) => {
 
     if (completedCalls && completedCalls.length > 0) {
       const durations = completedCalls
-        .map(c => c.duration_seconds)
+        .map((c) => c.duration_seconds)
         .filter((d): d is number => d != null);
 
       if (durations.length > 0) {
         avgDuration = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
       }
 
-      const resolvedCount = completedCalls.filter(c => c.outcome === 'resolved').length;
+      const resolvedCount = completedCalls.filter((c) => c.outcome === 'resolved').length;
       resolutionRate = Math.round((resolvedCount / completedCalls.length) * 100);
     }
 
@@ -95,13 +95,13 @@ Deno.serve(async (req) => {
           overage_minutes: overageMinutes,
         },
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
     console.error('retell-call-stats error:', err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });

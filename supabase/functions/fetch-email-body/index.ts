@@ -1,12 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -15,18 +15,23 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   const supabaseAuth = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
+    { global: { headers: { Authorization: authHeader } } },
   );
-  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
   if (authError || !user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
   // --- END AUTH CHECK ---
@@ -87,8 +92,10 @@ serve(async (req) => {
     }
 
     // Get decrypted access token
-    const { data: accessToken, error: tokenError } = await supabase
-      .rpc('get_decrypted_access_token', { p_config_id: config.id });
+    const { data: accessToken, error: tokenError } = await supabase.rpc(
+      'get_decrypted_access_token',
+      { p_config_id: config.id },
+    );
 
     if (tokenError || !accessToken) {
       return new Response(JSON.stringify({ error: 'Could not retrieve access token' }), {
@@ -103,10 +110,10 @@ serve(async (req) => {
       `https://api.aurinko.io/v1/email/messages/${email.external_id}`,
       {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-      }
+      },
     );
 
     if (!aurinkoResp.ok) {
@@ -123,10 +130,7 @@ serve(async (req) => {
 
     if (htmlBody) {
       // Cache it back to the database
-      await supabase
-        .from('email_import_queue')
-        .update({ body_html: htmlBody })
-        .eq('id', email_id);
+      await supabase.from('email_import_queue').update({ body_html: htmlBody }).eq('id', email_id);
 
       console.log(`Cached HTML body for email ${email_id} (${htmlBody.length} chars)`);
     }
@@ -134,14 +138,16 @@ serve(async (req) => {
     return new Response(JSON.stringify({ body_html: htmlBody }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-
   } catch (error) {
     console.error('[fetch-email-body] Error:', error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
   }
 });

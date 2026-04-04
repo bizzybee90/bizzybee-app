@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || '*',
@@ -21,7 +20,7 @@ interface VerificationIssue {
   suggestion?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -35,7 +34,9 @@ serve(async (req) => {
     let bodyRaw: any;
     try {
       bodyRaw = await req.clone().json();
-    } catch { bodyRaw = {}; }
+    } catch {
+      bodyRaw = {};
+    }
     try {
       await validateAuth(req, bodyRaw.workspace_id);
     } catch (authErr: any) {
@@ -45,14 +46,14 @@ serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const body: VerifyRequest = bodyRaw;
-    console.log(`[${functionName}] Starting verification:`, { 
+    console.log(`[${functionName}] Starting verification:`, {
       workspace_id: body.workspace_id,
       conversation_id: body.conversation_id,
-      draft_length: body.draft_text?.length 
+      draft_length: body.draft_text?.length,
     });
 
     // Validate required fields
@@ -87,7 +88,9 @@ serve(async (req) => {
     // Fetch business profile for context
     const { data: business } = await supabase
       .from('business_profile')
-      .select('business_name, industry, services, pricing_model, price_summary, payment_methods, guarantee, cancellation_policy')
+      .select(
+        'business_name, industry, services, pricing_model, price_summary, payment_methods, guarantee, cancellation_policy',
+      )
       .eq('workspace_id', body.workspace_id)
       .single();
 
@@ -99,11 +102,12 @@ serve(async (req) => {
       .limit(20);
 
     // Build knowledge base context
-    const faqContext = faqs?.map(f => 
-      `Q: ${f.question}\nA: ${f.answer}\nSource: ${f.source || 'unknown'}`
-    ).join('\n\n') || 'No FAQs available';
+    const faqContext =
+      faqs
+        ?.map((f) => `Q: ${f.question}\nA: ${f.answer}\nSource: ${f.source || 'unknown'}`)
+        .join('\n\n') || 'No FAQs available';
 
-    const businessContext = business 
+    const businessContext = business
       ? `Business: ${business.business_name || 'Unknown'}
 Industry: ${business.industry || 'Not specified'}
 Services: ${Array.isArray(business.services) ? business.services.join(', ') : business.services || 'Not specified'}
@@ -113,9 +117,8 @@ Guarantee: ${business.guarantee || 'Not specified'}
 Cancellation Policy: ${business.cancellation_policy || 'Not specified'}`
       : 'Business info not available';
 
-    const factsContext = businessFacts?.map(f => 
-      `${f.category}: ${f.fact_key} = ${f.fact_value}`
-    ).join('\n') || '';
+    const factsContext =
+      businessFacts?.map((f) => `${f.category}: ${f.fact_key} = ${f.fact_value}`).join('\n') || '';
 
     // Verify with Claude via Anthropic API
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
@@ -173,16 +176,15 @@ If the draft is accurate and well-supported by the knowledge base, return status
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6-20250514',
         max_tokens: 1024,
-        system: 'You are a precise fact-checker. Only flag issues that are clearly wrong or unsupported. Be helpful, not overly critical. Respond with valid JSON only.',
-        messages: [
-          { role: 'user', content: verificationPrompt }
-        ]
-      })
+        system:
+          'You are a precise fact-checker. Only flag issues that are clearly wrong or unsupported. Be helpful, not overly critical. Respond with valid JSON only.',
+        messages: [{ role: 'user', content: verificationPrompt }],
+      }),
     });
 
     if (!aiResponse.ok) {
@@ -212,14 +214,14 @@ If the draft is accurate and well-supported by the knowledge base, return status
         status: 'passed',
         confidence_score: 0.5,
         issues: [],
-        notes: 'Verification parsing failed, defaulting to passed'
+        notes: 'Verification parsing failed, defaulting to passed',
       };
     }
 
     console.log(`[${functionName}] Verification result:`, {
       status: verification.status,
       confidence: verification.confidence_score,
-      issues_count: verification.issues?.length || 0
+      issues_count: verification.issues?.length || 0,
     });
 
     // Store verification result
@@ -234,7 +236,7 @@ If the draft is accurate and well-supported by the knowledge base, return status
         issues_found: verification.issues || [],
         corrected_draft: verification.corrected_draft || null,
         confidence_score: verification.confidence_score,
-        verification_notes: verification.notes
+        verification_notes: verification.notes,
       })
       .select('id')
       .single();
@@ -247,9 +249,9 @@ If the draft is accurate and well-supported by the knowledge base, return status
     if (body.draft_id && verificationRecord) {
       await supabase
         .from('messages')
-        .update({ 
+        .update({
           verification_status: verification.status,
-          verification_id: verificationRecord.id
+          verification_id: verificationRecord.id,
         })
         .eq('id', body.draft_id);
     }
@@ -265,14 +267,13 @@ If the draft is accurate and well-supported by the knowledge base, return status
           confidence_score: verification.confidence_score,
           issues: verification.issues || [],
           corrected_draft: verification.corrected_draft,
-          notes: verification.notes
+          notes: verification.notes,
         },
         verification_id: verificationRecord?.id,
-        duration_ms: duration
+        duration_ms: duration,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-
   } catch (error: any) {
     console.error(`[${functionName}] Error:`, error);
     return new Response(
@@ -280,9 +281,9 @@ If the draft is accurate and well-supported by the knowledge base, return status
         success: false,
         error: error.message,
         function: functionName,
-        duration_ms: Date.now() - startTime
+        duration_ms: Date.now() - startTime,
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   }
 });

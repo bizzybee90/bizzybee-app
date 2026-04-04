@@ -10,18 +10,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
-import { 
-  Shield, 
-  FileText, 
-  Building2, 
-  Mail, 
-  CheckCircle, 
+import {
+  Shield,
+  FileText,
+  Building2,
+  Mail,
+  CheckCircle,
   AlertCircle,
   Plus,
   Trash2,
   Loader2,
-  ExternalLink
+  ExternalLink,
 } from 'lucide-react';
+import type { Database } from '@/integrations/supabase/types';
 
 interface SubProcessor {
   name: string;
@@ -63,7 +64,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
   const loadSettings = async () => {
     if (!workspace?.id) return;
-    
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -77,8 +78,8 @@ export const WorkspaceGDPRSettingsPanel = () => {
       if (data) {
         setSettings({
           ...data,
-          sub_processors: Array.isArray(data.sub_processors) 
-            ? (data.sub_processors as unknown as SubProcessor[]) 
+          sub_processors: Array.isArray(data.sub_processors)
+            ? (data.sub_processors as unknown as SubProcessor[])
             : [],
         });
       } else {
@@ -110,9 +111,10 @@ export const WorkspaceGDPRSettingsPanel = () => {
     setSaving(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
-      
+
       // Cast sub_processors to Json type for Supabase
-      const settingsToSave = {
+      type GDPRInsert = Database['public']['Tables']['workspace_gdpr_settings']['Insert'];
+      const settingsToSave: GDPRInsert = {
         workspace_id: workspace.id,
         dpa_version: settings.dpa_version,
         dpa_accepted_at: settings.dpa_accepted_at,
@@ -122,16 +124,18 @@ export const WorkspaceGDPRSettingsPanel = () => {
         company_legal_name: settings.company_legal_name,
         company_address: settings.company_address,
         data_protection_officer_email: settings.data_protection_officer_email,
-        sub_processors: JSON.parse(JSON.stringify(settings.sub_processors)),
+        sub_processors: JSON.parse(
+          JSON.stringify(settings.sub_processors),
+        ) as Database['public']['Tables']['workspace_gdpr_settings']['Insert']['sub_processors'],
         updated_at: new Date().toISOString(),
-      } as any;
+      };
 
       if (settings.id) {
         const { error } = await supabase
           .from('workspace_gdpr_settings')
           .update(settingsToSave)
           .eq('id', settings.id);
-        
+
         if (error) throw error;
       } else {
         const { data, error } = await supabase
@@ -139,7 +143,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
           .insert(settingsToSave)
           .select()
           .single();
-        
+
         if (error) throw error;
         setSettings({ ...settings, id: data.id });
       }
@@ -157,13 +161,13 @@ export const WorkspaceGDPRSettingsPanel = () => {
     if (!settings) return;
 
     const { data: userData } = await supabase.auth.getUser();
-    
+
     setSettings({
       ...settings,
       dpa_accepted_at: new Date().toISOString(),
       dpa_accepted_by: userData.user?.id || null,
     });
-    
+
     toast.success('Data Processing Agreement accepted');
   };
 
@@ -174,13 +178,13 @@ export const WorkspaceGDPRSettingsPanel = () => {
       ...settings,
       sub_processors: [...settings.sub_processors, newSubProcessor],
     });
-    
+
     setNewSubProcessor({ name: '', purpose: '', location: '' });
   };
 
   const removeSubProcessor = (index: number) => {
     if (!settings) return;
-    
+
     setSettings({
       ...settings,
       sub_processors: settings.sub_processors.filter((_, i) => i !== index),
@@ -190,7 +194,9 @@ export const WorkspaceGDPRSettingsPanel = () => {
   if (!isAdmin) {
     return (
       <Card className="p-6">
-        <p className="text-center text-muted-foreground">Admin access required to manage GDPR settings</p>
+        <p className="text-center text-muted-foreground">
+          Admin access required to manage GDPR settings
+        </p>
       </Card>
     );
   }
@@ -242,10 +248,11 @@ export const WorkspaceGDPRSettingsPanel = () => {
               )}
             </div>
           </div>
-          
+
           {settings?.dpa_accepted_at ? (
             <p className="text-xs text-muted-foreground mt-3">
-              Accepted on {new Date(settings.dpa_accepted_at).toLocaleDateString()} (Version {settings.dpa_version})
+              Accepted on {new Date(settings.dpa_accepted_at).toLocaleDateString()} (Version{' '}
+              {settings.dpa_version})
             </p>
           ) : (
             <Button onClick={acceptDPA} className="mt-3" size="sm">
@@ -260,36 +267,44 @@ export const WorkspaceGDPRSettingsPanel = () => {
             <Building2 className="h-4 w-4" />
             Company Information
           </h4>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="company_legal_name">Legal Company Name</Label>
               <Input
                 id="company_legal_name"
                 value={settings?.company_legal_name || ''}
-                onChange={(e) => setSettings(s => s ? { ...s, company_legal_name: e.target.value } : s)}
+                onChange={(e) =>
+                  setSettings((s) => (s ? { ...s, company_legal_name: e.target.value } : s))
+                }
                 placeholder="Your Company Ltd"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="dpo_email">Data Protection Officer Email</Label>
               <Input
                 id="dpo_email"
                 type="email"
                 value={settings?.data_protection_officer_email || ''}
-                onChange={(e) => setSettings(s => s ? { ...s, data_protection_officer_email: e.target.value } : s)}
+                onChange={(e) =>
+                  setSettings((s) =>
+                    s ? { ...s, data_protection_officer_email: e.target.value } : s,
+                  )
+                }
                 placeholder="dpo@company.com"
               />
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="company_address">Company Address</Label>
             <Textarea
               id="company_address"
               value={settings?.company_address || ''}
-              onChange={(e) => setSettings(s => s ? { ...s, company_address: e.target.value } : s)}
+              onChange={(e) =>
+                setSettings((s) => (s ? { ...s, company_address: e.target.value } : s))
+              }
               placeholder="123 Business Street, City, Country"
               rows={2}
             />
@@ -302,7 +317,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
             <FileText className="h-4 w-4" />
             Privacy Policy
           </h4>
-          
+
           <div className="space-y-2">
             <Label htmlFor="privacy_policy_url">Privacy Policy URL</Label>
             <div className="flex gap-2">
@@ -310,7 +325,9 @@ export const WorkspaceGDPRSettingsPanel = () => {
                 id="privacy_policy_url"
                 type="url"
                 value={settings?.privacy_policy_url || ''}
-                onChange={(e) => setSettings(s => s ? { ...s, privacy_policy_url: e.target.value } : s)}
+                onChange={(e) =>
+                  setSettings((s) => (s ? { ...s, privacy_policy_url: e.target.value } : s))
+                }
                 placeholder="https://yourcompany.com/privacy"
                 className="flex-1"
               />
@@ -325,13 +342,15 @@ export const WorkspaceGDPRSettingsPanel = () => {
               )}
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="custom_privacy">Custom Privacy Notice (optional)</Label>
             <Textarea
               id="custom_privacy"
               value={settings?.custom_privacy_policy || ''}
-              onChange={(e) => setSettings(s => s ? { ...s, custom_privacy_policy: e.target.value } : s)}
+              onChange={(e) =>
+                setSettings((s) => (s ? { ...s, custom_privacy_policy: e.target.value } : s))
+              }
               placeholder="Additional privacy information specific to your customers..."
               rows={4}
             />
@@ -347,7 +366,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
           <p className="text-sm text-muted-foreground">
             List third-party services that process customer data on your behalf
           </p>
-          
+
           {settings?.sub_processors && settings.sub_processors.length > 0 && (
             <div className="space-y-2">
               {settings.sub_processors.map((processor, index) => (
@@ -358,35 +377,31 @@ export const WorkspaceGDPRSettingsPanel = () => {
                       {processor.purpose} • {processor.location}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeSubProcessor(index)}
-                  >
+                  <Button variant="ghost" size="icon" onClick={() => removeSubProcessor(index)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </Card>
               ))}
             </div>
           )}
-          
+
           <Card className="p-4 bg-muted/50">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Input
                 placeholder="Service name"
                 value={newSubProcessor.name}
-                onChange={(e) => setNewSubProcessor(s => ({ ...s, name: e.target.value }))}
+                onChange={(e) => setNewSubProcessor((s) => ({ ...s, name: e.target.value }))}
               />
               <Input
                 placeholder="Purpose"
                 value={newSubProcessor.purpose}
-                onChange={(e) => setNewSubProcessor(s => ({ ...s, purpose: e.target.value }))}
+                onChange={(e) => setNewSubProcessor((s) => ({ ...s, purpose: e.target.value }))}
               />
               <div className="flex gap-2">
                 <Input
                   placeholder="Location"
                   value={newSubProcessor.location}
-                  onChange={(e) => setNewSubProcessor(s => ({ ...s, location: e.target.value }))}
+                  onChange={(e) => setNewSubProcessor((s) => ({ ...s, location: e.target.value }))}
                 />
                 <Button
                   variant="outline"

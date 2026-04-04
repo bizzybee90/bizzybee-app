@@ -31,20 +31,14 @@ interface StatCardProps {
 
 function StatCard({ icon, label, value, subtitle, iconBg }: StatCardProps) {
   return (
-    <div className="bg-white border border-[var(--separator)] rounded-xl p-4 flex items-start gap-3">
+    <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
       <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0', iconBg)}>
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">
-          {label}
-        </p>
-        <p className="text-2xl font-bold text-[var(--text-primary)] leading-tight mt-0.5">
-          {value}
-        </p>
-        {subtitle && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{subtitle}</p>
-        )}
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
+        <p className="text-2xl font-bold text-foreground leading-tight mt-0.5">{value}</p>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -52,7 +46,7 @@ function StatCard({ icon, label, value, subtitle, iconBg }: StatCardProps) {
 
 function StatCardSkeleton() {
   return (
-    <div className="bg-white border border-[var(--separator)] rounded-xl p-4 flex items-start gap-3">
+    <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
       <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-3 w-20" />
@@ -79,9 +73,10 @@ export const StatsBar = () => {
 
   if (!stats) return null;
 
-  const minutesPct = stats.included_minutes > 0
-    ? Math.min((stats.minutes_used / stats.included_minutes) * 100, 100)
-    : 0;
+  const minutesPct =
+    stats.included_minutes > 0
+      ? Math.min((stats.minutes_used / stats.included_minutes) * 100, 100)
+      : 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -95,18 +90,19 @@ export const StatsBar = () => {
       />
 
       {/* Minutes Used */}
-      <div className="bg-white border border-[var(--separator)] rounded-xl p-4 flex items-start gap-3">
+      <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-amber-50 text-amber-600">
           <Clock className="w-4 h-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Minutes Used
           </p>
-          <p className="text-2xl font-bold text-[var(--text-primary)] leading-tight mt-0.5">
+          <p className="text-2xl font-bold text-foreground leading-tight mt-0.5">
             {Math.round(stats.minutes_used)}
-            <span className="text-sm font-normal text-[var(--text-secondary)]">
-              {' '}/ {stats.included_minutes}
+            <span className="text-sm font-normal text-muted-foreground">
+              {' '}
+              / {stats.included_minutes}
             </span>
           </p>
           <div className="mt-2 w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -133,7 +129,13 @@ export const StatsBar = () => {
             {Math.round(stats.resolution_rate)}%
           </span>
         }
-        subtitle={stats.resolution_rate >= 80 ? 'Great performance' : stats.resolution_rate >= 50 ? 'Room to improve' : 'Needs attention'}
+        subtitle={
+          stats.resolution_rate >= 80
+            ? 'Great performance'
+            : stats.resolution_rate >= 50
+              ? 'Room to improve'
+              : 'Needs attention'
+        }
       />
 
       {/* Avg Duration */}

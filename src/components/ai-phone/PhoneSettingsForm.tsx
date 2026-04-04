@@ -61,7 +61,7 @@ export const PhoneSettingsForm = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--accent-primary)' }} />
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -100,22 +100,11 @@ export const PhoneSettingsForm = () => {
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Phone Number Display + Active Toggle */}
-      <div
-        className="bg-card p-6"
-        style={{
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-subtle)',
-          boxShadow: 'var(--shadow-card)',
-        }}
-      >
+      <div className="bg-card p-6 rounded-2xl border border-border/40 shadow-sm">
         <div className="flex items-center justify-between">
           <PhoneNumberDisplay phoneNumber={config.retell_phone_number} />
           <div className="flex items-center gap-3">
-            <Label
-              htmlFor="phone-active-toggle"
-              className="text-[13px]"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+            <Label htmlFor="phone-active-toggle" className="text-[13px] text-muted-foreground">
               {config.is_active ? 'Active' : 'Inactive'}
             </Label>
             <Switch
@@ -129,14 +118,7 @@ export const PhoneSettingsForm = () => {
       </div>
 
       {/* Accordion Sections */}
-      <div
-        className="bg-card"
-        style={{
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-subtle)',
-          boxShadow: 'var(--shadow-card)',
-        }}
-      >
+      <div className="bg-card rounded-2xl border border-border/40 shadow-sm">
         <Accordion type="single" collapsible className="px-6">
           {/* 1. Business Details */}
           <AccordionItem value="business-details">
@@ -179,15 +161,15 @@ export const PhoneSettingsForm = () => {
                     onChange={(e) => setTransferNumber(e.target.value)}
                     placeholder="e.g. +44 7700 900000"
                   />
-                  <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
-                    Calls can be transferred to this number when a customer requests to speak to a human.
+                  <p className="text-[12px] text-muted-foreground">
+                    Calls can be transferred to this number when a customer requests to speak to a
+                    human.
                   </p>
                 </div>
                 <Button
                   onClick={handleSaveBusinessDetails}
                   disabled={updateConfig.isPending}
-                  className="mt-2"
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                  className="mt-2 bg-primary"
                 >
                   {updateConfig.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -209,7 +191,7 @@ export const PhoneSettingsForm = () => {
                 <Button
                   onClick={handleSaveServices}
                   disabled={updateConfig.isPending}
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                  className="mt-2 bg-primary"
                 >
                   {updateConfig.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -231,7 +213,7 @@ export const PhoneSettingsForm = () => {
                 <Button
                   onClick={handleSaveOpeningHours}
                   disabled={updateConfig.isPending}
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                  className="mt-2 bg-primary"
                 >
                   {updateConfig.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -260,7 +242,7 @@ export const PhoneSettingsForm = () => {
                 <Button
                   onClick={handleSaveVoice}
                   disabled={updateConfig.isPending}
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                  className="mt-2 bg-primary"
                 >
                   {updateConfig.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -317,7 +299,7 @@ export const PhoneSettingsForm = () => {
                     placeholder="Hello, thank you for calling..."
                     rows={2}
                   />
-                  <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
+                  <p className="text-[12px] text-muted-foreground">
                     The first thing the AI says when it answers a call.
                   </p>
                 </div>
@@ -332,14 +314,14 @@ export const PhoneSettingsForm = () => {
                     placeholder="Any special instructions for the AI, e.g. tone of voice, topics to avoid..."
                     rows={4}
                   />
-                  <p className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
+                  <p className="text-[12px] text-muted-foreground">
                     Additional guidance for the AI when handling calls.
                   </p>
                 </div>
                 <Button
                   onClick={handleSaveAdvanced}
                   disabled={updateConfig.isPending}
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                  className="mt-2 bg-primary"
                 >
                   {updateConfig.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />

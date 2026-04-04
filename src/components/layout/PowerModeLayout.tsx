@@ -17,21 +17,47 @@ import { cn } from '@/lib/utils';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface PowerModeLayoutProps {
-  filter?: 'my-tickets' | 'unassigned' | 'sla-risk' | 'all-open' | 'awaiting-reply' | 'completed' | 'sent' | 'high-priority' | 'vip-customers' | 'escalations' | 'triaged' | 'needs-me' | 'snoozed' | 'cleared' | 'fyi' | 'unread' | 'drafts-ready';
+  filter?:
+    | 'my-tickets'
+    | 'unassigned'
+    | 'sla-risk'
+    | 'all-open'
+    | 'awaiting-reply'
+    | 'completed'
+    | 'sent'
+    | 'high-priority'
+    | 'vip-customers'
+    | 'escalations'
+    | 'triaged'
+    | 'needs-me'
+    | 'snoozed'
+    | 'cleared'
+    | 'fyi'
+    | 'unread'
+    | 'drafts-ready';
   channelFilter?: string;
 }
 
 const getFilterTitle = (filter: string) => {
   switch (filter) {
-    case 'needs-me': return 'Needs Action';
-    case 'all-open': return 'Inbox';
-    case 'cleared': return 'Cleared';
-    case 'snoozed': return 'Snoozed';
-    case 'sent': return 'Sent';
-    case 'unread': return 'Unread';
-    case 'drafts-ready': return 'Drafts';
-    case 'fyi': return 'FYI';
-    default: return 'Inbox';
+    case 'needs-me':
+      return 'Needs Action';
+    case 'all-open':
+      return 'Inbox';
+    case 'cleared':
+      return 'Cleared';
+    case 'snoozed':
+      return 'Snoozed';
+    case 'sent':
+      return 'Sent';
+    case 'unread':
+      return 'Unread';
+    case 'drafts-ready':
+      return 'Drafts';
+    case 'fyi':
+      return 'FYI';
+    default:
+      return 'Inbox';
   }
 };
 
@@ -64,7 +90,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
           .select('*, customer:customers(*), assigned_user:users!conversations_assigned_to_fkey(*)')
           .eq('id', conversationId)
           .single();
-        
+
         if (data) {
           setSelectedConversation(data as Conversation);
         }
@@ -74,7 +100,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
   }, [searchParams, selectedConversation]);
 
   const handleUpdate = () => {
-    setRefreshKey(prev => prev + 1);
+    setRefreshKey((prev) => prev + 1);
   };
 
   const handleSelectConversation = (conversation: Conversation) => {
@@ -99,14 +125,14 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
   // Mobile layout — unchanged
   if (isMobile) {
     return (
-      <div className="flex h-screen" style={{ backgroundColor: 'var(--bg-canvas)' }}>
+      <div className="flex h-screen bg-background">
         <MobileHeader onMenuClick={() => setSidebarOpen(true)} />
         <MobileSidebarSheet open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
           {!selectedConversation ? (
             <div className="flex-1 flex overflow-hidden gap-4 p-4">
-              <main className="flex-1 bg-card overflow-hidden flex flex-col" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+              <main className="flex-1 bg-card overflow-hidden flex flex-col rounded-2xl border border-border/40 shadow-sm">
                 <JaceStyleInbox
                   filter={filter}
                   selectedId={selectedConversation?.id}
@@ -132,7 +158,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
         {/* Customer Info Overlay Drawer */}
         {customerPanelOpen && selectedConversation && (
           <>
-            <div 
+            <div
               className="fixed inset-0 bg-black/20 z-40 transition-opacity"
               onClick={() => setCustomerPanelOpen(false)}
             />
@@ -160,7 +186,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
 
   // Desktop layout — matches Review.tsx pattern
   return (
-    <div className="flex h-screen" style={{ backgroundColor: 'var(--bg-canvas)' }}>
+    <div className="flex h-screen bg-background">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar — glassmorphic */}
@@ -177,12 +203,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
                 placeholder="Search conversations..."
               />
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              className="h-8 w-8 p-0"
-            >
+            <Button variant="ghost" size="sm" onClick={handleRefresh} className="h-8 w-8 p-0">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -191,7 +212,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
         {/* Content area */}
         {!selectedConversation ? (
           <div className="flex-1 flex overflow-hidden gap-4 p-4">
-            <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+            <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-muted rounded-2xl border border-border/40 shadow-sm">
               <JaceStyleInbox
                 filter={filter}
                 selectedId={selectedConversation?.id}
@@ -200,17 +221,19 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
               />
             </main>
             {/* Empty state right pane */}
-            <div className="flex-1 bg-card overflow-hidden flex flex-col relative items-center justify-center" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex-1 bg-card overflow-hidden flex flex-col relative items-center justify-center rounded-2xl border border-border/40 shadow-sm">
               <div className="text-center">
-                <p className="text-[17px] font-semibold" style={{ color: 'var(--text-primary)' }}>Select a conversation</p>
-                <p className="text-[15px] mt-1" style={{ color: 'var(--text-secondary)' }}>Choose from the list to get started</p>
+                <p className="text-[17px] font-semibold text-foreground">Select a conversation</p>
+                <p className="text-[15px] mt-1 text-muted-foreground">
+                  Choose from the list to get started
+                </p>
               </div>
             </div>
           </div>
         ) : (
           <div className="flex-1 flex overflow-hidden gap-4 p-4">
             {/* Middle Pane (Message List Column) */}
-            <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+            <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-muted rounded-2xl border border-border/40 shadow-sm">
               <JaceStyleInbox
                 filter={filter}
                 selectedId={selectedConversation?.id}
@@ -220,7 +243,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
             </div>
 
             {/* Right Pane (Reading/Preview Column) */}
-            <div className="flex-1 bg-card overflow-hidden flex flex-col relative" style={{ borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex-1 bg-card overflow-hidden flex flex-col relative rounded-2xl border border-border/40 shadow-sm">
               <ConversationThread
                 key={refreshKey}
                 conversation={selectedConversation}
@@ -236,7 +259,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
       {/* Customer Info Overlay Drawer */}
       {customerPanelOpen && selectedConversation && (
         <>
-          <div 
+          <div
             className="fixed inset-0 bg-black/20 z-40 transition-opacity"
             onClick={() => setCustomerPanelOpen(false)}
           />

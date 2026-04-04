@@ -1,12 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -21,25 +20,28 @@ serve(async (req) => {
     // =============================================
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - missing token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized - missing token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Create client with user's auth to verify JWT
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await userSupabase.auth.getUser();
 
     if (authError || !user) {
       console.error('[export-customer-data] JWT validation failed:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized - invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const userId = user.id;
@@ -53,10 +55,10 @@ serve(async (req) => {
       .single();
 
     if (userError || !userData?.workspace_id) {
-      return new Response(
-        JSON.stringify({ error: 'User not associated with a workspace' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'User not associated with a workspace' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const workspaceId = userData.workspace_id;
@@ -67,10 +69,10 @@ serve(async (req) => {
     const { customer_identifier, delivery_method } = await req.json();
 
     if (!customer_identifier) {
-      return new Response(
-        JSON.stringify({ error: 'customer_identifier is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'customer_identifier is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log('Exporting data for:', customer_identifier);
@@ -97,30 +99,26 @@ serve(async (req) => {
     }
 
     if (customerError || !customer) {
-      return new Response(
-        JSON.stringify({ error: 'Customer not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Customer not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Get all related data (scoped to workspace via customer)
     const [conversationsResult, consentsResult, deletionRequestsResult] = await Promise.all([
       supabase
         .from('conversations')
-        .select(`
+        .select(
+          `
           *,
           messages (*)
-        `)
+        `,
+        )
         .eq('customer_id', customer.id)
         .eq('workspace_id', workspaceId),
-      supabase
-        .from('customer_consents')
-        .select('*')
-        .eq('customer_id', customer.id),
-      supabase
-        .from('data_deletion_requests')
-        .select('*')
-        .eq('customer_id', customer.id)
+      supabase.from('customer_consents').select('*').eq('customer_id', customer.id),
+      supabase.from('data_deletion_requests').select('*').eq('customer_id', customer.id),
     ]);
 
     // Compile export data
@@ -135,18 +133,16 @@ serve(async (req) => {
         right_to_erasure: 'You can request deletion by contacting us',
         right_to_rectification: 'You can update your information',
         right_to_portability: 'This export is in JSON format for portability',
-      }
+      },
     };
 
     // Log the export action
-    await supabase
-      .from('data_access_logs')
-      .insert({
-        action: 'export',
-        customer_id: customer.id,
-        performed_by: userId,
-        metadata: { delivery_method, export_size: JSON.stringify(exportData).length }
-      });
+    await supabase.from('data_access_logs').insert({
+      action: 'export',
+      customer_id: customer.id,
+      performed_by: userId,
+      metadata: { delivery_method, export_size: JSON.stringify(exportData).length },
+    });
 
     console.log('Export completed for customer:', customer.id);
 
@@ -158,17 +154,18 @@ serve(async (req) => {
         status: 'complete',
         data: exportData,
         format: 'json',
-        message: delivery_method === 'email' 
-          ? 'Export has been sent to your email address'
-          : 'Export data is included in this response'
+        message:
+          delivery_method === 'email'
+            ? 'Export has been sent to your email address'
+            : 'Export data is included in this response',
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
     console.error('Error exporting customer data:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

@@ -19,7 +19,24 @@ import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
 interface JaceStyleInboxProps {
   onSelect: (conversation: Conversation) => void;
   selectedId?: string | null;
-  filter?: 'my-tickets' | 'unassigned' | 'sla-risk' | 'all-open' | 'awaiting-reply' | 'completed' | 'sent' | 'high-priority' | 'vip-customers' | 'escalations' | 'triaged' | 'needs-me' | 'snoozed' | 'cleared' | 'fyi' | 'unread' | 'drafts-ready';
+  filter?:
+    | 'my-tickets'
+    | 'unassigned'
+    | 'sla-risk'
+    | 'all-open'
+    | 'awaiting-reply'
+    | 'completed'
+    | 'sent'
+    | 'high-priority'
+    | 'vip-customers'
+    | 'escalations'
+    | 'triaged'
+    | 'needs-me'
+    | 'snoozed'
+    | 'cleared'
+    | 'fyi'
+    | 'unread'
+    | 'drafts-ready';
   hideHeader?: boolean;
 }
 
@@ -29,10 +46,15 @@ interface GroupedConversations {
   older: Conversation[];
 }
 
-export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hideHeader = false }: JaceStyleInboxProps) => {
+export const JaceStyleInbox = ({
+  onSelect,
+  selectedId,
+  filter = 'needs-me',
+  hideHeader = false,
+}: JaceStyleInboxProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const subFilter = searchParams.get('filter'); // 'at-risk', 'to-reply', 'drafts'
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -50,7 +72,9 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
   }, [searchQuery]);
 
   const fetchConversations = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return [];
 
     const { data: userData } = await supabase
@@ -63,7 +87,8 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
 
     let query = supabase
       .from('conversations')
-      .select(`
+      .select(
+        `
         id, title, status, channel, category, priority, confidence,
         requires_reply, decision_bucket, sla_status, sla_due_at,
         summary_for_human, ai_draft_response, final_response,
@@ -72,7 +97,8 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
         workspace_id, customer_id, assigned_to,
         customer:customers(id, name, email),
         assigned_user:users!conversations_assigned_to_fkey(id, name, email)
-      ` as string)
+      ` as string,
+      )
       .eq('workspace_id', userData.workspace_id)
       .order('updated_at', { ascending: false });
 
@@ -102,9 +128,7 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
         .in('status', ['new', 'open', 'waiting_internal', 'ai_handling', 'escalated']);
     } else if (filter === 'unread') {
       // Unread: requires reply + status new
-      query = query
-        .eq('requires_reply', true)
-        .eq('status', 'new');
+      query = query.eq('requires_reply', true).eq('status', 'new');
     } else if (filter === 'drafts-ready') {
       // Drafts: has AI draft, no final response
       query = query
@@ -119,9 +143,7 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
     } else if (filter === 'cleared') {
       query = query.or('decision_bucket.eq.auto_handled,status.eq.resolved');
     } else if (filter === 'snoozed') {
-      query = query
-        .not('snoozed_until', 'is', null)
-        .gt('snoozed_until', new Date().toISOString());
+      query = query.not('snoozed_until', 'is', null).gt('snoozed_until', new Date().toISOString());
     } else if (filter === 'sent') {
       query = query.eq('status', 'resolved');
     } else if (filter === 'all-open') {
@@ -151,18 +173,22 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
     queryFn: async () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const { count } = await supabase
         .from('conversations')
         .select('*', { count: 'exact', head: true })
         .gte('auto_handled_at', today.toISOString());
-      
+
       return count || 0;
     },
     staleTime: 60000,
   });
 
-  const { data: conversations = [], isLoading, isFetching } = useQuery({
+  const {
+    data: conversations = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryKey: ['jace-inbox', filter, subFilter, debouncedSearch],
     queryFn: async () => {
       const result = await fetchConversations();
@@ -189,7 +215,7 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
   const groupedConversations: GroupedConversations = {
     today: [],
     yesterday: [],
-    older: []
+    older: [],
   };
 
   filteredConversations.forEach((conv: any) => {
@@ -234,38 +260,69 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
   };
 
   // Fixed width for all status badges to ensure consistent alignment
-  const BADGE_CLASS = "text-[10px] px-2 py-0.5 h-auto min-w-[90px] text-center justify-center font-semibold uppercase tracking-wider rounded-md";
-  
+  const BADGE_CLASS =
+    'text-[10px] px-2 py-0.5 h-auto min-w-[90px] text-center justify-center font-semibold uppercase tracking-wider rounded-md';
+
   // State-based labels: what does the user need to DO, not how hard is it
   const getStateConfig = (bucket: string, hasAiDraft: boolean) => {
     if (bucket === 'act_now') {
-      return { 
-        badge: <Badge className={`bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 ${BADGE_CLASS}`}>Needs attention</Badge>,
-        rowClass: 'bg-red-50/30 border-red-100'
+      return {
+        badge: (
+          <Badge
+            className={`bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 ${BADGE_CLASS}`}
+          >
+            Needs attention
+          </Badge>
+        ),
+        rowClass: 'bg-red-50/30 border-red-100',
       };
     }
     if (bucket === 'quick_win' && hasAiDraft) {
-      return { 
-        badge: <Badge className={`bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 ${BADGE_CLASS}`}>Draft ready</Badge>,
-        rowClass: ''
+      return {
+        badge: (
+          <Badge
+            className={`bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 ${BADGE_CLASS}`}
+          >
+            Draft ready
+          </Badge>
+        ),
+        rowClass: '',
       };
     }
     if (bucket === 'quick_win') {
-      return { 
-        badge: <Badge className={`bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 ${BADGE_CLASS}`}>Needs reply</Badge>,
-        rowClass: ''
+      return {
+        badge: (
+          <Badge
+            className={`bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 ${BADGE_CLASS}`}
+          >
+            Needs reply
+          </Badge>
+        ),
+        rowClass: '',
       };
     }
     if (bucket === 'wait') {
-      return { 
-        badge: <Badge className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}>FYI</Badge>,
-        rowClass: ''
+      return {
+        badge: (
+          <Badge
+            className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}
+          >
+            FYI
+          </Badge>
+        ),
+        rowClass: '',
       };
     }
     if (bucket === 'auto_handled') {
-      return { 
-        badge: <Badge className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}>Done</Badge>,
-        rowClass: ''
+      return {
+        badge: (
+          <Badge
+            className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}
+          >
+            Done
+          </Badge>
+        ),
+        rowClass: '',
       };
     }
     return { badge: null, rowClass: '' };
@@ -277,22 +334,25 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
   };
 
   const ConversationRow = ({ conversation }: { conversation: Conversation }) => {
-    const conv = conversation as any;
-    const rawName = conv.customer?.name || conv.customer?.email?.split('@')[0] || '';
-    const customerName = (!rawName || rawName.includes('unknown.invalid') || rawName.startsWith('unknown@')) ? 'Unknown Sender' : rawName;
-    const hasAiDraft = !!conv.ai_draft_response;
-    const stateConfig = getStateConfig(conv.decision_bucket, hasAiDraft);
-    const isSelected = selectedId === conv.id;
+    const rawName =
+      conversation.customer?.name || conversation.customer?.email?.split('@')[0] || '';
+    const customerName =
+      !rawName || rawName.includes('unknown.invalid') || rawName.startsWith('unknown@')
+        ? 'Unknown Sender'
+        : rawName;
+    const hasAiDraft = !!conversation.ai_draft_response;
+    const stateConfig = getStateConfig(conversation.decision_bucket, hasAiDraft);
+    const isSelected = selectedId === conversation.id;
     const initial = customerName.charAt(0).toUpperCase();
 
     return (
       <div
         onClick={() => onSelect(conversation)}
         className={cn(
-          "px-3 py-2.5 cursor-pointer transition-all",
+          'px-3 py-2.5 cursor-pointer transition-all',
           isSelected
-            ? "bg-purple-50/60 border border-purple-200 ring-1 ring-purple-100 shadow-sm z-10 rounded-xl"
-            : "border-b border-slate-100 hover:bg-slate-50"
+            ? 'bg-purple-50/60 border border-purple-200 ring-1 ring-purple-100 shadow-sm z-10 rounded-xl'
+            : 'border-b border-slate-100 hover:bg-slate-50',
         )}
       >
         {/* Row 1: Avatar + Sender + Time */}
@@ -326,7 +386,13 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
     );
   };
 
-  const DateSection = ({ title, conversations }: { title: string; conversations: Conversation[] }) => {
+  const DateSection = ({
+    title,
+    conversations,
+  }: {
+    title: string;
+    conversations: Conversation[];
+  }) => {
     if (conversations.length === 0) return null;
     return (
       <div>
@@ -350,7 +416,6 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
     );
   }
 
-  
   // Get title based on sub-filter
   const getFilterTitle = () => {
     if (subFilter === 'at-risk') return 'At Risk';
@@ -372,74 +437,79 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {!hideHeader && (<>
-      {/* Header with title and metrics */}
-      <div className={cn(
-        "bg-white/80 backdrop-blur-sm border-b border-slate-100",
-        isMobile ? "px-4 py-3" : "px-6 py-4"
-      )}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {subFilter && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={clearSubFilter}
-                className="h-8 px-2 text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
+      {!hideHeader && (
+        <>
+          {/* Header with title and metrics */}
+          <div
+            className={cn(
+              'bg-white/80 backdrop-blur-sm border-b border-slate-100',
+              isMobile ? 'px-4 py-3' : 'px-6 py-4',
             )}
-            <h1 className="text-base font-semibold text-foreground">{getFilterTitle()}</h1>
-            {subFilter && (
-              <span className="text-sm text-muted-foreground">
-                ({filteredConversations.length})
-              </span>
-            )}
-          </div>
-          {filter === 'needs-me' && autoHandledCount > 0 && !subFilter && (
-            <div className="flex items-center gap-2 text-sm">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-foreground/80">
-                BizzyBee cleared <span className="font-semibold text-primary">{autoHandledCount}</span> today
-              </span>
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {subFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearSubFilter}
+                    className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                )}
+                <h1 className="text-base font-semibold text-foreground">{getFilterTitle()}</h1>
+                {subFilter && (
+                  <span className="text-sm text-muted-foreground">
+                    ({filteredConversations.length})
+                  </span>
+                )}
+              </div>
+              {filter === 'needs-me' && autoHandledCount > 0 && !subFilter && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-foreground/80">
+                    BizzyBee cleared{' '}
+                    <span className="font-semibold text-primary">{autoHandledCount}</span> today
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        {subFilter && (
-          <p className="text-xs text-muted-foreground mt-1 ml-10">
-            {subFilter === 'at-risk' && 'Conversations with SLA warnings or breaches'}
-            {subFilter === 'drafts' && 'AI drafted responses ready for your review'}
-            {subFilter === 'to-reply' && 'Conversations needing your attention'}
-          </p>
-        )}
-      </div>
+            {subFilter && (
+              <p className="text-xs text-muted-foreground mt-1 ml-10">
+                {subFilter === 'at-risk' && 'Conversations with SLA warnings or breaches'}
+                {subFilter === 'drafts' && 'AI drafted responses ready for your review'}
+                {subFilter === 'to-reply' && 'Conversations needing your attention'}
+              </p>
+            )}
+          </div>
 
-      {/* Search bar */}
-      <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <div className="flex-1">
-            <SearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search or ask BizzyBee..."
-            />
+          {/* Search bar */}
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <div className="flex-1">
+                <SearchInput
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Search or ask BizzyBee..."
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+                <span>Updated {getTimeSinceUpdate()}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefresh}
+                  disabled={isFetching}
+                  className="h-7 w-7 p-0"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <span>Updated {getTimeSinceUpdate()}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isFetching}
-              className="h-7 w-7 p-0"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-            </Button>
-          </div>
-        </div>
-      </div>
-      </>)}
+        </>
+      )}
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
@@ -449,7 +519,9 @@ export const JaceStyleInbox = ({ onSelect, selectedId, filter = 'needs-me', hide
               <Sparkles className="w-10 h-10 text-purple-500 animate-pulse" />
             </div>
             <p className="text-lg font-semibold text-foreground/80">You're all caught up!</p>
-            <p className="text-sm mt-1 text-muted-foreground/70">No messages need your attention right now</p>
+            <p className="text-sm mt-1 text-muted-foreground/70">
+              No messages need your attention right now
+            </p>
             <p className="text-xs text-muted-foreground/60 mt-3">⌘K to search • J/K to navigate</p>
           </div>
         ) : (

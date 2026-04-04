@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { 
-  CheckCircle2, 
-  Loader2, 
-  Circle, 
-  AlertCircle, 
+import {
+  CheckCircle2,
+  Loader2,
+  Circle,
+  AlertCircle,
   ArrowRight,
   RotateCcw,
   Mail,
@@ -76,7 +77,7 @@ function StageCard({
         status === 'in_progress' && 'border-primary/50 bg-primary/5 shadow-sm',
         status === 'done' && 'border-success/30 bg-success/5',
         status === 'error' && 'border-destructive/30 bg-destructive/5',
-        status === 'pending' && 'border-border bg-muted/30 opacity-60'
+        status === 'pending' && 'border-border bg-muted/30 opacity-60',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -97,11 +98,7 @@ function StageCard({
             {config.badge}
           </span>
           <config.StatusIcon
-            className={cn(
-              'h-4 w-4',
-              config.iconClass,
-              status === 'in_progress' && 'animate-spin'
-            )}
+            className={cn('h-4 w-4', config.iconClass, status === 'in_progress' && 'animate-spin')}
           />
         </div>
       </div>
@@ -125,14 +122,14 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
                 index < currentStage
                   ? 'bg-success'
                   : index === currentStage
-                  ? 'bg-primary ring-2 ring-primary/30'
-                  : 'bg-muted'
+                    ? 'bg-primary ring-2 ring-primary/30'
+                    : 'bg-muted',
               )}
             />
             <span
               className={cn(
                 'text-xs mt-1 font-medium',
-                index <= currentStage ? 'text-foreground' : 'text-muted-foreground'
+                index <= currentStage ? 'text-foreground' : 'text-muted-foreground',
               )}
             >
               {label}
@@ -142,7 +139,7 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
             <div
               className={cn(
                 'w-16 h-0.5 mx-1 mt-[-12px] transition-all duration-300',
-                index < currentStage ? 'bg-success' : 'bg-muted'
+                index < currentStage ? 'bg-success' : 'bg-muted',
               )}
             />
           )}
@@ -232,14 +229,17 @@ export function EmailPipelineProgress({
   // Derive stage statuses
   const totalEmails = stats.inboxCount + stats.sentCount;
   const importComplete = totalEmails > 0 && stats.emailsReceived > 0;
-  const allClassified = stats.emailsReceived > 0 && 
-    (stats.emailsClassified >= stats.emailsReceived || stats.emailsClassified / stats.emailsReceived >= 0.99);
+  const allClassified =
+    stats.emailsReceived > 0 &&
+    (stats.emailsClassified >= stats.emailsReceived ||
+      stats.emailsClassified / stats.emailsReceived >= 0.99);
 
   // If no emails need classification (all already have categories), skip to done
-  const skipClassification = importComplete && stats.emailsReceived > 0 && allClassified && !classificationTriggered;
+  const skipClassification =
+    importComplete && stats.emailsReceived > 0 && allClassified && !classificationTriggered;
 
   const importStatus: StageStatus = importComplete ? 'done' : 'in_progress';
-  
+
   const classifyStatus: StageStatus = (() => {
     if (webhookError) return 'error';
     if (allClassified && stats.emailsReceived > 0) return 'done';
@@ -254,7 +254,7 @@ export function EmailPipelineProgress({
   // Trigger n8n classification when import completes
   useEffect(() => {
     if (!importComplete || classificationTriggeredRef.current || skipClassification) return;
-    
+
     const triggerClassification = async () => {
       classificationTriggeredRef.current = true;
       setClassificationTriggered(true);
@@ -274,9 +274,9 @@ export function EmailPipelineProgress({
           throw new Error(`Webhook returned ${response.status}`);
         }
 
-        console.log('[EmailPipeline] n8n classification triggered');
+        logger.debug('n8n classification triggered');
       } catch (error) {
-        console.error('[EmailPipeline] Failed to trigger classification:', error);
+        logger.error('Failed to trigger classification', error);
         setWebhookError(true);
         classificationTriggeredRef.current = false;
         toast.error('Failed to start classification. Click retry.');
@@ -301,16 +301,17 @@ export function EmailPipelineProgress({
           })
           .eq('workspace_id', workspaceId);
       } catch (err) {
-        console.error('Failed to update onboarding_progress:', err);
+        logger.error('Failed to update onboarding_progress', err);
       }
     };
 
     updateProgress();
   }, [isComplete, stats.emailsClassified, workspaceId]);
 
-  const classifyPercent = stats.emailsReceived > 0
-    ? Math.round((stats.emailsClassified / stats.emailsReceived) * 100)
-    : 0;
+  const classifyPercent =
+    stats.emailsReceived > 0
+      ? Math.round((stats.emailsClassified / stats.emailsReceived) * 100)
+      : 0;
 
   const estimateTime = (): string => {
     const remaining = stats.emailsReceived - stats.emailsClassified;
@@ -351,7 +352,9 @@ export function EmailPipelineProgress({
         <StageCard
           stage={1}
           title="Import Emails"
-          description={importComplete ? 'Downloaded your email history' : 'Downloading your email history'}
+          description={
+            importComplete ? 'Downloaded your email history' : 'Downloading your email history'
+          }
           status={importStatus}
           icon={Mail}
         >
@@ -376,7 +379,9 @@ export function EmailPipelineProgress({
                 </span>
               </div>
               <div className="pt-1 border-t mt-2">
-                <span className="font-semibold">Total: {totalEmails.toLocaleString()} emails imported</span>
+                <span className="font-semibold">
+                  Total: {totalEmails.toLocaleString()} emails imported
+                </span>
               </div>
             </div>
           )}
@@ -387,7 +392,10 @@ export function EmailPipelineProgress({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
-                <span>Scanning mailbox... {stats.emailsReceived > 0 && `${stats.emailsReceived.toLocaleString()} found`}</span>
+                <span>
+                  Scanning mailbox...{' '}
+                  {stats.emailsReceived > 0 && `${stats.emailsReceived.toLocaleString()} found`}
+                </span>
               </div>
             </div>
           )}
@@ -401,10 +409,10 @@ export function EmailPipelineProgress({
             classifyStatus === 'done'
               ? 'AI sorted emails into categories'
               : classifyStatus === 'in_progress'
-              ? 'AI is sorting emails into categories'
-              : classifyStatus === 'error'
-              ? 'Classification failed'
-              : 'AI will sort emails into categories'
+                ? 'AI is sorting emails into categories'
+                : classifyStatus === 'error'
+                  ? 'Classification failed'
+                  : 'AI will sort emails into categories'
           }
           status={classifyStatus}
           icon={Sparkles}
@@ -422,7 +430,8 @@ export function EmailPipelineProgress({
                 <Progress value={classifyPercent} className="h-2" />
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
-                    {stats.emailsClassified.toLocaleString()} / {stats.emailsReceived.toLocaleString()}
+                    {stats.emailsClassified.toLocaleString()} /{' '}
+                    {stats.emailsReceived.toLocaleString()}
                   </span>
                   <span className="font-medium">{classifyPercent}%</span>
                 </div>
@@ -449,7 +458,12 @@ export function EmailPipelineProgress({
           {classifyStatus === 'error' && (
             <div className="space-y-2">
               <p className="text-sm text-destructive">Failed to start classification</p>
-              <Button onClick={handleRetryClassification} size="sm" variant="outline" className="gap-2">
+              <Button
+                onClick={handleRetryClassification}
+                size="sm"
+                variant="outline"
+                className="gap-2"
+              >
                 <RotateCcw className="h-3.5 w-3.5" />
                 Retry
               </Button>

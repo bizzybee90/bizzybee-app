@@ -2,16 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  CheckCircle2, 
-  Send, 
-  Clock, 
-  Bot, 
-  User, 
-  AlertCircle,
-  FileEdit,
-  Mail
-} from 'lucide-react';
+import { CheckCircle2, Send, Clock, Bot, User, AlertCircle, FileEdit, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
 
@@ -61,7 +52,8 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data: sentMessages } = await supabase
           .from('messages')
-          .select(`
+          .select(
+            `
             id,
             created_at,
             body,
@@ -71,7 +63,8 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
               title,
               workspace_id
             )
-          `)
+          `,
+          )
           .eq('direction', 'outbound')
           .eq('is_internal', false)
           .gte('created_at', oneDayAgo)
@@ -112,7 +105,7 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
         // Combine into activities
         const allActivities: ActivityItem[] = [];
 
-        autoHandled?.forEach(c => {
+        autoHandled?.forEach((c) => {
           allActivities.push({
             id: `auto-${c.id}`,
             type: 'auto_handled',
@@ -124,20 +117,23 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           });
         });
 
-        sentMessages?.forEach(m => {
-          if ((m.conversations as any)?.workspace_id === workspace.id) {
+        sentMessages?.forEach((m) => {
+          const convJoin = m.conversations as { workspace_id?: string; title?: string } | null;
+          if (convJoin?.workspace_id === workspace.id) {
             allActivities.push({
               id: `sent-${m.id}`,
               type: 'sent',
-              title: decodeHtmlEntities((m.conversations as any)?.title) || 'Message sent',
-              description: decodeHtmlEntities(m.body?.substring(0, 60) + (m.body && m.body.length > 60 ? '...' : '')),
+              title: decodeHtmlEntities(convJoin?.title) || 'Message sent',
+              description: decodeHtmlEntities(
+                m.body?.substring(0, 60) + (m.body && m.body.length > 60 ? '...' : ''),
+              ),
               timestamp: new Date(m.created_at!),
               conversationId: m.conversation_id || undefined,
             });
           }
         });
 
-        drafts?.forEach(c => {
+        drafts?.forEach((c) => {
           allActivities.push({
             id: `draft-${c.id}`,
             type: 'draft_ready',
@@ -148,7 +144,7 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           });
         });
 
-        reviewed?.forEach(c => {
+        reviewed?.forEach((c) => {
           allActivities.push({
             id: `review-${c.id}`,
             type: 'reviewed',
@@ -159,7 +155,7 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           });
         });
 
-        recentEmails?.forEach(e => {
+        recentEmails?.forEach((e) => {
           allActivities.push({
             id: `inbox-${e.id}`,
             type: 'inbox',
@@ -191,9 +187,9 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `workspace_id=eq.${workspace?.id}`
+          filter: `workspace_id=eq.${workspace?.id}`,
         },
-        () => fetchActivities()
+        () => fetchActivities(),
       )
       .subscribe();
 
@@ -240,11 +236,10 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
     }
   };
 
-
   if (loading) {
     return (
       <div className="space-y-3">
-        {[1, 2, 3].map(i => (
+        {[1, 2, 3].map((i) => (
           <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse">
             <div className="h-8 w-8 rounded-full bg-muted" />
             <div className="flex-1 space-y-2">
@@ -268,13 +263,13 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
 
   return (
     <div className="space-y-2">
-      {activities.map(activity => (
+      {activities.map((activity) => (
         <div
           key={activity.id}
           className={cn(
-            "flex items-start gap-3 p-3 rounded-lg transition-colors",
-            activity.conversationId && "cursor-pointer hover:bg-accent/50",
-            activity.type === 'draft_ready' && "bg-warning/5 border border-warning/20"
+            'flex items-start gap-3 p-3 rounded-lg transition-colors',
+            activity.conversationId && 'cursor-pointer hover:bg-accent/50',
+            activity.type === 'draft_ready' && 'bg-warning/5 border border-warning/20',
           )}
           onClick={() => {
             if (activity.conversationId && onNavigate) {
@@ -288,9 +283,7 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
             }
           }}
         >
-          <div className="flex-shrink-0 mt-0.5">
-            {getActivityIcon(activity.type)}
-          </div>
+          <div className="flex-shrink-0 mt-0.5">{getActivityIcon(activity.type)}</div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium text-muted-foreground">
@@ -301,12 +294,8 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
                 {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
               </span>
             </div>
-            <p className="text-sm font-medium text-foreground truncate">
-              {activity.title}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {activity.description}
-            </p>
+            <p className="text-sm font-medium text-foreground truncate">{activity.title}</p>
+            <p className="text-xs text-muted-foreground truncate">{activity.description}</p>
           </div>
         </div>
       ))}

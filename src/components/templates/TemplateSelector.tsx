@@ -2,7 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { FileText } from 'lucide-react';
 
 interface Template {
@@ -26,7 +33,7 @@ export const TemplateSelector = ({ onSelect }: TemplateSelectorProps) => {
         .from('templates')
         .select('*')
         .order('usage_count', { ascending: false });
-      
+
       if (data) {
         setTemplates(data);
       }
@@ -42,7 +49,7 @@ export const TemplateSelector = ({ onSelect }: TemplateSelectorProps) => {
     // Update usage count
     await supabase
       .from('templates')
-      .update({ usage_count: (template as any).usage_count + 1 })
+      .update({ usage_count: template.usage_count + 1 })
       .eq('id', template.id);
   };
 

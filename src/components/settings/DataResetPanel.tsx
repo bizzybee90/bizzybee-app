@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { AlertTriangle, Loader2, RotateCcw, Trash2, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -39,8 +40,8 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
         .from('conversations')
         .select('id')
         .eq('workspace_id', workspaceId);
-      
-      const conversationIds = conversations?.map(c => c.id) || [];
+
+      const conversationIds = conversations?.map((c) => c.id) || [];
 
       if (conversationIds.length > 0) {
         await supabase.from('messages').delete().in('conversation_id', conversationIds);
@@ -62,7 +63,7 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
 
       toast.success('Data reset complete');
     } catch (error) {
-      console.error('Error resetting data:', error);
+      logger.error('Error resetting data', error);
       toast.error('Failed to reset data');
     } finally {
       setIsResetting(false);
@@ -73,17 +74,22 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
     setIsResetting(true);
     try {
       await handleReset();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('users').update({ 
-          onboarding_completed: false,
-          onboarding_step: 'welcome'
-        }).eq('id', user.id);
+        await supabase
+          .from('users')
+          .update({
+            onboarding_completed: false,
+            onboarding_step: 'welcome',
+          })
+          .eq('id', user.id);
       }
       toast.success('Redirecting to onboarding...');
       navigate('/onboarding');
     } catch (error) {
-      console.error('Error re-onboarding:', error);
+      logger.error('Error re-onboarding', error);
       toast.error('Failed to start re-onboarding');
     } finally {
       setIsResetting(false);
@@ -93,13 +99,15 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
   const handleFullNukeAndRestart = async () => {
     setIsNuking(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Step 1: Nuclear reset (conversations, messages, emails, import jobs)
       setNukeStep('Wiping email & conversation data…');
       const { error: nukeError } = await supabase.functions.invoke('nuclear-reset', {
-        body: { workspaceId, confirm: 'CONFIRM_NUCLEAR_RESET' }
+        body: { workspaceId, confirm: 'CONFIRM_NUCLEAR_RESET' },
       });
       if (nukeError) throw nukeError;
 
@@ -136,23 +144,28 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
 
       // Step 7: Reset onboarding state
       setNukeStep('Resetting onboarding state…');
-      await supabase.from('users').update({
-        onboarding_completed: false,
-        onboarding_step: 'welcome',
-      }).eq('id', user.id);
+      await supabase
+        .from('users')
+        .update({
+          onboarding_completed: false,
+          onboarding_step: 'welcome',
+        })
+        .eq('id', user.id);
 
       // Step 8: Clear localStorage
       try {
-        Object.keys(localStorage).forEach(key => {
+        Object.keys(localStorage).forEach((key) => {
           if (key.startsWith('bizzybee:')) localStorage.removeItem(key);
         });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       setNukeStep('Done!');
       toast.success('Full reset complete — starting fresh!');
       navigate('/onboarding?reset=true');
     } catch (error: any) {
-      console.error('Nuclear reset failed:', error);
+      logger.error('Nuclear reset failed', error);
       toast.error(`Reset failed: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsNuking(false);
@@ -177,20 +190,20 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
           <div className="flex items-start gap-3">
             <Zap className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-destructive">Full Wipe & Restart Onboarding</p>
+              <p className="text-sm font-semibold text-destructive">
+                Full Wipe & Restart Onboarding
+              </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Deletes <strong>everything</strong> — emails, conversations, FAQs, competitor research, AI learning, voice profile, customers — and sends you back to step 1. Use this for a clean end-to-end test.
+                Deletes <strong>everything</strong> — emails, conversations, FAQs, competitor
+                research, AI learning, voice profile, customers — and sends you back to step 1. Use
+                this for a clean end-to-end test.
               </p>
             </div>
           </div>
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                variant="destructive"
-                className="w-full"
-                disabled={isNuking || isResetting}
-              >
+              <Button variant="destructive" className="w-full" disabled={isNuking || isResetting}>
                 {isNuking ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -211,7 +224,9 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
                   This will delete EVERYTHING
                 </AlertDialogTitle>
                 <AlertDialogDescription className="space-y-2">
-                  <span className="block">This removes all data from your workspace with no recovery possible:</span>
+                  <span className="block">
+                    This removes all data from your workspace with no recovery possible:
+                  </span>
                   <ul className="text-sm list-disc list-inside space-y-1 text-foreground/80">
                     <li>All emails, conversations & messages</li>
                     <li>All FAQs & knowledge base content</li>
@@ -220,7 +235,10 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
                     <li>All customers & sender rules</li>
                     <li>All onboarding progress</li>
                   </ul>
-                  <span className="block font-medium text-destructive">You will be sent back to Step 1 of onboarding. Your email connection is preserved.</span>
+                  <span className="block font-medium text-destructive">
+                    You will be sent back to Step 1 of onboarding. Your email connection is
+                    preserved.
+                  </span>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -239,11 +257,11 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
         {/* Lighter Reset Options */}
         <div className="space-y-3">
           <Label className="text-sm font-medium text-muted-foreground">Lighter options:</Label>
-          
+
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Checkbox 
-                id="sender-rules" 
+              <Checkbox
+                id="sender-rules"
                 checked={includeSenderRules}
                 onCheckedChange={(checked) => setIncludeSenderRules(checked as boolean)}
               />
@@ -252,8 +270,8 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
               </Label>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox 
-                id="customers" 
+              <Checkbox
+                id="customers"
                 checked={includeCustomers}
                 onCheckedChange={(checked) => setIncludeCustomers(checked as boolean)}
               />
@@ -262,8 +280,8 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
               </Label>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox 
-                id="business-context" 
+              <Checkbox
+                id="business-context"
                 checked={includeBusinessContext}
                 onCheckedChange={(checked) => setIncludeBusinessContext(checked as boolean)}
               />
@@ -279,12 +297,16 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
           <div className="flex flex-col gap-3">
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
                   disabled={isResetting || isNuking}
                 >
-                  {isResetting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                  {isResetting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
                   Reset Data Only
                 </Button>
               </AlertDialogTrigger>
@@ -297,7 +319,10 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleReset} className="bg-destructive hover:bg-destructive/90">
+                  <AlertDialogAction
+                    onClick={handleReset}
+                    className="bg-destructive hover:bg-destructive/90"
+                  >
                     Reset Data
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -306,12 +331,16 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button 
+                <Button
                   variant="outline"
                   className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
                   disabled={isResetting || isNuking}
                 >
-                  {isResetting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                  {isResetting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                  )}
                   Reset & Re-Onboard (partial)
                 </Button>
               </AlertDialogTrigger>
@@ -319,13 +348,16 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Reset and start fresh?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will delete the selected data and restart the onboarding wizard. 
-                    Your email connection and knowledge base will be preserved.
+                    This will delete the selected data and restart the onboarding wizard. Your email
+                    connection and knowledge base will be preserved.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleReOnboard} className="bg-destructive hover:bg-destructive/90">
+                  <AlertDialogAction
+                    onClick={handleReOnboard}
+                    className="bg-destructive hover:bg-destructive/90"
+                  >
                     Reset & Re-Onboard
                   </AlertDialogAction>
                 </AlertDialogFooter>

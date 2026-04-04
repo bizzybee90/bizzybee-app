@@ -10,15 +10,15 @@ import { Button } from '@/components/ui/button';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { 
-  Activity, 
-  CheckCircle2, 
-  Send, 
-  Bot, 
-  FileEdit, 
+import {
+  Activity,
+  CheckCircle2,
+  Send,
+  Bot,
+  FileEdit,
   AlertCircle,
   ArrowLeft,
-  TrendingUp
+  TrendingUp,
 } from 'lucide-react';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
 import { cn } from '@/lib/utils';
@@ -33,23 +33,32 @@ interface ActivityItem {
   category?: string;
 }
 
+interface JoinedConversation {
+  id: string;
+  title: string | null;
+  workspace_id: string;
+  email_classification: string | null;
+}
+
 export const ActivityPage = () => {
   const { workspace } = useWorkspace();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({
     totalToday: 0,
     autoHandled: 0,
     sent: 0,
-    reviewed: 0
+    reviewed: 0,
   });
 
   useEffect(() => {
     const fetchActivities = async () => {
       if (!workspace?.id) return;
 
+      setError(null);
       try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -64,21 +73,23 @@ export const ActivityPage = () => {
             .not('auto_handled_at', 'is', null)
             .gte('auto_handled_at', today.toISOString())
             .order('auto_handled_at', { ascending: false }),
-          
+
           supabase
             .from('messages')
-            .select(`
+            .select(
+              `
               id,
               created_at,
               body,
               conversation_id,
               conversations!inner(id, title, workspace_id, email_classification)
-            `)
+            `,
+            )
             .eq('direction', 'outbound')
             .eq('is_internal', false)
             .gte('created_at', today.toISOString())
             .order('created_at', { ascending: false }),
-          
+
           supabase
             .from('conversations')
             .select('id, title, summary_for_human, updated_at, email_classification')
@@ -87,20 +98,20 @@ export const ActivityPage = () => {
             .is('final_response', null)
             .in('status', ['new', 'open', 'ai_handling'])
             .order('updated_at', { ascending: false }),
-          
+
           supabase
             .from('conversations')
             .select('id, title, reviewed_at, review_outcome, email_classification')
             .eq('workspace_id', workspace.id)
             .not('reviewed_at', 'is', null)
             .gte('reviewed_at', today.toISOString())
-            .order('reviewed_at', { ascending: false })
+            .order('reviewed_at', { ascending: false }),
         ]);
 
         // Combine into activities
         const allActivities: ActivityItem[] = [];
 
-        autoHandled.data?.forEach(c => {
+        autoHandled.data?.forEach((c) => {
           allActivities.push({
             id: `auto-${c.id}`,
             type: 'auto_handled',
@@ -112,8 +123,8 @@ export const ActivityPage = () => {
           });
         });
 
-        sentMessages.data?.forEach(m => {
-          const conv = m.conversations as any;
+        sentMessages.data?.forEach((m) => {
+          const conv = m.conversations as unknown as JoinedConversation | null;
           if (conv?.workspace_id === workspace.id) {
             allActivities.push({
               id: `sent-${m.id}`,
@@ -122,12 +133,12 @@ export const ActivityPage = () => {
               description: m.body?.substring(0, 80) + (m.body && m.body.length > 80 ? '...' : ''),
               timestamp: new Date(m.created_at!),
               conversationId: m.conversation_id || undefined,
-              category: conv?.email_classification,
+              category: conv?.email_classification ?? undefined,
             });
           }
         });
 
-        drafts.data?.forEach(c => {
+        drafts.data?.forEach((c) => {
           allActivities.push({
             id: `draft-${c.id}`,
             type: 'draft_ready',
@@ -139,7 +150,7 @@ export const ActivityPage = () => {
           });
         });
 
-        reviewed.data?.forEach(c => {
+        reviewed.data?.forEach((c) => {
           allActivities.push({
             id: `review-${c.id}`,
             type: 'reviewed',
@@ -159,11 +170,17 @@ export const ActivityPage = () => {
         setStats({
           totalToday: allActivities.length,
           autoHandled: autoHandled.data?.length || 0,
-          sent: sentMessages.data?.filter(m => (m.conversations as any)?.workspace_id === workspace.id).length || 0,
-          reviewed: reviewed.data?.length || 0
+          sent:
+            sentMessages.data?.filter(
+              (m) =>
+                (m.conversations as unknown as JoinedConversation | null)?.workspace_id ===
+                workspace.id,
+            ).length || 0,
+          reviewed: reviewed.data?.length || 0,
         });
-      } catch (error) {
-        console.error('Error fetching activities:', error);
+      } catch (err) {
+        console.error('Error fetching activities:', err);
+        setError('Failed to load activity. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -191,12 +208,18 @@ export const ActivityPage = () => {
 
   const getActivityLabel = (type: ActivityItem['type']) => {
     switch (type) {
-      case 'auto_handled': return 'Auto-handled';
-      case 'sent': return 'Sent';
-      case 'draft_ready': return 'Draft';
-      case 'escalated': return 'Escalated';
-      case 'reviewed': return 'Reviewed';
-      default: return 'Activity';
+      case 'auto_handled':
+        return 'Auto-handled';
+      case 'sent':
+        return 'Sent';
+      case 'draft_ready':
+        return 'Draft';
+      case 'escalated':
+        return 'Escalated';
+      case 'reviewed':
+        return 'Reviewed';
+      default:
+        return 'Activity';
     }
   };
 
@@ -253,6 +276,16 @@ export const ActivityPage = () => {
           </div>
         </Card>
 
+        {/* Error State */}
+        {error && (
+          <Card className="p-4 border-destructive bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+              <p className="text-sm font-medium text-destructive">{error}</p>
+            </div>
+          </Card>
+        )}
+
         {/* Activity List */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-4">
@@ -262,8 +295,11 @@ export const ActivityPage = () => {
 
           {loading ? (
             <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse"
+                >
                   <div className="h-8 w-8 rounded-full bg-muted" />
                   <div className="flex-1 space-y-2">
                     <div className="h-4 w-3/4 bg-muted rounded" />
@@ -280,19 +316,17 @@ export const ActivityPage = () => {
             </div>
           ) : (
             <div className="space-y-2">
-              {activities.map(activity => (
+              {activities.map((activity) => (
                 <div
                   key={activity.id}
                   className={cn(
-                    "flex items-start gap-3 p-3 rounded-lg transition-colors",
-                    activity.conversationId && "cursor-pointer hover:bg-accent/50",
-                    activity.type === 'draft_ready' && "bg-warning/5 border border-warning/20"
+                    'flex items-start gap-3 p-3 rounded-lg transition-colors',
+                    activity.conversationId && 'cursor-pointer hover:bg-accent/50',
+                    activity.type === 'draft_ready' && 'bg-warning/5 border border-warning/20',
                   )}
                   onClick={() => handleActivityClick(activity)}
                 >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {getActivityIcon(activity.type)}
-                  </div>
+                  <div className="flex-shrink-0 mt-0.5">{getActivityIcon(activity.type)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-medium text-muted-foreground">
@@ -303,9 +337,7 @@ export const ActivityPage = () => {
                         {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {activity.title}
-                    </p>
+                    <p className="text-sm font-medium text-foreground truncate">{activity.title}</p>
                     <p className="text-xs text-muted-foreground line-clamp-2">
                       {activity.description}
                     </p>
@@ -320,19 +352,10 @@ export const ActivityPage = () => {
   );
 
   if (isMobile) {
-    return (
-      <MobilePageLayout>
-        {mainContent}
-      </MobilePageLayout>
-    );
+    return <MobilePageLayout>{mainContent}</MobilePageLayout>;
   }
 
-  return (
-    <ThreeColumnLayout
-      sidebar={<Sidebar />}
-      main={mainContent}
-    />
-  );
+  return <ThreeColumnLayout sidebar={<Sidebar />} main={mainContent} />;
 };
 
 export default ActivityPage;

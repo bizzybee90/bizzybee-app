@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -8,71 +8,147 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
-import { 
-  ArrowRight, 
-  BookmarkPlus, 
+import {
+  ArrowRight,
+  BookmarkPlus,
   Loader2,
   Tag,
   Mail,
   Building2,
   CheckCircle2,
-  Plus
+  Plus,
 } from 'lucide-react';
 import { Conversation } from '@/lib/types';
 
 // Extended classifications matching all email types
 const CLASSIFICATIONS = [
   // Customer inquiries - require reply
-  { value: 'customer_inquiry', label: 'Customer Inquiry', requiresReply: true, category: 'inquiry' },
+  {
+    value: 'customer_inquiry',
+    label: 'Customer Inquiry',
+    requiresReply: true,
+    category: 'inquiry',
+  },
   { value: 'booking_request', label: 'Booking Request', requiresReply: true, category: 'inquiry' },
   { value: 'quote_request', label: 'Quote Request', requiresReply: true, category: 'inquiry' },
-  { value: 'reschedule_request', label: 'Reschedule Request', requiresReply: true, category: 'inquiry' },
-  { value: 'cancellation_request', label: 'Cancellation Request', requiresReply: true, category: 'inquiry' },
-  { value: 'complaint_dispute', label: 'Complaint/Dispute', requiresReply: true, category: 'complaint' },
-  { value: 'customer_complaint', label: 'Customer Complaint', requiresReply: true, category: 'complaint' },
-  { value: 'customer_feedback', label: 'Customer Feedback', requiresReply: false, category: 'feedback' },
-  
+  {
+    value: 'reschedule_request',
+    label: 'Reschedule Request',
+    requiresReply: true,
+    category: 'inquiry',
+  },
+  {
+    value: 'cancellation_request',
+    label: 'Cancellation Request',
+    requiresReply: true,
+    category: 'inquiry',
+  },
+  {
+    value: 'complaint_dispute',
+    label: 'Complaint/Dispute',
+    requiresReply: true,
+    category: 'complaint',
+  },
+  {
+    value: 'customer_complaint',
+    label: 'Customer Complaint',
+    requiresReply: true,
+    category: 'complaint',
+  },
+  {
+    value: 'customer_feedback',
+    label: 'Customer Feedback',
+    requiresReply: false,
+    category: 'feedback',
+  },
+
   // Leads & follow-ups
   { value: 'lead_new', label: 'New Lead', requiresReply: true, category: 'lead' },
   { value: 'lead_followup', label: 'Lead Follow-up', requiresReply: true, category: 'lead' },
-  
+
   // Misdirected - wrong recipient
-  { value: 'misdirected', label: 'Misdirected Email', requiresReply: false, category: 'misdirected' },
-  
+  {
+    value: 'misdirected',
+    label: 'Misdirected Email',
+    requiresReply: false,
+    category: 'misdirected',
+  },
+
   // Financial - typically no reply
-  { value: 'supplier_invoice', label: 'Supplier Invoice', requiresReply: false, category: 'financial' },
-  { value: 'supplier_urgent', label: 'Supplier Urgent', requiresReply: true, category: 'financial' },
-  { value: 'payment_confirmation', label: 'Payment Confirmation', requiresReply: false, category: 'financial' },
-  { value: 'receipt_confirmation', label: 'Receipt/Confirmation', requiresReply: false, category: 'financial' },
-  
+  {
+    value: 'supplier_invoice',
+    label: 'Supplier Invoice',
+    requiresReply: false,
+    category: 'financial',
+  },
+  {
+    value: 'supplier_urgent',
+    label: 'Supplier Urgent',
+    requiresReply: true,
+    category: 'financial',
+  },
+  {
+    value: 'payment_confirmation',
+    label: 'Payment Confirmation',
+    requiresReply: false,
+    category: 'financial',
+  },
+  {
+    value: 'receipt_confirmation',
+    label: 'Receipt/Confirmation',
+    requiresReply: false,
+    category: 'financial',
+  },
+
   // Partner & Business
   { value: 'partner_request', label: 'Partner Request', requiresReply: true, category: 'partner' },
-  
+
   // Automated/System
-  { value: 'automated_notification', label: 'Auto Notification', requiresReply: false, category: 'system' },
+  {
+    value: 'automated_notification',
+    label: 'Auto Notification',
+    requiresReply: false,
+    category: 'system',
+  },
   { value: 'internal_system', label: 'Internal System', requiresReply: false, category: 'system' },
-  { value: 'informational_only', label: 'Info Only (FYI)', requiresReply: false, category: 'system' },
-  
+  {
+    value: 'informational_only',
+    label: 'Info Only (FYI)',
+    requiresReply: false,
+    category: 'system',
+  },
+
   // Marketing/Spam
-  { value: 'marketing_newsletter', label: 'Marketing/Newsletter', requiresReply: false, category: 'marketing' },
+  {
+    value: 'marketing_newsletter',
+    label: 'Marketing/Newsletter',
+    requiresReply: false,
+    category: 'marketing',
+  },
   { value: 'spam_phishing', label: 'Spam/Phishing', requiresReply: false, category: 'spam' },
-  
+
   // HR/Recruitment
-  { value: 'recruitment_hr', label: 'Recruitment/HR', requiresReply: false, category: 'recruitment' },
-  
+  {
+    value: 'recruitment_hr',
+    label: 'Recruitment/HR',
+    requiresReply: false,
+    category: 'recruitment',
+  },
+
   // Custom - user-defined
   { value: '__custom__', label: 'Custom...', requiresReply: false, category: 'custom' },
 ];
@@ -99,16 +175,16 @@ interface TriageCorrectionFlowProps {
   onUpdate?: () => void;
 }
 
-export function TriageCorrectionFlow({ 
-  conversation, 
-  open, 
-  onOpenChange, 
-  onUpdate 
+export function TriageCorrectionFlow({
+  conversation,
+  open,
+  onOpenChange,
+  onUpdate,
 }: TriageCorrectionFlowProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newClassification, setNewClassification] = useState(
-    conversation.email_classification || ''
+    conversation.email_classification || '',
   );
   const [customClassification, setCustomClassification] = useState('');
   const [customRequiresReply, setCustomRequiresReply] = useState(false);
@@ -120,14 +196,19 @@ export function TriageCorrectionFlow({
   const senderDomain = senderEmail?.split('@')[1] || null;
 
   const isCustomMode = newClassification === '__custom__';
-  const effectiveClassification = isCustomMode 
-    ? customClassification.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+  const effectiveClassification = isCustomMode
+    ? customClassification
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
     : newClassification;
-  
-  const selectedConfig = CLASSIFICATIONS.find(c => c.value === newClassification);
-  const currentConfig = CLASSIFICATIONS.find(c => c.value === currentClassification);
-  
-  const effectiveRequiresReply = isCustomMode ? customRequiresReply : (selectedConfig?.requiresReply ?? false);
+
+  const selectedConfig = CLASSIFICATIONS.find((c) => c.value === newClassification);
+  const currentConfig = CLASSIFICATIONS.find((c) => c.value === currentClassification);
+
+  const effectiveRequiresReply = isCustomMode
+    ? customRequiresReply
+    : (selectedConfig?.requiresReply ?? false);
 
   const handleClassificationChange = (value: string) => {
     setNewClassification(value);
@@ -138,12 +219,12 @@ export function TriageCorrectionFlow({
 
   const handleSubmit = async () => {
     const finalClassification = effectiveClassification;
-    
+
     if (!finalClassification || finalClassification === currentClassification) {
       toast({ title: 'Please select or enter a different classification' });
       return;
     }
-    
+
     if (isCustomMode && !customClassification.trim()) {
       toast({ title: 'Please enter a custom classification name' });
       return;
@@ -151,7 +232,9 @@ export function TriageCorrectionFlow({
 
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data: userData } = await supabase
         .from('users')
         .select('workspace_id')
@@ -180,14 +263,12 @@ export function TriageCorrectionFlow({
         .single();
 
       if (correctionError) {
-        console.error('Failed to log correction:', correctionError);
+        logger.error('Failed to log correction', correctionError);
       }
 
       // 2. Create sender rule if enabled
       if (createSenderRule && (senderEmail || senderDomain)) {
-        const senderPattern = senderRuleScope === 'email' 
-          ? senderEmail 
-          : `*@${senderDomain}`;
+        const senderPattern = senderRuleScope === 'email' ? senderEmail : `*@${senderDomain}`;
 
         // Check if rule already exists
         const { data: existingRule } = await supabase
@@ -211,19 +292,17 @@ export function TriageCorrectionFlow({
             .eq('id', existingRule.id);
         } else {
           // Create new rule
-          const { error: ruleError } = await supabase
-            .from('sender_rules')
-            .insert({
-              workspace_id: userData.workspace_id,
-              sender_pattern: senderPattern,
-              default_classification: finalClassification,
-              default_requires_reply: newRequiresReply,
-              is_active: true,
-              created_from_correction: correctionData?.id,
-            });
+          const { error: ruleError } = await supabase.from('sender_rules').insert({
+            workspace_id: userData.workspace_id,
+            sender_pattern: senderPattern,
+            default_classification: finalClassification,
+            default_requires_reply: newRequiresReply,
+            is_active: true,
+            created_from_correction: correctionData?.id,
+          });
 
           if (ruleError) {
-            console.error('Failed to create sender rule:', ruleError);
+            logger.error('Failed to create sender rule', ruleError);
           }
         }
       }
@@ -251,21 +330,21 @@ export function TriageCorrectionFlow({
 
       if (error) throw error;
 
-      toast({ 
+      toast({
         title: 'Classification corrected',
-        description: createSenderRule 
+        description: createSenderRule
           ? `Sender rule created for ${senderRuleScope === 'email' ? senderEmail : senderDomain}`
-          : undefined
+          : undefined,
       });
-      
+
       onOpenChange(false);
       onUpdate?.();
     } catch (error) {
-      console.error('Error correcting classification:', error);
-      toast({ 
-        title: 'Failed to correct classification', 
+      logger.error('Error correcting classification', error);
+      toast({
+        title: 'Failed to correct classification',
         description: 'Please try again',
-        variant: 'destructive' 
+        variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
@@ -281,7 +360,8 @@ export function TriageCorrectionFlow({
             Correct Classification
           </DialogTitle>
           <DialogDescription>
-            Correct the AI's classification. Optionally create a sender rule to automatically classify future emails.
+            Correct the AI's classification. Optionally create a sender rule to automatically
+            classify future emails.
           </DialogDescription>
         </DialogHeader>
 
@@ -292,8 +372,8 @@ export function TriageCorrectionFlow({
               Current Classification
             </Label>
             <div className="flex items-center gap-2">
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={currentConfig ? CATEGORY_COLORS[currentConfig.category] : 'bg-muted'}
               >
                 {currentConfig?.label || currentClassification}
@@ -315,8 +395,8 @@ export function TriageCorrectionFlow({
               </SelectTrigger>
               <SelectContent>
                 {CLASSIFICATIONS.map((classification) => (
-                  <SelectItem 
-                    key={classification.value} 
+                  <SelectItem
+                    key={classification.value}
                     value={classification.value}
                     disabled={classification.value === currentClassification}
                   >
@@ -328,8 +408,8 @@ export function TriageCorrectionFlow({
                         </>
                       ) : (
                         <>
-                          <Badge 
-                            variant="outline" 
+                          <Badge
+                            variant="outline"
                             className={`${CATEGORY_COLORS[classification.category]} text-xs px-1.5 py-0`}
                           >
                             {classification.category}
@@ -346,12 +426,15 @@ export function TriageCorrectionFlow({
               </SelectContent>
             </Select>
           </div>
-          
+
           {/* Custom classification input */}
           {isCustomMode && (
             <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
               <div className="space-y-2">
-                <Label htmlFor="custom-classification" className="text-xs text-muted-foreground uppercase tracking-wide">
+                <Label
+                  htmlFor="custom-classification"
+                  className="text-xs text-muted-foreground uppercase tracking-wide"
+                >
                   Custom Classification Name
                 </Label>
                 <Input
@@ -362,7 +445,8 @@ export function TriageCorrectionFlow({
                   maxLength={50}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Will be saved as: <code className="bg-muted px-1 rounded">{effectiveClassification || '...'}</code>
+                  Will be saved as:{' '}
+                  <code className="bg-muted px-1 rounded">{effectiveClassification || '...'}</code>
                 </p>
               </div>
               <div className="flex items-center justify-between">
@@ -374,9 +458,9 @@ export function TriageCorrectionFlow({
                     Does this type need a human response?
                   </p>
                 </div>
-                <Switch 
-                  id="custom-requires-reply" 
-                  checked={customRequiresReply} 
+                <Switch
+                  id="custom-requires-reply"
+                  checked={customRequiresReply}
                   onCheckedChange={setCustomRequiresReply}
                 />
               </div>
@@ -394,16 +478,22 @@ export function TriageCorrectionFlow({
                   {currentConfig?.label || currentClassification}
                 </Badge>
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                <Badge 
-                  variant="outline" 
-                  className={isCustomMode ? CATEGORY_COLORS.custom : (selectedConfig ? CATEGORY_COLORS[selectedConfig.category] : '')}
+                <Badge
+                  variant="outline"
+                  className={
+                    isCustomMode
+                      ? CATEGORY_COLORS.custom
+                      : selectedConfig
+                        ? CATEGORY_COLORS[selectedConfig.category]
+                        : ''
+                  }
                 >
                   {isCustomMode ? customClassification || 'Custom' : selectedConfig?.label}
                 </Badge>
               </div>
               {effectiveRequiresReply !== (conversation.requires_reply ?? false) && (
                 <p className="text-xs text-muted-foreground">
-                  {effectiveRequiresReply 
+                  {effectiveRequiresReply
                     ? '→ Will be moved to Action Required'
                     : '→ Will be marked as resolved'}
                 </p>
@@ -424,9 +514,9 @@ export function TriageCorrectionFlow({
                     Automatically classify future emails from this sender
                   </p>
                 </div>
-                <Switch 
-                  id="create-rule" 
-                  checked={createSenderRule} 
+                <Switch
+                  id="create-rule"
+                  checked={createSenderRule}
                   onCheckedChange={setCreateSenderRule}
                 />
               </div>
@@ -461,9 +551,9 @@ export function TriageCorrectionFlow({
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {senderRuleScope === 'domain' 
-                      ? `All emails from @${senderDomain} will be classified as ${isCustomMode ? customClassification : (selectedConfig?.label || newClassification)}`
-                      : `Emails from ${senderEmail} will be classified as ${isCustomMode ? customClassification : (selectedConfig?.label || newClassification)}`}
+                    {senderRuleScope === 'domain'
+                      ? `All emails from @${senderDomain} will be classified as ${isCustomMode ? customClassification : selectedConfig?.label || newClassification}`
+                      : `Emails from ${senderEmail} will be classified as ${isCustomMode ? customClassification : selectedConfig?.label || newClassification}`}
                   </p>
                 </div>
               )}
@@ -475,9 +565,14 @@ export function TriageCorrectionFlow({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={isSubmitting || !effectiveClassification || effectiveClassification === currentClassification || (isCustomMode && !customClassification.trim())}
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              isSubmitting ||
+              !effectiveClassification ||
+              effectiveClassification === currentClassification ||
+              (isCustomMode && !customClassification.trim())
+            }
           >
             {isSubmitting ? (
               <>
