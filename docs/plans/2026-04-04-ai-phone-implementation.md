@@ -187,7 +187,7 @@ Use Supabase MCP `get_advisors` with type `security` to verify RLS is correctly 
 
 ```bash
 cd /Users/michaelcarbon/bizzybee-workspace/bizzybee-app
-npx supabase secrets set RETELL_API_KEY="key_8c05c30d4dfee3bf1d4fbaa93abd" --project-ref atukvssploxwyqpwjmrc
+npx supabase secrets set RETELL_API_KEY="<your-retell-api-key>" --project-ref atukvssploxwyqpwjmrc
 ```
 
 **Step 2: Also set Twilio credentials (needed for Phase 2 UK number provisioning)**
