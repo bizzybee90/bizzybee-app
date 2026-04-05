@@ -122,7 +122,13 @@ export const Sidebar = ({
       <TooltipProvider>
         <div className="flex flex-col h-full overflow-y-auto p-4">
           <div className="flex items-center gap-3 mb-6">
-            <img src={bizzybeelogo} alt="BizzyBee" className="h-44 w-auto" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-bb-gold">
+              <img src={bizzybeelogo} alt="BizzyBee" className="h-5 w-5 object-contain" />
+            </div>
+            <div>
+              <p className="text-[13px] font-medium text-[#FDF8EC]">BizzyBee</p>
+              <p className="text-[10px] text-bb-muted">AI customer operations</p>
+            </div>
           </div>
           <nav className="space-y-1 flex-1">
             {[
@@ -182,8 +188,8 @@ export const Sidebar = ({
                 to={item.to}
                 end={item.end}
                 onClick={onNavigate}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-foreground hover:bg-accent/50 transition-all"
-                activeClassName="bg-primary/10 text-primary rounded-xl"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-[12px] text-[rgba(253,248,236,0.55)] hover:bg-[rgba(255,255,255,0.05)] transition-all"
+                activeClassName="bg-[rgba(201,168,76,0.15)] text-bb-gold rounded-md"
               >
                 <item.icon className={`h-5 w-5 ${item.color || 'text-muted-foreground'}`} />
                 <span className="flex-1 flex items-center justify-between">
@@ -224,12 +230,12 @@ export const Sidebar = ({
           to={to}
           end={end}
           onClick={onNavigate}
-          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all relative text-muted-foreground"
-          activeClassName="text-primary"
+          className="flex items-center justify-center w-10 h-10 rounded-md transition-all relative text-[rgba(253,248,236,0.4)]"
+          activeClassName="text-bb-gold bg-[rgba(201,168,76,0.15)]"
         >
           <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
           {count ? (
-            <span className="absolute -top-0.5 -right-0.5 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none bg-destructive">
+            <span className="absolute -top-0.5 -right-0.5 text-bb-espresso text-[10px] font-medium rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none bg-bb-gold">
               {count > 99 ? '99+' : count}
             </span>
           ) : null}
@@ -246,7 +252,7 @@ export const Sidebar = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center h-full w-16 py-3 gap-1 bg-muted">
+      <div className="flex flex-col items-center h-full w-16 py-3 gap-1 bg-bb-espresso">
         {/* Logo */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -316,7 +322,7 @@ export const Sidebar = ({
         <div className="flex-1" />
 
         {/* Secondary nav - bottom anchored */}
-        <nav className="flex flex-col items-center gap-1 pt-2 border-t border-border">
+        <nav className="flex flex-col items-center gap-1 pt-2 border-t border-[rgba(255,255,255,0.08)]">
           <IconRailItem to="/analytics" icon={BarChart3} label="Analytics" />
           <IconRailItem to="/knowledge-base" icon={BookOpen} label="Knowledge Base" />
           <IconRailItem to="/settings" icon={Settings} label="Settings" />

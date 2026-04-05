@@ -58,18 +58,18 @@ export default function ConversationView() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full bg-background flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="h-screen w-full bg-bb-linen flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-bb-warm-gray" />
       </div>
     );
   }
 
   if (!conversation) {
     return (
-      <div className="h-screen w-full bg-background flex items-center justify-center p-6">
-        <Card className="w-full max-w-lg p-6 space-y-3">
-          <h1 className="text-lg font-semibold">Conversation not found</h1>
-          <p className="text-sm text-muted-foreground">
+      <div className="h-screen w-full bg-bb-linen flex items-center justify-center p-6">
+        <Card className="w-full max-w-lg p-6 space-y-3 bg-bb-white border-bb-border">
+          <h1 className="text-lg font-medium text-bb-text">Conversation not found</h1>
+          <p className="text-sm text-bb-warm-gray">
             This conversation may have been removed or you may not have access.
           </p>
           <Button onClick={() => navigate(-1)}>Go back</Button>

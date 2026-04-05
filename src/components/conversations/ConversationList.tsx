@@ -504,7 +504,7 @@ export const ConversationList = ({
       <div
         className={cn(
           'flex flex-col h-full',
-          isTablet ? 'bg-transparent' : 'bg-muted/30 min-w-[300px]',
+          isTablet ? 'bg-transparent' : 'bg-bb-linen min-w-[300px]',
         )}
       >
         {skeletonList}
@@ -526,11 +526,11 @@ export const ConversationList = ({
       }}
     >
       {filteredConversations.length === 0 && !isLoading ? (
-        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center h-64 text-bb-warm-gray">
           <p className={cn('font-medium', isTablet ? 'text-sm' : 'text-lg')}>
             No conversations found
           </p>
-          <p className="text-xs mt-1">Try adjusting your filters</p>
+          <p className="text-xs mt-1 text-bb-muted">Try adjusting your filters</p>
         </div>
       ) : (
         <>
@@ -546,7 +546,7 @@ export const ConversationList = ({
           ))}
           {isFetching && (
             <div className="flex justify-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-bb-warm-gray" />
             </div>
           )}
         </>
@@ -558,18 +558,17 @@ export const ConversationList = ({
     <div
       className={cn(
         'flex flex-col h-full',
-        isTablet ? 'bg-transparent' : 'bg-muted/30 min-w-[300px]',
+        isTablet ? 'bg-transparent' : 'bg-bb-linen min-w-[300px]',
       )}
     >
       {/* BizzyBee handled X today - Emotional metric header */}
       {filter === 'needs-me' && autoHandledCount > 0 && (
-        <div className="px-4 py-3 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10">
+        <div className="px-4 py-3 bg-gradient-to-r from-bb-gold/5 to-bb-gold/10 border-b border-bb-gold/10">
           <div className="flex items-center gap-2 text-sm">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-foreground/80">
-              BizzyBee cleared{' '}
-              <span className="font-semibold text-primary">{autoHandledCount}</span> messages for
-              you today
+            <Sparkles className="h-4 w-4 text-bb-gold" />
+            <span className="text-bb-text/80">
+              BizzyBee cleared <span className="font-medium text-bb-gold">{autoHandledCount}</span>{' '}
+              messages for you today
             </span>
           </div>
         </div>
@@ -578,12 +577,12 @@ export const ConversationList = ({
       {/* Search and Filter Controls */}
       <div
         className={cn(
-          'py-3 border-b border-border/50 bg-background/80 backdrop-blur-sm space-y-2',
+          'py-3 border-b border-bb-border/50 bg-bb-white/80 backdrop-blur-sm space-y-2',
           isTablet ? 'px-0 mb-4' : 'px-4',
         )}
       >
         {/* Last Updated Indicator */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+        <div className="flex items-center justify-between text-xs text-bb-muted mb-1">
           <span>Last updated: {getTimeSinceUpdate()}</span>
           <Button
             variant="ghost"
@@ -606,7 +605,10 @@ export const ConversationList = ({
         <div className="flex gap-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="flex-1 justify-between h-9 text-sm font-medium">
+              <Button
+                variant="outline"
+                className="flex-1 justify-between h-9 text-sm font-medium border-bb-border"
+              >
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   <span>Filters</span>
@@ -614,7 +616,7 @@ export const ConversationList = ({
                 {activeFilterCount > 0 && (
                   <Badge
                     variant="secondary"
-                    className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-semibold"
+                    className="ml-auto h-5 min-w-5 px-1.5 text-[10px] font-medium"
                   >
                     {activeFilterCount}
                   </Badge>
@@ -655,12 +657,12 @@ export const ConversationList = ({
         <PullToRefresh
           onRefresh={handleRefresh}
           pullingContent={
-            <div className="text-center py-4 text-sm text-muted-foreground">Pull to refresh</div>
+            <div className="text-center py-4 text-sm text-bb-warm-gray">Pull to refresh</div>
           }
           refreshingContent={
             <div className="text-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto" />
-              <p className="text-sm text-muted-foreground mt-2">Refreshing...</p>
+              <Loader2 className="h-5 w-5 animate-spin text-bb-warm-gray mx-auto" />
+              <p className="text-sm text-bb-warm-gray mt-2">Refreshing...</p>
             </div>
           }
         >

@@ -31,14 +31,14 @@ interface StatCardProps {
 
 function StatCard({ icon, label, value, subtitle, iconBg }: StatCardProps) {
   return (
-    <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
+    <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-xl p-4 flex items-start gap-3">
       <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0', iconBg)}>
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-        <p className="text-2xl font-bold text-foreground leading-tight mt-0.5">{value}</p>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        <p className="text-[11px] font-medium text-bb-warm-gray uppercase tracking-wide">{label}</p>
+        <p className="text-[20px] font-medium text-bb-text leading-tight mt-0.5">{value}</p>
+        {subtitle && <p className="text-xs text-bb-warm-gray mt-0.5">{subtitle}</p>}
       </div>
     </div>
   );
@@ -46,7 +46,7 @@ function StatCard({ icon, label, value, subtitle, iconBg }: StatCardProps) {
 
 function StatCardSkeleton() {
   return (
-    <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
+    <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-xl p-4 flex items-start gap-3">
       <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-3 w-20" />
@@ -90,17 +90,17 @@ export const StatsBar = () => {
       />
 
       {/* Minutes Used */}
-      <div className="bg-white border border-border rounded-xl p-4 flex items-start gap-3">
+      <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-xl p-4 flex items-start gap-3">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-amber-50 text-amber-600">
           <Clock className="w-4 h-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <p className="text-[11px] font-medium text-bb-warm-gray uppercase tracking-wide">
             Minutes Used
           </p>
-          <p className="text-2xl font-bold text-foreground leading-tight mt-0.5">
+          <p className="text-[20px] font-medium text-bb-text leading-tight mt-0.5">
             {Math.round(stats.minutes_used)}
-            <span className="text-sm font-normal text-muted-foreground">
+            <span className="text-sm font-normal text-bb-warm-gray">
               {' '}
               / {stats.included_minutes}
             </span>

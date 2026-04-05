@@ -62,23 +62,37 @@ export default function Settings() {
       content: (
         <div className="space-y-3">
           {workspace?.id && (
-            <SettingsSection title="AI Behavior" description="Configure automation and confidence thresholds" defaultOpen>
+            <SettingsSection
+              title="AI Behavior"
+              description="Configure automation and confidence thresholds"
+              defaultOpen
+            >
               <AISettingsCard workspaceId={workspace.id} />
             </SettingsSection>
           )}
-          <SettingsSection title="Brand Rules" description="Rules your AI will always follow" defaultOpen={false}>
+          <SettingsSection
+            title="Brand Rules"
+            description="Rules your AI will always follow"
+            defaultOpen={false}
+          >
             <HouseRulesPanel />
           </SettingsSection>
           <SettingsSection title="Knowledge Base" description="FAQs, pricing, and business facts">
             <KnowledgeBasePanel />
           </SettingsSection>
-          <SettingsSection title="Inbox Learning Insights" description="What BizzyBee learned from your emails">
+          <SettingsSection
+            title="Inbox Learning Insights"
+            description="What BizzyBee learned from your emails"
+          >
             <InboxLearningInsightsPanel />
           </SettingsSection>
           <SettingsSection title="Learning Analytics" description="Track AI improvement over time">
             <LearningAnalyticsDashboard />
           </SettingsSection>
-          <SettingsSection title="Low Confidence Wizard" description="Handle uncertain classifications">
+          <SettingsSection
+            title="Low Confidence Wizard"
+            description="Handle uncertain classifications"
+          >
             <LowConfidenceWizard />
           </SettingsSection>
           <SettingsSection title="Learning System" description="Autonomous learning settings">
@@ -97,7 +111,7 @@ export default function Settings() {
             <TriageLearningPanel />
           </SettingsSection>
         </div>
-      )
+      ),
     },
     {
       id: 'connections',
@@ -106,7 +120,11 @@ export default function Settings() {
       description: 'Email accounts, channels, and integrations',
       content: (
         <div className="space-y-3">
-          <SettingsSection title="Email Settings" description="Connected email accounts" defaultOpen>
+          <SettingsSection
+            title="Email Settings"
+            description="Connected email accounts"
+            defaultOpen
+          >
             <EmailSettingsPanel />
           </SettingsSection>
           <SettingsSection title="Channels" description="Manage communication channels">
@@ -116,7 +134,7 @@ export default function Settings() {
             <IntegrationsPanel />
           </SettingsSection>
         </div>
-      )
+      ),
     },
     {
       id: 'data',
@@ -131,14 +149,18 @@ export default function Settings() {
           <SettingsSection title="GDPR Settings" description="DPA and privacy configuration">
             <WorkspaceGDPRSettingsPanel />
           </SettingsSection>
-          <SettingsSection title="Self-Service GDPR Portal" description="Customer-facing data rights portal">
+          <SettingsSection
+            title="Self-Service GDPR Portal"
+            description="Customer-facing data rights portal"
+          >
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Allow your customers to request data exports or deletion directly through a self-service portal.
-                Share this link with customers who want to exercise their GDPR rights.
+              <p className="text-[13px] text-bb-text">
+                Allow your customers to request data exports or deletion directly through a
+                self-service portal. Share this link with customers who want to exercise their GDPR
+                rights.
               </p>
               <div className="flex items-center gap-3">
-                <code className="flex-1 px-3 py-2 bg-muted rounded-md text-sm font-mono truncate">
+                <code className="flex-1 px-3 py-2 bg-bb-linen rounded-md text-[13px] font-mono truncate text-bb-text-secondary">
                   {window.location.origin}/gdpr-portal
                 </code>
                 <Button variant="outline" size="sm" asChild>
@@ -163,7 +185,7 @@ export default function Settings() {
             <AuditLogPanel />
           </SettingsSection>
         </div>
-      )
+      ),
     },
     {
       id: 'display',
@@ -172,14 +194,18 @@ export default function Settings() {
       description: 'Ordering preferences and notifications',
       content: (
         <div className="space-y-3">
-          <SettingsSection title="Conversation Ordering" description="Sort and prioritize conversations" defaultOpen>
+          <SettingsSection
+            title="Conversation Ordering"
+            description="Sort and prioritize conversations"
+            defaultOpen
+          >
             <ConversationOrderingPanel />
           </SettingsSection>
           <SettingsSection title="Notifications" description="Notification preferences">
             <NotificationPreferencesPanel />
           </SettingsSection>
         </div>
-      )
+      ),
     },
     {
       id: 'developer',
@@ -189,19 +215,25 @@ export default function Settings() {
       content: (
         <div className="space-y-3">
           {/* Admin Dashboards */}
-          <SettingsSection title="Admin Dashboards" description="DevOps monitoring and testing tools" defaultOpen>
+          <SettingsSection
+            title="Admin Dashboards"
+            description="DevOps monitoring and testing tools"
+            defaultOpen
+          >
             <div className="grid gap-3 sm:grid-cols-2">
-              <Card className="bg-muted/30 hover:bg-muted/50 transition-colors">
+              <Card className="bg-bb-linen hover:bg-bb-cream transition-colors border-[0.5px] border-bb-border">
                 <CardContent className="p-4">
                   <Link to="/admin/devops" className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <Wrench className="h-5 w-5 text-primary" />
+                    <div className="p-2 rounded-lg bg-bb-gold/10">
+                      <Wrench className="h-5 w-5 text-bb-gold" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-sm">DevOps Dashboard</p>
-                      <p className="text-xs text-muted-foreground">System health, jobs, logs & triggers</p>
+                      <p className="font-medium text-[14px] text-bb-text">DevOps Dashboard</p>
+                      <p className="text-[12px] text-bb-warm-gray">
+                        System health, jobs, logs & triggers
+                      </p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <ChevronRight className="h-4 w-4 text-bb-warm-gray" />
                   </Link>
                 </CardContent>
               </Card>
@@ -223,8 +255,8 @@ export default function Settings() {
             <CustomerMergePanel />
           </SettingsSection>
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   const handleToggle = (categoryId: string) => {
@@ -235,8 +267,8 @@ export default function Settings() {
     <div className="container mx-auto py-4 md:py-6 px-4 max-w-3xl">
       <div className="mb-6">
         <BackButton to="/" label="Back to Dashboard" />
-        <h1 className="text-2xl md:text-3xl font-bold mt-2">Settings</h1>
-        <p className="text-sm md:text-base text-muted-foreground mt-1">
+        <h1 className="text-[18px] font-medium text-bb-text mt-2">Settings</h1>
+        <p className="text-[12px] text-bb-warm-gray mt-1">
           Manage your workspace configuration and preferences.
         </p>
       </div>
@@ -245,46 +277,50 @@ export default function Settings() {
         {settingsCategories.map((category) => {
           const Icon = category.icon;
           const isOpen = openCategory === category.id;
-          
+
           return (
             <Collapsible
               key={category.id}
               open={isOpen}
               onOpenChange={() => handleToggle(category.id)}
             >
-              <Card className={cn(
-                "transition-all duration-200",
-                isOpen && "ring-2 ring-primary/20"
-              )}>
+              <Card
+                className={cn(
+                  'transition-all duration-200 border-[0.5px] border-bb-border bg-bb-cream',
+                  isOpen && 'ring-2 ring-bb-gold/20',
+                )}
+              >
                 <CollapsibleTrigger className="w-full text-left">
                   <CardHeader className="flex flex-row items-center justify-between py-4">
                     <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "p-2 rounded-lg",
-                        isOpen ? "bg-primary text-primary-foreground" : "bg-muted"
-                      )}>
+                      <div
+                        className={cn(
+                          'p-2 rounded-lg',
+                          isOpen ? 'bg-bb-gold text-white' : 'bg-bb-linen text-bb-warm-gray',
+                        )}
+                      >
                         <Icon className="h-5 w-5" />
                       </div>
                       <div>
-                        <CardTitle className="text-base font-medium">
+                        <CardTitle className="text-[14px] font-medium text-bb-text">
                           {category.title}
                         </CardTitle>
-                        <CardDescription className="text-sm">
+                        <CardDescription className="text-[12px] text-bb-warm-gray">
                           {category.description}
                         </CardDescription>
                       </div>
                     </div>
-                    <ChevronRight className={cn(
-                      "h-5 w-5 text-muted-foreground transition-transform duration-200",
-                      isOpen && "rotate-90"
-                    )} />
+                    <ChevronRight
+                      className={cn(
+                        'h-5 w-5 text-bb-warm-gray transition-transform duration-200',
+                        isOpen && 'rotate-90',
+                      )}
+                    />
                   </CardHeader>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <CardContent className="pt-0 pb-6">
-                    <div className="border-t pt-4">
-                      {category.content}
-                    </div>
+                    <div className="border-t border-bb-border-light pt-4">{category.content}</div>
                   </CardContent>
                 </CollapsibleContent>
               </Card>
@@ -296,11 +332,7 @@ export default function Settings() {
   );
 
   if (isMobile) {
-    return (
-      <MobilePageLayout>
-        {content}
-      </MobilePageLayout>
-    );
+    return <MobilePageLayout>{content}</MobilePageLayout>;
   }
 
   return (

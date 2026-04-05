@@ -167,35 +167,35 @@ export const Home = () => {
       label: 'Urgent',
       count: stats.atRiskCount,
       icon: Flame,
-      iconColor: 'var(--system-red)',
+      iconColor: 'var(--bb-danger)',
       onClick: () => navigate('/needs-action?filter=at-risk'),
     },
     {
       label: 'To reply',
       count: stats.toReplyCount,
       icon: Mail,
-      iconColor: 'var(--system-blue)',
+      iconColor: 'var(--bb-text-secondary)',
       onClick: () => navigate('/needs-action?filter=needs-action'),
     },
     {
       label: 'Drafts',
       count: stats.draftCount,
       icon: FileEdit,
-      iconColor: 'var(--accent-primary)',
+      iconColor: 'var(--bb-gold)',
       onClick: () => navigate('/needs-action?filter=drafts'),
     },
     {
       label: 'Training',
       count: stats.reviewCount,
       icon: Sparkles,
-      iconColor: 'var(--system-green)',
+      iconColor: 'var(--bb-success)',
       onClick: () => navigate('/review'),
     },
   ];
 
   const mainContent = (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="p-4 md:p-6 space-y-6 min-h-full max-w-[1120px] mx-auto">
+      <div className="p-4 md:p-6 space-y-6 min-h-full max-w-[1120px] mx-auto bg-bb-linen">
         {loading ? (
           <div className="space-y-4">
             <Skeleton className="h-28 rounded-2xl" />
@@ -210,10 +210,10 @@ export const Home = () => {
           <>
             {/* ── Greeting ── */}
             <div className="mb-2">
-              <h1 className="text-[34px] font-bold tracking-[-0.022em] text-foreground">
+              <h1 className="text-[18px] font-medium tracking-[-0.022em] text-bb-text">
                 {getGreeting()}
               </h1>
-              <p className="text-[17px] mt-1 text-muted-foreground">
+              <p className="text-[13px] mt-1 text-bb-text-secondary">
                 {stats.atRiskCount > 0
                   ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
                   : stats.toReplyCount > 0
@@ -230,13 +230,15 @@ export const Home = () => {
                   <div
                     key={m.label}
                     onClick={m.onClick}
-                    className="bg-card cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5 rounded-2xl border border-border/40 shadow-sm"
+                    className="bg-bb-cream cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5 rounded-2xl border-[0.5px] border-bb-border"
                   >
                     <Icon className="h-5 w-5" style={{ color: m.iconColor }} />
-                    <p className="text-[34px] font-semibold tracking-tight mt-3 mb-1 text-foreground">
+                    <p className="text-[20px] font-medium tracking-tight mt-3 mb-1 text-bb-text">
                       {m.count}
                     </p>
-                    <p className="text-[13px] text-muted-foreground">{m.label}</p>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                      {m.label}
+                    </p>
                   </div>
                 );
               })}
@@ -245,9 +247,9 @@ export const Home = () => {
             {/* ── All caught up ── */}
             {stats.toReplyCount === 0 && stats.reviewCount === 0 && stats.atRiskCount === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                <Sparkles className="w-8 h-8 mb-4 text-muted-foreground/70" />
-                <h3 className="text-[17px] font-semibold text-foreground">You're all caught up</h3>
-                <p className="text-[15px] mt-1 max-w-sm mx-auto text-muted-foreground">
+                <Sparkles className="w-8 h-8 mb-4 text-bb-muted" />
+                <h3 className="text-[15px] font-medium text-bb-text">You're all caught up</h3>
+                <p className="text-[13px] mt-1 max-w-sm mx-auto text-bb-text-secondary">
                   BizzyBee is actively monitoring your inbox.
                 </p>
               </div>
@@ -256,9 +258,11 @@ export const Home = () => {
             {/* ── Widget Grid ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Pending Drafts */}
-              <div className="bg-card p-5 flex flex-col rounded-2xl border border-border/40 shadow-sm">
+              <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
                 <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[20px] font-semibold text-foreground">Pending Drafts</h2>
+                  <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                    Pending Drafts
+                  </h2>
                 </div>
                 <div className="flex-1">
                   <DraftMessages onNavigate={handleNavigate} maxItems={4} />
@@ -266,7 +270,7 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full mt-3 text-muted-foreground"
+                  className="w-full mt-3 text-bb-text-secondary"
                   onClick={() => navigate('/needs-action?filter=drafts')}
                 >
                   View all drafts
@@ -274,9 +278,11 @@ export const Home = () => {
               </div>
 
               {/* Recent Activity */}
-              <div className="bg-card p-5 flex flex-col rounded-2xl border border-border/40 shadow-sm">
+              <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
                 <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[20px] font-semibold text-foreground">Recent Activity</h2>
+                  <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                    Recent Activity
+                  </h2>
                 </div>
                 <div className="flex-1">
                   <ActivityFeed onNavigate={handleNavigate} maxItems={6} />
@@ -284,7 +290,7 @@ export const Home = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full mt-3 text-muted-foreground"
+                  className="w-full mt-3 text-bb-text-secondary"
                   onClick={() => navigate('/activity')}
                 >
                   View all activity
@@ -299,8 +305,8 @@ export const Home = () => {
             </div>
 
             {/* System Status Footer */}
-            <div className="flex items-center justify-center gap-2 text-[13px] pt-4 text-muted-foreground/70">
-              <CheckCircle2 className="h-3 w-3 text-green-500" />
+            <div className="flex items-center justify-center gap-2 text-[11px] pt-4 text-bb-muted">
+              <CheckCircle2 className="h-3 w-3 text-bb-success" />
               <span>System active</span>
               <span>·</span>
               <Clock className="h-3 w-3" />

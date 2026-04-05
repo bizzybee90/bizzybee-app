@@ -37,13 +37,13 @@ const Inbox = () => {
   if (isMobile) {
     if (selectedEmail) {
       return (
-        <div className="h-screen flex flex-col bg-background">
+        <div className="h-screen flex flex-col bg-bb-linen">
           <ReadingPane selectedEmailId={selectedEmail.id} onBack={() => setSelectedEmail(null)} />
         </div>
       );
     }
     return (
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-screen flex flex-col bg-bb-linen">
         <EmailList
           folder={folder}
           categoryFilter={categoryFilter}
@@ -55,33 +55,31 @@ const Inbox = () => {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    <div className="flex h-screen w-full overflow-hidden bg-bb-linen">
       {/* Stats Bar — glassmorphic */}
-      <div className="absolute top-0 left-0 right-0 h-12 glass-header flex items-center px-4 gap-4 text-[13px] z-10 text-muted-foreground">
+      <div className="absolute top-0 left-0 right-0 h-12 glass-header flex items-center px-4 gap-4 text-[13px] z-10 text-bb-warm-gray">
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 gap-1 text-[13px] text-primary"
+          className="h-7 px-2 gap-1 text-[13px] text-bb-gold"
           onClick={() => navigate('/')}
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </Button>
-        <span className="font-semibold text-[17px] text-foreground">Inbox</span>
+        <span className="font-medium text-[17px] text-bb-text">Inbox</span>
         <div className="flex-1" />
         <span>
-          <strong className="text-foreground">{counts?.inbox?.toLocaleString() || 0}</strong> in
-          inbox
+          <strong className="text-bb-text">{counts?.inbox?.toLocaleString() || 0}</strong> in inbox
         </span>
-        <span className="text-border">·</span>
+        <span className="text-bb-border">·</span>
         <span>
-          <strong className="text-foreground">{counts?.needsReply?.toLocaleString() || 0}</strong>{' '}
-          need reply
+          <strong className="text-bb-text">{counts?.needsReply?.toLocaleString() || 0}</strong> need
+          reply
         </span>
-        <span className="text-border">·</span>
+        <span className="text-bb-border">·</span>
         <span>
-          <strong className="text-foreground">{counts?.unread?.toLocaleString() || 0}</strong>{' '}
-          unread
+          <strong className="text-bb-text">{counts?.unread?.toLocaleString() || 0}</strong> unread
         </span>
       </div>
 

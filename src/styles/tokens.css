@@ -1,0 +1,54 @@
+/* BizzyBee Design System — Colour Tokens
+   ========================================
+   Espresso sidebar, warm light content, gold as signal only.
+   The sidebar is the brand anchor. Everything else is clean and white-dominant.
+*/
+
+:root {
+  /* ── Core palette ── */
+  --bb-espresso: #1c1510;
+  --bb-espresso-80: #2e2318;
+  --bb-espresso-60: #3d3025;
+  --bb-gold: #c9a84c;
+  --bb-gold-light: #fdf8ec;
+  --bb-gold-border: #e8d28a;
+  --bb-linen: #f7f5f0;
+  --bb-cream: #faf8f4;
+  --bb-white: #ffffff;
+  --bb-warm-gray: #8a8078;
+  --bb-muted: #b0a898;
+  --bb-border: #e0ddd6;
+  --bb-border-light: #f0ede6;
+  --bb-text: #1c1510;
+  --bb-text-secondary: #5c5248;
+
+  /* ── Semantic colours (status/state only) ── */
+  --bb-success: #2a7a48;
+  --bb-success-bg: #e8f5ec;
+  --bb-warning: #9a6b1a;
+  --bb-warning-bg: #fdf8ec;
+  --bb-danger: #a32d2d;
+  --bb-danger-bg: #fde8e8;
+  --bb-neutral: #5c5248;
+  --bb-neutral-bg: #ede8df;
+
+  /* ── Typography ── */
+  --bb-font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+
+  /* ── Spacing scale ── */
+  --bb-space-1: 4px;
+  --bb-space-2: 8px;
+  --bb-space-3: 12px;
+  --bb-space-4: 16px;
+  --bb-space-5: 20px;
+  --bb-space-6: 24px;
+  --bb-space-8: 32px;
+  --bb-space-12: 48px;
+
+  /* ── Radii ── */
+  --bb-radius-sm: 6px;
+  --bb-radius-md: 8px;
+  --bb-radius-lg: 12px;
+  --bb-radius-pill: 20px;
+}

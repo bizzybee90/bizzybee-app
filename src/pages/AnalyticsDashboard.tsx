@@ -207,8 +207,8 @@ export default function AnalyticsDashboard() {
   if (isMobile) {
     return (
       <>
-        <div className="flex h-screen w-full bg-slate-50/50 overflow-hidden flex-col">
-          <header className="flex-shrink-0 h-14 border-b border-border bg-card px-4 flex items-center justify-between">
+        <div className="flex h-screen w-full bg-bb-linen overflow-hidden flex-col">
+          <header className="flex-shrink-0 h-14 border-b border-bb-border bg-bb-white px-4 flex items-center justify-between">
             <Button
               variant="ghost"
               size="icon"
@@ -217,7 +217,7 @@ export default function AnalyticsDashboard() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold truncate">Analytics</h1>
+            <h1 className="text-lg font-medium text-bb-text truncate">Analytics</h1>
             <div className="w-9" />
           </header>
           <main className="flex-1 overflow-y-auto p-4">{renderContent()}</main>
@@ -232,7 +232,7 @@ export default function AnalyticsDashboard() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50/50 overflow-hidden">
+    <div className="flex h-screen w-full bg-bb-linen overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto p-6">{renderContent()}</main>
     </div>
@@ -245,8 +245,8 @@ export default function AnalyticsDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <BackButton to="/" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold mt-2">Analytics Dashboard</h1>
-            <p className="text-muted-foreground">AI performance and conversation insights</p>
+            <h1 className="text-[18px] font-medium text-bb-text mt-2">Analytics Dashboard</h1>
+            <p className="text-bb-warm-gray">AI performance and conversation insights</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -281,67 +281,77 @@ export default function AnalyticsDashboard() {
           <>
             {/* Key Metrics */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="bg-gradient-to-b from-blue-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="bg-blue-100 text-blue-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                   <MessageSquare className="h-5 w-5" />
                 </div>
-                <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-2">
+                <p className="text-[20px] font-medium tracking-tight text-bb-text mt-2">
                   {data.totalConversations}
                 </p>
-                <p className="text-xs text-slate-500 font-medium mt-1">Total Conversations</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                  Total Conversations
+                </p>
               </div>
 
-              <div className="bg-gradient-to-b from-emerald-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="bg-emerald-100 text-emerald-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                   <Bot className="h-5 w-5" />
                 </div>
-                <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-2">
+                <p className="text-[20px] font-medium tracking-tight text-bb-text mt-2">
                   {containmentRate}%
                 </p>
-                <p className="text-xs text-slate-500 font-medium mt-1">AI Containment</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                  AI Containment
+                </p>
+                <p className="text-xs text-bb-muted">
                   {data.aiHandled} of {data.totalConversations}
                 </p>
               </div>
 
-              <div className="bg-gradient-to-b from-amber-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="bg-amber-100 text-amber-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                   <Clock className="h-5 w-5" />
                 </div>
-                <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-2">
+                <p className="text-[20px] font-medium tracking-tight text-bb-text mt-2">
                   {formatResponseTime(data.avgResponseTimeSeconds)}
                 </p>
-                <p className="text-xs text-slate-500 font-medium mt-1">Avg Response Time</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                  Avg Response Time
+                </p>
               </div>
 
-              <div className="bg-gradient-to-b from-purple-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="bg-purple-100 text-purple-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                   <CheckCircle className="h-5 w-5" />
                 </div>
-                <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-2">
+                <p className="text-[20px] font-medium tracking-tight text-bb-text mt-2">
                   {data.resolutionRate.toFixed(1)}%
                 </p>
-                <p className="text-xs text-slate-500 font-medium mt-1">Resolution Rate</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                  Resolution Rate
+                </p>
               </div>
 
-              <div className="bg-gradient-to-b from-blue-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="bg-blue-100 text-blue-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                   <Star className="h-5 w-5" />
                 </div>
-                <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-2">
+                <p className="text-[20px] font-medium tracking-tight text-bb-text mt-2">
                   {data.avgCSAT ? `${data.avgCSAT.toFixed(1)}` : 'N/A'}
                 </p>
-                <p className="text-xs text-slate-500 font-medium mt-1">Avg CSAT</p>
-                <p className="text-xs text-slate-400">{data.csatCount} ratings</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                  Avg CSAT
+                </p>
+                <p className="text-xs text-bb-muted">{data.csatCount} ratings</p>
               </div>
             </div>
 
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* AI vs Human Pie Chart */}
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
-                  <Bot className="h-5 w-5 text-slate-600" />
+              <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
+                <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray flex items-center gap-2 mb-4">
+                  <Bot className="h-5 w-5 text-bb-warm-gray" />
                   AI vs Human Handled
                 </h3>
                 {handledData.length > 0 ? (
@@ -366,16 +376,16 @@ export default function AnalyticsDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[250px] flex items-center justify-center text-slate-400">
+                  <div className="h-[250px] flex items-center justify-center text-bb-muted">
                     No data available
                   </div>
                 )}
               </div>
 
               {/* By Channel Pie Chart */}
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
-                  <MessageCircle className="h-5 w-5 text-slate-600" />
+              <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
+                <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray flex items-center gap-2 mb-4">
+                  <MessageCircle className="h-5 w-5 text-bb-warm-gray" />
                   Conversations by Channel
                 </h3>
                 {data.byChannel.length > 0 ? (
@@ -400,7 +410,7 @@ export default function AnalyticsDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-[250px] flex items-center justify-center text-slate-400">
+                  <div className="h-[250px] flex items-center justify-center text-bb-muted">
                     No data available
                   </div>
                 )}
@@ -408,9 +418,9 @@ export default function AnalyticsDashboard() {
             </div>
 
             {/* Volume Over Time Line Chart */}
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
-                <TrendingUp className="h-5 w-5 text-slate-600" />
+            <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
+              <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray flex items-center gap-2 mb-4">
+                <TrendingUp className="h-5 w-5 text-bb-warm-gray" />
                 Conversation Volume Over Time
               </h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -457,39 +467,43 @@ export default function AnalyticsDashboard() {
 
             {/* Escalation Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-b from-emerald-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="text-center">
-                  <p className="text-4xl font-extrabold tracking-tight text-slate-900">
+                  <p className="text-[20px] font-medium tracking-tight text-bb-text">
                     {data.aiHandled}
                   </p>
-                  <p className="text-sm text-slate-500 font-medium mt-1">AI Handled</p>
-                  <p className="text-xs text-slate-400">Fully automated responses</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                    AI Handled
+                  </p>
+                  <p className="text-xs text-bb-muted">Fully automated responses</p>
                 </div>
               </div>
-              <div className="bg-gradient-to-b from-amber-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="text-center">
-                  <p className="text-4xl font-extrabold tracking-tight text-slate-900">
+                  <p className="text-[20px] font-medium tracking-tight text-bb-text">
                     {data.escalated}
                   </p>
-                  <p className="text-sm text-slate-500 font-medium mt-1">Escalated</p>
-                  <p className="text-xs text-slate-400">Required human review</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                    Escalated
+                  </p>
+                  <p className="text-xs text-bb-muted">Required human review</p>
                 </div>
               </div>
-              <div className="bg-gradient-to-b from-blue-50/80 to-white border border-slate-100 rounded-3xl shadow-sm p-6">
+              <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
                 <div className="text-center">
-                  <p className="text-4xl font-extrabold tracking-tight text-slate-900">
+                  <p className="text-[20px] font-medium tracking-tight text-bb-text">
                     {data.humanHandled - data.escalated}
                   </p>
-                  <p className="text-sm text-slate-500 font-medium mt-1">Human Handled</p>
-                  <p className="text-xs text-slate-400">Agent responses</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
+                    Human Handled
+                  </p>
+                  <p className="text-xs text-bb-muted">Agent responses</p>
                 </div>
               </div>
             </div>
           </>
         ) : (
-          <div className="text-center text-muted-foreground py-12">
-            Failed to load analytics data
-          </div>
+          <div className="text-center text-bb-warm-gray py-12">Failed to load analytics data</div>
         )}
       </div>
     );

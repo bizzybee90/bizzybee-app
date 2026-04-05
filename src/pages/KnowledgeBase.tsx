@@ -51,7 +51,7 @@ const getSourceIcon = (faq: FAQ) => {
   if (src.includes('website')) return <Globe className="h-4 w-4 text-blue-500" />;
   if (src.includes('competitor')) return <Users className="h-4 w-4 text-purple-500" />;
   if (src.includes('document')) return <FileText className="h-4 w-4 text-amber-500" />;
-  return <Star className="h-4 w-4 text-muted-foreground" />;
+  return <Star className="h-4 w-4 text-bb-warm-gray" />;
 };
 
 const getPriorityBadge = (priority: number = 0) => {
@@ -95,7 +95,7 @@ function FAQCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md transition-all mb-4">
+    <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-5 hover:shadow-md transition-all mb-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
@@ -103,10 +103,10 @@ function FAQCard({
             {getPriorityBadge(faq.priority ?? 0)}
           </div>
 
-          <h3 className="font-medium text-foreground mb-2">{faq.question}</h3>
+          <h3 className="font-medium text-bb-text mb-2">{faq.question}</h3>
 
           <p
-            className={`text-sm text-muted-foreground ${!expanded && faq.answer.length > 150 ? 'line-clamp-2' : ''}`}
+            className={`text-sm text-bb-warm-gray ${!expanded && faq.answer.length > 150 ? 'line-clamp-2' : ''}`}
           >
             {faq.answer}
           </p>
@@ -283,9 +283,9 @@ export default function KnowledgeBase() {
 
   if (workspaceLoading) {
     return (
-      <div className="flex h-screen bg-background">
+      <div className="flex h-screen bg-bb-linen">
         <div className="flex-1 flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
+          <div className="animate-pulse text-bb-warm-gray">Loading...</div>
         </div>
       </div>
     );
@@ -298,7 +298,7 @@ export default function KnowledgeBase() {
           <div className="max-w-5xl mx-auto p-4 space-y-6">
             <Link
               to="/"
-              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-2 text-bb-warm-gray hover:text-bb-text transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="text-sm">Back to Dashboard</span>
@@ -309,11 +309,9 @@ export default function KnowledgeBase() {
                   <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
                     <Brain className="h-5 w-5 text-primary" />
                   </div>
-                  <h1 className="text-2xl font-bold">Knowledge Base</h1>
+                  <h1 className="text-[18px] font-medium text-bb-text">Knowledge Base</h1>
                 </div>
-                <p className="text-muted-foreground">
-                  Everything BizzyBee knows about your business
-                </p>
+                <p className="text-bb-warm-gray">Everything BizzyBee knows about your business</p>
               </div>
               <Button className="gap-2 self-start sm:self-auto" onClick={() => setShowAddFaq(true)}>
                 <Plus className="h-4 w-4" />
@@ -322,53 +320,59 @@ export default function KnowledgeBase() {
             </div>
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Globe className="h-8 w-8 text-blue-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{groupedFaqs.website.length}</p>
-                      <p className="text-xs text-muted-foreground">From Your Website</p>
-                    </div>
+              <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
+                <div className="flex items-center gap-3">
+                  <Globe className="h-8 w-8 text-blue-500" />
+                  <div>
+                    <p className="text-[20px] font-medium text-bb-text">
+                      {groupedFaqs.website.length}
+                    </p>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                      From Your Website
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Users className="h-8 w-8 text-purple-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{groupedFaqs.competitor.length}</p>
-                      <p className="text-xs text-muted-foreground">From Competitors</p>
-                    </div>
+                </div>
+              </div>
+              <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
+                <div className="flex items-center gap-3">
+                  <Users className="h-8 w-8 text-purple-500" />
+                  <div>
+                    <p className="text-[20px] font-medium text-bb-text">
+                      {groupedFaqs.competitor.length}
+                    </p>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                      From Competitors
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-8 w-8 text-amber-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{groupedFaqs.document.length}</p>
-                      <p className="text-xs text-muted-foreground">From Documents</p>
-                    </div>
+                </div>
+              </div>
+              <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
+                <div className="flex items-center gap-3">
+                  <FileText className="h-8 w-8 text-amber-500" />
+                  <div>
+                    <p className="text-[20px] font-medium text-bb-text">
+                      {groupedFaqs.document.length}
+                    </p>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                      From Documents
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <BookOpen className="h-8 w-8 text-green-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{faqs.length}</p>
-                      <p className="text-xs text-muted-foreground">Total FAQs</p>
-                    </div>
+                </div>
+              </div>
+              <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
+                <div className="flex items-center gap-3">
+                  <BookOpen className="h-8 w-8 text-green-500" />
+                  <div>
+                    <p className="text-[20px] font-medium text-bb-text">{faqs.length}</p>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                      Total FAQs
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-bb-warm-gray" />
               <Input
                 placeholder="Search FAQs..."
                 value={searchQuery}
@@ -399,13 +403,13 @@ export default function KnowledgeBase() {
               </TabsList>
               <TabsContent value="all" className="space-y-3">
                 {loading ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading FAQs...</div>
+                  <div className="text-center py-8 text-bb-warm-gray">Loading FAQs...</div>
                 ) : filteredFaqs.length > 0 ? (
                   filteredFaqs.map((faq) => (
                     <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                   ))
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">No FAQs found</div>
+                  <div className="text-center py-8 text-bb-warm-gray">No FAQs found</div>
                 )}
               </TabsContent>
               <TabsContent value="website" className="space-y-3">
@@ -414,7 +418,7 @@ export default function KnowledgeBase() {
                     <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                   ))
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">No website FAQs yet</div>
+                  <div className="text-center py-8 text-bb-warm-gray">No website FAQs yet</div>
                 )}
               </TabsContent>
               <TabsContent value="competitors" className="space-y-3">
@@ -423,9 +427,7 @@ export default function KnowledgeBase() {
                     <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                   ))
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No competitor FAQs yet
-                  </div>
+                  <div className="text-center py-8 text-bb-warm-gray">No competitor FAQs yet</div>
                 )}
               </TabsContent>
               <TabsContent value="documents" className="space-y-3">
@@ -434,16 +436,16 @@ export default function KnowledgeBase() {
                     <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                   ))
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">No document FAQs yet</div>
+                  <div className="text-center py-8 text-bb-warm-gray">No document FAQs yet</div>
                 )}
               </TabsContent>
             </Tabs>
             {faqs.length === 0 && !loading && (
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-12">
-                  <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No knowledge yet</h3>
-                  <p className="text-muted-foreground text-center mb-4">
+                  <BookOpen className="h-12 w-12 text-bb-muted mb-4" />
+                  <h3 className="text-[18px] font-medium text-bb-text mb-2">No knowledge yet</h3>
+                  <p className="text-bb-warm-gray text-center mb-4">
                     Complete onboarding to build your knowledge base.
                   </p>
                   <Button asChild>
@@ -498,7 +500,7 @@ export default function KnowledgeBase() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50/50">
+    <div className="flex h-screen bg-bb-linen">
       {/* Sidebar */}
       <div className="hidden md:flex">
         <Sidebar />
@@ -509,56 +511,56 @@ export default function KnowledgeBase() {
         <div className="max-w-5xl mx-auto p-6 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Knowledge Base</h1>
+            <h1 className="text-[18px] font-medium text-bb-text tracking-tight">Knowledge Base</h1>
             <Button className="gap-2" onClick={() => setShowAddFaq(true)}>
               <Plus className="h-4 w-4" />
               Add FAQ
             </Button>
           </div>
 
-          {/* Tinted Glass Metric Cards */}
+          {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-gradient-to-b from-blue-50/80 to-white border border-blue-100 rounded-3xl p-6 shadow-sm">
+            <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
               <div className="bg-blue-100 text-blue-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                 <Globe className="h-5 w-5" />
               </div>
-              <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-4">
+              <p className="text-[20px] font-medium tracking-tight text-bb-text mt-4">
                 {groupedFaqs.website.length}
               </p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wide mt-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
                 Website
               </p>
             </div>
-            <div className="bg-gradient-to-b from-purple-50/80 to-white border border-purple-100 rounded-3xl p-6 shadow-sm">
+            <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
               <div className="bg-purple-100 text-purple-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                 <Users className="h-5 w-5" />
               </div>
-              <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-4">
+              <p className="text-[20px] font-medium tracking-tight text-bb-text mt-4">
                 {groupedFaqs.competitor.length}
               </p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wide mt-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
                 Competitors
               </p>
             </div>
-            <div className="bg-gradient-to-b from-amber-50/80 to-white border border-amber-100 rounded-3xl p-6 shadow-sm">
+            <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
               <div className="bg-amber-100 text-amber-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                 <FileText className="h-5 w-5" />
               </div>
-              <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-4">
+              <p className="text-[20px] font-medium tracking-tight text-bb-text mt-4">
                 {groupedFaqs.document.length}
               </p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wide mt-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
                 Documents
               </p>
             </div>
-            <div className="bg-gradient-to-b from-emerald-50/80 to-white border border-emerald-100 rounded-3xl p-6 shadow-sm">
+            <div className="bg-bb-cream border-[0.5px] border-bb-border rounded-lg p-6">
               <div className="bg-emerald-100 text-emerald-600 rounded-2xl w-12 h-12 flex items-center justify-center">
                 <BookOpen className="h-5 w-5" />
               </div>
-              <p className="text-4xl font-extrabold tracking-tight text-slate-900 mt-4">
+              <p className="text-[20px] font-medium tracking-tight text-bb-text mt-4">
                 {faqs.length}
               </p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wide mt-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mt-1">
                 Total FAQs
               </p>
             </div>
@@ -566,7 +568,7 @@ export default function KnowledgeBase() {
 
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-bb-warm-gray" />
             <Input
               placeholder="Search FAQs..."
               value={searchQuery}
@@ -600,13 +602,13 @@ export default function KnowledgeBase() {
 
             <TabsContent value="all" className="space-y-3">
               {loading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading FAQs...</div>
+                <div className="text-center py-8 text-bb-warm-gray">Loading FAQs...</div>
               ) : filteredFaqs.length > 0 ? (
                 filteredFaqs.map((faq) => (
                   <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                 ))
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No FAQs found</div>
+                <div className="text-center py-8 text-bb-warm-gray">No FAQs found</div>
               )}
             </TabsContent>
 
@@ -616,7 +618,7 @@ export default function KnowledgeBase() {
                   <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                 ))
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No website FAQs yet</div>
+                <div className="text-center py-8 text-bb-warm-gray">No website FAQs yet</div>
               )}
             </TabsContent>
 
@@ -626,7 +628,7 @@ export default function KnowledgeBase() {
                   <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                 ))
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No competitor FAQs yet</div>
+                <div className="text-center py-8 text-bb-warm-gray">No competitor FAQs yet</div>
               )}
             </TabsContent>
 
@@ -636,7 +638,7 @@ export default function KnowledgeBase() {
                   <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
                 ))
               ) : (
-                <div className="text-center py-8 text-muted-foreground">No document FAQs yet</div>
+                <div className="text-center py-8 text-bb-warm-gray">No document FAQs yet</div>
               )}
             </TabsContent>
           </Tabs>
@@ -645,9 +647,9 @@ export default function KnowledgeBase() {
           {faqs.length === 0 && !loading && (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No knowledge yet</h3>
-                <p className="text-muted-foreground text-center mb-4">
+                <BookOpen className="h-12 w-12 text-bb-muted mb-4" />
+                <h3 className="text-[18px] font-medium text-bb-text mb-2">No knowledge yet</h3>
+                <p className="text-bb-warm-gray text-center mb-4">
                   Complete onboarding to scrape your website and build your knowledge base.
                 </p>
                 <Button asChild>

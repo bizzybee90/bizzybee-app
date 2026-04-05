@@ -389,14 +389,6 @@ const Auth = () => {
                   Back to sign in
                 </button>
               )}
-              <div className="space-y-1">
-                <CardTitle className="font-serif text-[2rem] tracking-tight text-[#fff7e9]">
-                  {title}
-                </CardTitle>
-                <CardDescription className="text-[15px] leading-6 text-[#bba98d]">
-                  {description}
-                </CardDescription>
-              </div>
             </CardHeader>
 
             <CardContent className="space-y-5">

@@ -282,14 +282,14 @@ const ConversationCardComponent = ({
   const getStatusBadge = () => {
     if (conversation.status === 'resolved' || conversation.decision_bucket === 'auto_handled') {
       return (
-        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-medium tracking-wide uppercase">
+        <span className="px-2 py-0.5 rounded-md bg-bb-cream text-bb-warm-gray text-[10px] font-medium tracking-wide uppercase">
           Archived
         </span>
       );
     }
     if (hasDraft || conversation.ai_draft_response) {
       return (
-        <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-[10px] font-medium flex items-center gap-1 tracking-wide uppercase">
+        <span className="px-2 py-0.5 rounded-md bg-bb-warning-bg text-bb-warning text-[10px] font-medium flex items-center gap-1 tracking-wide uppercase">
           <FileEdit className="h-2.5 w-2.5" />
           Draft
         </span>
@@ -297,7 +297,7 @@ const ConversationCardComponent = ({
     }
     if (conversation.status === 'new') {
       return (
-        <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 text-[10px] font-medium tracking-wide uppercase">
+        <span className="px-2 py-0.5 rounded-md bg-bb-gold/10 text-bb-gold text-[10px] font-medium tracking-wide uppercase">
           New
         </span>
       );
@@ -318,14 +318,14 @@ const ConversationCardComponent = ({
         <span className={cn('h-2 w-2 rounded-full flex-shrink-0', dotColor)} />
         <span
           className={cn(
-            'text-sm truncate flex-1 min-w-0',
-            isUnread ? 'font-bold text-foreground' : 'font-semibold text-foreground/90',
+            'text-[12px] truncate flex-1 min-w-0',
+            isUnread ? 'font-medium text-bb-text' : 'font-medium text-bb-text',
           )}
         >
           {senderName}
         </span>
         {isOverdue && (
-          <span className="h-2 w-2 rounded-full bg-destructive flex-shrink-0" title="Overdue" />
+          <span className="h-2 w-2 rounded-full bg-bb-danger flex-shrink-0" title="Overdue" />
         )}
         {isResolvable && (
           <Button
@@ -333,20 +333,20 @@ const ConversationCardComponent = ({
             size="sm"
             onClick={handleReopen}
             disabled={isReopening}
-            className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground flex-shrink-0"
+            className="h-5 px-1.5 text-[10px] text-bb-warm-gray hover:text-bb-text flex-shrink-0"
           >
             <RotateCcw className="h-3 w-3 mr-0.5" />
             Reopen
           </Button>
         )}
-        <span className="text-xs text-foreground/40 flex-shrink-0">{timeStr}</span>
+        <span className="text-[10px] text-bb-muted flex-shrink-0">{timeStr}</span>
       </div>
 
       {/* Row 2: Subject/Title */}
       <p
         className={cn(
-          'text-sm truncate mb-1',
-          isUnread ? 'font-semibold text-foreground' : 'font-medium text-foreground/80',
+          'text-[12px] truncate mb-1',
+          isUnread ? 'font-medium text-bb-text' : 'font-normal text-bb-text-secondary',
         )}
       >
         {conversation.title || 'No subject'}
@@ -354,7 +354,7 @@ const ConversationCardComponent = ({
 
       {/* Row 3: AI snippet + indicators */}
       <div className="flex items-center gap-2">
-        <p className="text-xs text-foreground/50 truncate flex-1 min-w-0">{cleanSnippet}</p>
+        <p className="text-[11px] text-bb-warm-gray truncate flex-1 min-w-0">{cleanSnippet}</p>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {getStatusBadge()}
           {conversation.channel !== 'email' && (
@@ -403,8 +403,8 @@ const ConversationCardComponent = ({
           onClick={handleClick}
           className={cn(
             'relative cursor-pointer transition-all duration-300 rounded-[22px] overflow-hidden',
-            'bg-card ring-1 ring-black/[0.04] apple-shadow hover:apple-shadow-lg spring-press spring-bounce',
-            selected && 'ring-primary/40 bg-primary/[0.03]',
+            'bg-bb-white ring-1 ring-black/[0.04] apple-shadow hover:apple-shadow-lg spring-press spring-bounce',
+            selected && 'ring-bb-gold/40 bg-bb-gold/[0.03]',
           )}
           style={{
             transform: isSwiping ? `translateX(${swipeDistance}px)` : 'translateX(0)',
@@ -422,11 +422,11 @@ const ConversationCardComponent = ({
     <div
       onClick={handleClick}
       className={cn(
-        'relative cursor-pointer transition-all duration-200 overflow-hidden mx-2 my-1 p-0 rounded-xl',
+        'relative cursor-pointer transition-all duration-200 overflow-hidden mx-2 my-1 p-0 rounded-xl border-b border-[0.5px] border-bb-border-light',
         selected
-          ? 'bg-white shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] ring-1 ring-slate-900/5'
-          : 'hover:bg-slate-50/80 border border-transparent transition-colors',
-        isAutoHandled && !selected && 'bg-slate-50',
+          ? 'bg-bb-white shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] ring-1 ring-bb-border'
+          : 'hover:bg-bb-cream border-transparent transition-colors',
+        isAutoHandled && !selected && 'bg-bb-cream/50',
       )}
     >
       {cardInner('p-3')}

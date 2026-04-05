@@ -132,7 +132,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
         <div className="flex-1 flex flex-col overflow-hidden">
           {!selectedConversation ? (
             <div className="flex-1 flex overflow-hidden gap-4 p-4">
-              <main className="flex-1 bg-card overflow-hidden flex flex-col rounded-2xl border border-border/40 shadow-sm">
+              <main className="flex-1 bg-bb-white overflow-hidden flex flex-col rounded-2xl border border-bb-border/40 shadow-sm">
                 <JaceStyleInbox
                   filter={filter}
                   selectedId={selectedConversation?.id}
@@ -162,9 +162,9 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
               className="fixed inset-0 bg-black/20 z-40 transition-opacity"
               onClick={() => setCustomerPanelOpen(false)}
             />
-            <div className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] z-50 bg-card shadow-2xl border-l border-border/50 flex flex-col animate-in slide-in-from-right duration-300">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-                <span className="text-sm font-medium text-muted-foreground">Customer Info</span>
+            <div className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] z-50 bg-bb-white shadow-2xl border-l border-bb-border/50 flex flex-col animate-in slide-in-from-right duration-300">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-bb-border shrink-0">
+                <span className="text-sm font-medium text-bb-warm-gray">Customer Info</span>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -186,14 +186,14 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
 
   // Desktop layout — matches Review.tsx pattern
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar — glassmorphic */}
-        <div className="px-6 py-2.5 flex-shrink-0 flex items-center justify-between glass-header">
+      <div className="flex-1 flex flex-col overflow-hidden bg-bb-linen">
+        {/* Top Bar */}
+        <div className="px-6 py-2.5 flex-shrink-0 flex items-center justify-between bg-bb-white border-b border-bb-border">
           <div className="flex items-center gap-3">
             <BackButton to="/" label="Home" />
-            <h1 className="text-base font-semibold">{getFilterTitle(filter)}</h1>
+            <h1 className="text-[15px] font-medium text-bb-text">{getFilterTitle(filter)}</h1>
           </div>
           <div className="flex items-center gap-4">
             <div className="w-64">
@@ -212,7 +212,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
         {/* Content area */}
         {!selectedConversation ? (
           <div className="flex-1 flex overflow-hidden gap-4 p-4">
-            <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-muted rounded-2xl border border-border/40 shadow-sm">
+            <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
               <JaceStyleInbox
                 filter={filter}
                 selectedId={selectedConversation?.id}
@@ -223,10 +223,10 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
               />
             </main>
             {/* Empty state right pane */}
-            <div className="flex-1 bg-card overflow-hidden flex flex-col relative items-center justify-center rounded-2xl border border-border/40 shadow-sm">
+            <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative items-center justify-center rounded-2xl border border-bb-border/40 shadow-sm">
               <div className="text-center">
-                <p className="text-[17px] font-semibold text-foreground">Select a conversation</p>
-                <p className="text-[15px] mt-1 text-muted-foreground">
+                <p className="text-[17px] font-medium text-bb-text">Select a conversation</p>
+                <p className="text-[15px] mt-1 text-bb-warm-gray">
                   Choose from the list to get started
                 </p>
               </div>
@@ -235,7 +235,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
         ) : (
           <div className="flex-1 flex overflow-hidden gap-4 p-4">
             {/* Middle Pane (Message List Column) */}
-            <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-muted rounded-2xl border border-border/40 shadow-sm">
+            <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
               <JaceStyleInbox
                 filter={filter}
                 selectedId={selectedConversation?.id}
@@ -247,7 +247,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
             </div>
 
             {/* Right Pane (Reading/Preview Column) */}
-            <div className="flex-1 bg-card overflow-hidden flex flex-col relative rounded-2xl border border-border/40 shadow-sm">
+            <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative rounded-xl border-[0.5px] border-bb-border">
               <ConversationThread
                 key={refreshKey}
                 conversation={selectedConversation}
@@ -267,9 +267,9 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
             className="fixed inset-0 bg-black/20 z-40 transition-opacity"
             onClick={() => setCustomerPanelOpen(false)}
           />
-          <div className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] z-50 bg-card shadow-2xl border-l border-border/50 flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-              <span className="text-sm font-medium text-muted-foreground">Customer Info</span>
+          <div className="fixed top-0 right-0 h-full w-[380px] max-w-[90vw] z-50 bg-bb-white shadow-2xl border-l border-bb-border/50 flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-bb-border shrink-0">
+              <span className="text-sm font-medium text-bb-warm-gray">Customer Info</span>
               <Button
                 variant="ghost"
                 size="icon"

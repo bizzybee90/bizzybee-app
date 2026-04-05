@@ -9,30 +9,28 @@ interface MobilePageLayoutProps {
   backToText?: string;
 }
 
-export const MobilePageLayout = ({ 
-  children, 
-  showBackButton, 
-  onBackClick, 
-  backToText 
+export const MobilePageLayout = ({
+  children,
+  showBackButton,
+  onBackClick,
+  backToText,
 }: MobilePageLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <MobileHeader 
-        onMenuClick={() => setSidebarOpen(true)} 
+    <div className="min-h-screen bg-bb-linen flex flex-col">
+      <MobileHeader
+        onMenuClick={() => setSidebarOpen(true)}
         showBackButton={showBackButton}
         onBackClick={onBackClick}
         backToText={backToText}
       />
-      <MobileSidebarSheet 
-        open={sidebarOpen} 
-        onOpenChange={setSidebarOpen} 
-        onNavigate={() => setSidebarOpen(false)} 
+      <MobileSidebarSheet
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        onNavigate={() => setSidebarOpen(false)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {children}
-      </div>
+      <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
     </div>
   );
 };

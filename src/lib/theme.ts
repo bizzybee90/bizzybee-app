@@ -1,0 +1,27 @@
+/** BizzyBee design tokens as JS constants for use in non-CSS contexts. */
+
+export const bb = {
+  espresso: '#1C1510',
+  espresso80: '#2E2318',
+  espresso60: '#3D3025',
+  gold: '#C9A84C',
+  goldLight: '#FDF8EC',
+  goldBorder: '#E8D28A',
+  linen: '#F7F5F0',
+  cream: '#FAF8F4',
+  white: '#FFFFFF',
+  warmGray: '#8A8078',
+  muted: '#B0A898',
+  border: '#E0DDD6',
+  borderLight: '#F0EDE6',
+  text: '#1C1510',
+  textSecondary: '#5C5248',
+  success: '#2A7A48',
+  successBg: '#E8F5EC',
+  warning: '#9A6B1A',
+  warningBg: '#FDF8EC',
+  danger: '#A32D2D',
+  dangerBg: '#FDE8E8',
+  neutral: '#5C5248',
+  neutralBg: '#EDE8DF',
+} as const;

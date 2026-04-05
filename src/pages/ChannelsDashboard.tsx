@@ -238,15 +238,15 @@ export default function ChannelsDashboard() {
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-        <p className="text-muted-foreground">Loading channels...</p>
+        <p className="text-bb-warm-gray">Loading channels...</p>
       </div>
     </div>
   ) : (
     <div className="p-4 md:p-8 space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="min-w-0 flex-1 w-full sm:w-auto">
-          <h1 className="text-xl md:text-2xl lg:text-3xl font-bold">Channels Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-[18px] font-medium text-bb-text">Channels Dashboard</h1>
+          <p className="text-sm text-bb-warm-gray mt-1">
             Monitor activity across all channels (last 7 days)
           </p>
         </div>
@@ -262,8 +262,10 @@ export default function ChannelsDashboard() {
       </div>
 
       {showSettings && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Channel Visibility</h3>
+        <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-4">
+            Channel Visibility
+          </h3>
           <div className="space-y-3">
             {channelStats.map((stat) => {
               const config = channelConfig[stat.channel as keyof typeof channelConfig];
@@ -297,26 +299,26 @@ export default function ChannelsDashboard() {
                       disabled={enabledChannels[stat.channel] === false}
                     />
                     {hiddenChannels[stat.channel] ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      <EyeOff className="h-4 w-4 text-bb-warm-gray" />
                     ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
+                      <Eye className="h-4 w-4 text-bb-warm-gray" />
                     )}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="mt-4 pt-4 border-t">
+          <div className="mt-4 pt-4 border-t border-bb-border-light">
             <Button
               variant="link"
               size="sm"
               onClick={() => navigate('/settings')}
-              className="text-xs p-0"
+              className="text-xs p-0 text-bb-gold"
             >
               Manage workspace channel settings →
             </Button>
           </div>
-        </Card>
+        </div>
       )}
 
       {fetchError && (
@@ -363,15 +365,15 @@ export default function ChannelsDashboard() {
             >
               <div className="flex items-start justify-between mb-4 gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="p-2.5 md:p-3 rounded-lg bg-background flex-shrink-0">
+                  <div className="p-2.5 md:p-3 rounded-lg bg-bb-white flex-shrink-0">
                     <Icon className={`h-5 w-5 md:h-6 md:w-6 ${config.color}`} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base md:text-lg font-semibold flex items-center gap-2 truncate">
+                    <h3 className="text-base md:text-lg font-medium text-bb-text flex items-center gap-2 truncate">
                       <span className="text-lg md:text-xl">{config.emoji}</span>
                       <span className="truncate">{config.label}</span>
                     </h3>
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">
+                    <p className="text-xs md:text-sm text-bb-warm-gray truncate">
                       {stat.total} conversation{stat.total !== 1 ? 's' : ''} (7 days)
                     </p>
                   </div>
@@ -386,28 +388,30 @@ export default function ChannelsDashboard() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 p-3 md:p-4 bg-background rounded-lg">
+              <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 p-3 md:p-4 bg-bb-white rounded-lg">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Unread</p>
-                  <p className={`text-xl md:text-2xl font-bold ${config.color}`}>{stat.unread}</p>
+                  <p className="text-xs text-bb-warm-gray mb-1">Unread</p>
+                  <p className={`text-xl md:text-2xl font-medium ${config.color}`}>{stat.unread}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Avg Response</p>
-                  <p className="text-xl md:text-2xl font-bold truncate">
+                  <p className="text-xs text-bb-warm-gray mb-1">Avg Response</p>
+                  <p className="text-xl md:text-2xl font-medium text-bb-text truncate">
                     {formatResponseTime(stat.avgResponseTime)}
                   </p>
                 </div>
               </div>
 
               <div>
-                <h4 className="text-sm font-semibold mb-2">Recent Activity</h4>
+                <h4 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-2">
+                  Recent Activity
+                </h4>
                 <ScrollArea className="h-[160px] md:h-[200px]">
                   {stat.recentConversations.length > 0 ? (
                     <div className="space-y-2 pr-3">
                       {stat.recentConversations.map((conv) => (
                         <div
                           key={conv.id}
-                          className="p-2.5 md:p-3 bg-background rounded-lg hover:bg-accent/50 active:bg-accent transition-colors"
+                          className="p-2.5 md:p-3 bg-bb-white rounded-lg hover:bg-accent/50 active:bg-accent transition-colors"
                         >
                           <div className="flex items-center justify-between mb-1 gap-2 min-w-0">
                             <p className="font-medium text-xs md:text-sm truncate flex-1 min-w-0">
@@ -420,14 +424,14 @@ export default function ChannelsDashboard() {
                               {conv.status}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-bb-warm-gray">
                             {format(new Date(conv.created_at), 'HH:mm')}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-8">
+                    <p className="text-sm text-bb-warm-gray text-center py-8">
                       No conversations in the last 7 days
                     </p>
                   )}
@@ -438,15 +442,15 @@ export default function ChannelsDashboard() {
         })}
 
         {visibleChannelStats.length === 0 && (
-          <Card className="col-span-2 p-12">
+          <div className="col-span-2 bg-bb-white rounded-lg border-[0.5px] border-bb-border p-12">
             <div className="text-center">
-              <p className="text-muted-foreground mb-4">No channels are currently visible.</p>
+              <p className="text-bb-warm-gray mb-4">No channels are currently visible.</p>
               <Button variant="outline" onClick={() => setShowSettings(true)}>
                 <Settings className="h-4 w-4 mr-2" />
                 Show channel settings
               </Button>
             </div>
-          </Card>
+          </div>
         )}
       </div>
     </div>

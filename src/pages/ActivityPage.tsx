@@ -202,7 +202,7 @@ export const ActivityPage = () => {
       case 'reviewed':
         return <CheckCircle2 className="h-4 w-4 text-purple-500" />;
       default:
-        return <Activity className="h-4 w-4 text-muted-foreground" />;
+        return <Activity className="h-4 w-4 text-bb-warm-gray" />;
     }
   };
 
@@ -242,39 +242,47 @@ export const ActivityPage = () => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-semibold text-foreground">Recent Activity</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-[18px] font-medium text-bb-text">Recent Activity</h1>
+            <p className="text-sm text-bb-warm-gray">
               {format(new Date(), 'EEEE, MMMM d')} • All activity from today
             </p>
           </div>
         </div>
 
         {/* Summary Stats */}
-        <Card className="p-4 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 border-primary/20">
+        <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-primary/20">
-              <TrendingUp className="h-6 w-6 text-primary" />
+            <div className="p-3 rounded-xl bg-bb-gold/20">
+              <TrendingUp className="h-6 w-6 text-bb-gold" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{stats.totalToday}</p>
-              <p className="text-sm text-muted-foreground">Activities today</p>
+              <p className="text-[20px] font-medium text-bb-text">{stats.totalToday}</p>
+              <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                Activities today
+              </p>
             </div>
             <div className="ml-auto flex gap-6">
               <div className="text-center">
-                <p className="text-lg font-semibold text-foreground">{stats.autoHandled}</p>
-                <p className="text-xs text-muted-foreground">Auto-handled</p>
+                <p className="text-[20px] font-medium text-bb-text">{stats.autoHandled}</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                  Auto-handled
+                </p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-semibold text-foreground">{stats.sent}</p>
-                <p className="text-xs text-muted-foreground">Sent</p>
+                <p className="text-[20px] font-medium text-bb-text">{stats.sent}</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                  Sent
+                </p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-semibold text-foreground">{stats.reviewed}</p>
-                <p className="text-xs text-muted-foreground">Reviewed</p>
+                <p className="text-[20px] font-medium text-bb-text">{stats.reviewed}</p>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                  Reviewed
+                </p>
               </div>
             </div>
           </div>
-        </Card>
+        </div>
 
         {/* Error State */}
         {error && (
@@ -287,10 +295,12 @@ export const ActivityPage = () => {
         )}
 
         {/* Activity List */}
-        <Card className="p-4">
+        <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-4">
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold text-foreground">Activity Timeline</h2>
+            <Activity className="h-5 w-5 text-bb-gold" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+              Activity Timeline
+            </h2>
           </div>
 
           {loading ? (
@@ -309,10 +319,12 @@ export const ActivityPage = () => {
               ))}
             </div>
           ) : activities.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="text-center py-12 text-bb-warm-gray">
               <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No activity today</p>
-              <p className="text-sm">Activity will appear here as you and BizzyBee work</p>
+              <p className="font-medium text-bb-text">No activity today</p>
+              <p className="text-sm text-bb-warm-gray">
+                Activity will appear here as you and BizzyBee work
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -329,24 +341,22 @@ export const ActivityPage = () => {
                   <div className="flex-shrink-0 mt-0.5">{getActivityIcon(activity.type)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-medium text-muted-foreground">
+                      <span className="text-xs font-medium text-bb-warm-gray">
                         {getActivityLabel(activity.type)}
                       </span>
                       <CategoryLabel classification={activity.category} size="xs" />
-                      <span className="text-xs text-muted-foreground/60 ml-auto">
+                      <span className="text-xs text-bb-muted ml-auto">
                         {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-foreground truncate">{activity.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2">
-                      {activity.description}
-                    </p>
+                    <p className="text-sm font-medium text-bb-text truncate">{activity.title}</p>
+                    <p className="text-xs text-bb-warm-gray line-clamp-2">{activity.description}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </Card>
+        </div>
       </div>
     </ScrollArea>
   );

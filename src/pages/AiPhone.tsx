@@ -30,9 +30,9 @@ const AiPhone = () => {
   const content = (
     <div className="flex flex-col h-full">
       {/* Tab bar */}
-      <div className="border-b border-border px-6 pt-4">
+      <div className="border-b border-[0.5px] border-bb-border px-6 pt-4">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-semibold text-foreground">AI Phone</h1>
+          <h1 className="text-2xl font-medium text-bb-text">AI Phone</h1>
         </div>
         <div className="flex gap-1">
           {tabs.map((tab) => (
@@ -41,8 +41,8 @@ const AiPhone = () => {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-4 py-2 text-[13px] font-medium rounded-full transition-all duration-200 ${
                 activeTab === tab.id
-                  ? 'bg-primary text-white'
-                  : 'bg-transparent text-muted-foreground'
+                  ? 'bg-bb-gold text-bb-espresso'
+                  : 'bg-transparent text-bb-warm-gray hover:bg-bb-cream'
               }`}
             >
               {tab.icon}
@@ -65,7 +65,7 @@ const AiPhone = () => {
             <>
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-bb-gold border-t-transparent" />
                 </div>
               ) : config ? (
                 <PhoneSettingsForm />
