@@ -21,6 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { EmailImportIndicator } from './EmailImportIndicator';
 import beeLogo from '@/assets/bee-logo.png';
+import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
