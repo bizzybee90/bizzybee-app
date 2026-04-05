@@ -126,9 +126,11 @@ function ReviewsPageContent() {
     staleReviewHours: 24,
   });
 
+  const isPreview = workspace?.id === 'preview-workspace';
+
   useEffect(() => {
     const fetchReviewsFoundation = async () => {
-      if (!workspace?.id) {
+      if (!workspace?.id || isPreview) {
         setGoogleBusinessChannel(null);
         setNotificationPreferences(null);
         setFetchError(null);
@@ -806,7 +808,7 @@ function ReviewsPageContent() {
             actionLabel="Refresh page"
             actionTo="/reviews"
           />
-        ) : !workspace?.id ? (
+        ) : !workspace?.id || isPreview ? (
           <PanelNotice
             title="Finish workspace setup first"
             description="BizzyBee needs a workspace before Reviews can connect a location, load alerts, or build a review inbox."

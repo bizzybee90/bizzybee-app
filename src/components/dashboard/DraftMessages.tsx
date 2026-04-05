@@ -36,7 +36,10 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
 
   useEffect(() => {
     const fetchDrafts = async () => {
-      if (!workspace?.id) return;
+      if (!workspace?.id || workspace.id === 'preview-workspace') {
+        setLoading(false);
+        return;
+      }
 
       try {
         const { data, error } = await supabase

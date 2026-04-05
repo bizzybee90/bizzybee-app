@@ -138,8 +138,10 @@ export default function ChannelsDashboard() {
     [dashboardDefinitions],
   );
 
+  const isPreview = workspace?.id === 'preview-workspace';
+
   const fetchChannelStats = useCallback(async () => {
-    if (!workspace?.id) {
+    if (!workspace?.id || isPreview) {
       setChannelStats([]);
       setLoading(false);
       return;
@@ -291,7 +293,7 @@ export default function ChannelsDashboard() {
           <p className="text-bb-warm-gray">Loading channels...</p>
         </div>
       </div>
-    ) : !workspace?.id ? (
+    ) : !workspace?.id || isPreview ? (
       <div className="p-4 md:p-8">
         <PanelNotice
           icon={Settings}

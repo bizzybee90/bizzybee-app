@@ -38,11 +38,15 @@ export interface ProviderGroupSummary {
   statusTone: ProviderGroupStatusTone;
 }
 
+const isPreviewWorkspace = (id?: string | null) =>
+  !id || id === 'preview-workspace' || !id.match(/^[0-9a-f]{8}-/i);
+
 export function useChannelSetup(workspaceId?: string | null) {
   const [channels, setChannels] = useState<WorkspaceChannelRecord[]>([]);
   const [emailConfigs, setEmailConfigs] = useState<EmailChannelRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isPreview = isPreviewWorkspace(workspaceId);
 
   const dashboardDefinitions = useMemo(
     () =>
@@ -60,7 +64,7 @@ export function useChannelSetup(workspaceId?: string | null) {
   );
 
   const refreshChannels = useCallback(async () => {
-    if (!workspaceId) {
+    if (!workspaceId || isPreview) {
       setChannels([]);
       return [];
     }
@@ -81,7 +85,7 @@ export function useChannelSetup(workspaceId?: string | null) {
   }, [workspaceId]);
 
   const refreshEmailConfigs = useCallback(async () => {
-    if (!workspaceId) {
+    if (!workspaceId || isPreview) {
       setEmailConfigs([]);
       return [];
     }
@@ -101,7 +105,7 @@ export function useChannelSetup(workspaceId?: string | null) {
   }, [workspaceId]);
 
   const refresh = useCallback(async () => {
-    if (!workspaceId) {
+    if (!workspaceId || isPreview) {
       setChannels([]);
       setEmailConfigs([]);
       setError(null);
@@ -126,7 +130,7 @@ export function useChannelSetup(workspaceId?: string | null) {
     let cancelled = false;
 
     const load = async () => {
-      if (!workspaceId) {
+      if (!workspaceId || isPreview) {
         setChannels([]);
         setEmailConfigs([]);
         setError(null);
@@ -161,7 +165,7 @@ export function useChannelSetup(workspaceId?: string | null) {
 
     void load();
 
-    if (!workspaceId) {
+    if (!workspaceId || isPreview) {
       return () => {
         cancelled = true;
       };

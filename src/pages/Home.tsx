@@ -55,7 +55,7 @@ export const Home = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!workspace?.id) {
+      if (!workspace?.id || workspace.id === 'preview-workspace') {
         setLoading(false);
         setStats({
           clearedToday: 0,
