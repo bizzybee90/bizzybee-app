@@ -93,7 +93,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     };
 
     loadBusinessContext();
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   const enabledTerms = useMemo(
     () => searchTerms.filter((t) => t.enabled).map((t) => t.term),

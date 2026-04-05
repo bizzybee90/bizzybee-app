@@ -123,7 +123,7 @@ export function KnowledgeBaseStep({
     };
 
     checkExisting();
-  }, [workspaceId, businessContext.websiteUrl]);
+  }, [workspaceId, businessContext.websiteUrl, isPreview]);
 
   // Polling logic: watch faq_database directly while status === 'polling'
   useEffect(() => {
@@ -259,7 +259,7 @@ export function KnowledgeBaseStep({
       clearInterval(pollInterval);
       clearInterval(timerInterval);
     };
-  }, [status, workspaceId, jobDbId]);
+  }, [status, workspaceId, jobDbId, isPreview]);
 
   const startScraping = async () => {
     if (!businessContext.websiteUrl) return;

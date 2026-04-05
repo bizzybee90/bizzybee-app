@@ -215,7 +215,7 @@ export function EmailConnectionStep({
         setIsConnecting(false);
       }
     },
-    [onEmailConnected, workspaceId],
+    [onEmailConnected, workspaceId, isPreview],
   );
 
   // Check for existing connection on mount
@@ -260,7 +260,7 @@ export function EmailConnectionStep({
         window.clearInterval(pollIntervalRef.current);
       }
     };
-  }, [importStarted, workspaceId]);
+  }, [importStarted, workspaceId, isPreview]);
 
   // Handle OAuth redirect params
   useEffect(() => {

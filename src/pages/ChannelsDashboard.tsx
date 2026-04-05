@@ -207,7 +207,7 @@ export default function ChannelsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [supportedChannels, workspace?.id]);
+  }, [supportedChannels, workspace?.id, isPreview]);
 
   useEffect(() => {
     if (workspaceLoading) {

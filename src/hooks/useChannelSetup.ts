@@ -82,7 +82,7 @@ export function useChannelSetup(workspaceId?: string | null) {
     const nextChannels = data || [];
     setChannels(nextChannels);
     return nextChannels;
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   const refreshEmailConfigs = useCallback(async () => {
     if (!workspaceId || isPreview) {
@@ -102,7 +102,7 @@ export function useChannelSetup(workspaceId?: string | null) {
     const nextConfigs = data || [];
     setEmailConfigs(nextConfigs);
     return nextConfigs;
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   const refresh = useCallback(async () => {
     if (!workspaceId || isPreview) {
@@ -124,7 +124,7 @@ export function useChannelSetup(workspaceId?: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [refreshChannels, refreshEmailConfigs, workspaceId]);
+  }, [refreshChannels, refreshEmailConfigs, workspaceId, isPreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,7 +204,7 @@ export function useChannelSetup(workspaceId?: string | null) {
       realtimeChannel.unsubscribe();
       supabase.removeChannel(realtimeChannel);
     };
-  }, [refreshChannels, refreshEmailConfigs, workspaceId]);
+  }, [refreshChannels, refreshEmailConfigs, workspaceId, isPreview]);
 
   const configuredChannelMap = useMemo(
     () =>

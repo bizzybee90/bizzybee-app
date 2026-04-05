@@ -176,7 +176,7 @@ function ReviewsPageContent() {
     };
 
     void fetchReviewsFoundation();
-  }, [workspace?.id]);
+  }, [workspace?.id, isPreview]);
 
   const googleChannelDefinition = CHANNEL_DEFINITIONS.google_business;
   const googleReviewDefinition = REVIEW_PROVIDER_DEFINITIONS.google;

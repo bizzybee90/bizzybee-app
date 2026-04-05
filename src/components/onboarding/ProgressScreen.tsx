@@ -494,7 +494,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     };
 
     autoTrigger();
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   // Realtime subscription for live FAQ count + keep ref in sync
   useEffect(() => {
@@ -540,7 +540,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
       window.clearInterval(countInterval);
       supabase.removeChannel(channel);
     };
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   useEffect(() => {
     if (isPreview) return;
@@ -720,7 +720,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     pollProgress();
     const interval = window.setInterval(pollProgress, 10000);
     return () => window.clearInterval(interval);
-  }, [workspaceId]);
+  }, [workspaceId, isPreview]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
