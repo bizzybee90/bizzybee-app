@@ -7,6 +7,7 @@ import { ConversationCardSkeleton } from './ConversationCardSkeleton';
 import { ConversationFilters } from './ConversationFilters';
 import { SearchInput } from './SearchInput';
 import { useIsTablet } from '@/hooks/use-tablet';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { Loader2, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,6 +22,91 @@ import {
 } from '@/components/ui/select';
 import PullToRefresh from 'react-simple-pull-to-refresh';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { PanelNotice } from '@/components/settings/PanelNotice';
+import { getPreviewAwarePath, isPreviewModeEnabled } from '@/lib/previewMode';
+
+interface SortRule {
+  id: string;
+  field: string;
+  direction: 'asc' | 'desc';
+  label: string;
+  enabled: boolean;
+}
+
+const priorityRank: Record<string, number> = {
+  urgent: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+function readCustomSortRules(): SortRule[] {
+  try {
+    const stored = localStorage.getItem('conversation-ordering-rules');
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored) as SortRule[];
+    return Array.isArray(parsed) ? parsed.filter((rule) => rule?.enabled) : [];
+  } catch {
+    return [];
+  }
+}
+
+function compareMaybeDates(left: string | null | undefined, right: string | null | undefined) {
+  const leftTime = left ? new Date(left).getTime() : Number.NEGATIVE_INFINITY;
+  const rightTime = right ? new Date(right).getTime() : Number.NEGATIVE_INFINITY;
+  return leftTime - rightTime;
+}
+
+function compareRuleValues(left: Conversation, right: Conversation, field: string) {
+  if (field === 'priority') {
+    return (
+      (priorityRank[left.priority ?? 'low'] ?? 0) - (priorityRank[right.priority ?? 'low'] ?? 0)
+    );
+  }
+
+  if (field === 'message_count') {
+    const leftCount = Number(left.metadata?.message_count ?? 0);
+    const rightCount = Number(right.metadata?.message_count ?? 0);
+    return leftCount - rightCount;
+  }
+
+  if (field === 'sla_due_at' || field === 'created_at' || field === 'updated_at') {
+    return compareMaybeDates(
+      left[field as 'sla_due_at' | 'created_at' | 'updated_at'],
+      right[field as 'sla_due_at' | 'created_at' | 'updated_at'],
+    );
+  }
+
+  const leftValue = left[field as keyof Conversation];
+  const rightValue = right[field as keyof Conversation];
+
+  if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+    return leftValue - rightValue;
+  }
+
+  return String(leftValue ?? '').localeCompare(String(rightValue ?? ''));
+}
+
+function applyCustomSortRules(conversations: Conversation[]) {
+  const enabledRules = readCustomSortRules();
+
+  if (enabledRules.length === 0) {
+    return conversations;
+  }
+
+  return [...conversations].sort((left, right) => {
+    for (const rule of enabledRules) {
+      const comparison = compareRuleValues(left, right, rule.field);
+
+      if (comparison !== 0) {
+        return rule.direction === 'asc' ? comparison : -comparison;
+      }
+    }
+
+    return compareMaybeDates(right.updated_at, left.updated_at);
+  });
+}
 
 interface ConversationListProps {
   selectedId?: string;
@@ -52,6 +138,9 @@ export const ConversationList = ({
   onConversationsChange,
   channelFilter: initialChannelFilter,
 }: ConversationListProps) => {
+  const { workspace } = useWorkspace();
+  const isPreviewMode = isPreviewModeEnabled();
+  const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [page, setPage] = useState(0);
   const isTablet = useIsTablet();
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -84,6 +173,10 @@ export const ConversationList = ({
   }, [sortBy]);
 
   const fetchConversations = async (pageNum: number = 0) => {
+    if (!workspace?.id) {
+      return { data: [], count: 0 };
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -115,26 +208,7 @@ export const ConversationList = ({
       return { data: activeConversations, count: activeConversations.length };
     }
 
-    // Get workspace from user
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('workspace_id')
-      .eq('id', user.id)
-      .single();
-
-    logger.debug('User workspace data', { workspaceId: userData?.workspace_id });
-
-    if (userError) {
-      logger.error('Error fetching user workspace', userError);
-      return { data: [], count: 0 };
-    }
-
-    if (!userData?.workspace_id) {
-      logger.error('User has no workspace_id assigned');
-      return { data: [], count: 0 };
-    }
-
-    logger.debug('Using workspace_id', { workspaceId: userData.workspace_id });
+    logger.debug('Using workspace_id', { workspaceId: workspace.id });
 
     let query = supabase
       .from('conversations')
@@ -146,7 +220,7 @@ export const ConversationList = ({
       `,
         { count: 'exact' },
       )
-      .eq('workspace_id', userData.workspace_id);
+      .eq('workspace_id', workspace.id);
 
     // Apply sorting
     switch (sortBy) {
@@ -170,6 +244,9 @@ export const ConversationList = ({
         query = query
           .order('sla_due_at', { ascending: true, nullsFirst: false })
           .order('updated_at', { ascending: false });
+        break;
+      case 'custom':
+        query = query.order('updated_at', { ascending: false });
         break;
       default:
         query = query.order('updated_at', { ascending: false });
@@ -306,8 +383,11 @@ export const ConversationList = ({
       return new Date(conv.snoozed_until) <= new Date();
     });
 
-    logger.debug('Active conversations after filtering', { count: activeConversations.length });
-    return { data: activeConversations, count: count || 0 };
+    const sortedConversations =
+      sortBy === 'custom' ? applyCustomSortRules(activeConversations) : activeConversations;
+
+    logger.debug('Active conversations after filtering', { count: sortedConversations.length });
+    return { data: sortedConversations, count: count || 0 };
   };
 
   // Track last update time
@@ -315,20 +395,10 @@ export const ConversationList = ({
 
   // Fetch auto-handled count for "BizzyBee handled X today" metric
   const { data: autoHandledCount = 0 } = useQuery({
-    queryKey: ['auto-handled-count'],
+    queryKey: ['auto-handled-count', workspace?.id],
+    enabled: !!workspace?.id,
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return 0;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.workspace_id) return 0;
+      if (!workspace?.id) return 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -336,7 +406,7 @@ export const ConversationList = ({
       const { count, error } = await supabase
         .from('conversations')
         .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .gte('auto_handled_at', today.toISOString());
 
       if (error) {
@@ -352,6 +422,7 @@ export const ConversationList = ({
   // React Query setup with optimistic UI
   const queryKey = [
     'conversations',
+    workspace?.id,
     filter,
     statusFilter,
     priorityFilter,
@@ -366,8 +437,10 @@ export const ConversationList = ({
     data: queryData,
     isLoading,
     isFetching,
+    error,
   } = useQuery({
     queryKey,
+    enabled: !!workspace?.id,
     queryFn: async () => {
       const result = await fetchConversations(page);
       setLastUpdated(new Date());
@@ -385,9 +458,7 @@ export const ConversationList = ({
 
   // Notify parent of conversation changes
   useEffect(() => {
-    if (conversations.length > 0) {
-      onConversationsChange?.(conversations);
-    }
+    onConversationsChange?.(conversations);
   }, [conversations, onConversationsChange]);
 
   // Real-time updates with improved subscription scoped to workspace
@@ -395,22 +466,11 @@ export const ConversationList = ({
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     const setupRealtimeSubscription = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.workspace_id) return;
+      if (!workspace?.id) return;
 
       logger.debug('Setting up realtime subscription', {
         filter,
-        workspaceId: userData.workspace_id,
+        workspaceId: workspace.id,
       });
 
       channel = supabase
@@ -421,11 +481,11 @@ export const ConversationList = ({
             event: 'INSERT',
             schema: 'public',
             table: 'conversations',
-            filter: `workspace_id=eq.${userData.workspace_id}`,
+            filter: `workspace_id=eq.${workspace.id}`,
           },
           (payload) => {
             logger.debug('New conversation inserted');
-            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            queryClient.invalidateQueries({ queryKey: ['conversations', workspace.id] });
           },
         )
         .on(
@@ -434,11 +494,11 @@ export const ConversationList = ({
             event: 'UPDATE',
             schema: 'public',
             table: 'conversations',
-            filter: `workspace_id=eq.${userData.workspace_id}`,
+            filter: `workspace_id=eq.${workspace.id}`,
           },
           (payload) => {
             logger.debug('Conversation updated');
-            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            queryClient.invalidateQueries({ queryKey: ['conversations', workspace.id] });
           },
         )
         .subscribe((status) => {
@@ -454,7 +514,7 @@ export const ConversationList = ({
         supabase.removeChannel(channel);
       }
     };
-  }, [filter, queryClient]);
+  }, [filter, queryClient, workspace?.id]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -473,7 +533,7 @@ export const ConversationList = ({
   const handleRefresh = async () => {
     logger.debug('Manual refresh triggered');
     setPage(0);
-    await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    await queryClient.invalidateQueries({ queryKey: ['conversations', workspace?.id] });
   };
 
   const getTimeSinceUpdate = () => {
@@ -512,6 +572,68 @@ export const ConversationList = ({
     );
   }
 
+  if (!workspace?.id) {
+    return (
+      <div
+        className={cn(
+          'flex h-full items-center justify-center p-6',
+          isTablet ? 'bg-transparent' : 'bg-bb-linen min-w-[300px]',
+        )}
+      >
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Finish setup before using the inbox"
+            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
+            actionLabel="Open onboarding"
+            actionTo={onboardingPath}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isPreviewMode) {
+    return (
+      <div
+        className={cn(
+          'flex h-full items-center justify-center p-6',
+          isTablet ? 'bg-transparent' : 'bg-bb-linen min-w-[300px]',
+        )}
+      >
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Finish setup before using the inbox"
+            description="This local preview shows the product shell. Complete onboarding to unlock real conversations and channel data."
+            actionLabel="Open onboarding"
+            actionTo={onboardingPath}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (error && conversations.length === 0) {
+    const message = error instanceof Error ? error.message : 'Please try again.';
+
+    return (
+      <div
+        className={cn(
+          'flex h-full items-center justify-center p-6',
+          isTablet ? 'bg-transparent' : 'bg-bb-linen min-w-[300px]',
+        )}
+      >
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Inbox unavailable"
+            description={`BizzyBee couldn't load conversations for this workspace right now. ${message}`}
+            actionLabel="Retry inbox"
+            onAction={handleRefresh}
+          />
+        </div>
+      </div>
+    );
+  }
+
   const conversationListContent = (
     <div
       ref={parentRef}
@@ -528,9 +650,13 @@ export const ConversationList = ({
       {filteredConversations.length === 0 && !isLoading ? (
         <div className="flex flex-col items-center justify-center h-64 text-bb-warm-gray">
           <p className={cn('font-medium', isTablet ? 'text-sm' : 'text-lg')}>
-            No conversations found
+            {debouncedSearch ? 'No matching conversations' : 'No conversations yet'}
           </p>
-          <p className="text-xs mt-1 text-bb-muted">Try adjusting your filters</p>
+          <p className="text-xs mt-1 text-bb-muted">
+            {debouncedSearch
+              ? 'Try a different search or clear some filters.'
+              : 'New customer conversations will appear here once your channels are active.'}
+          </p>
         </div>
       ) : (
         <>

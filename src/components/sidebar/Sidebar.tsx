@@ -13,6 +13,7 @@ import {
   Zap,
   FileEdit,
   Phone,
+  Star,
   type LucideIcon,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
@@ -20,8 +21,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { EmailImportIndicator } from './EmailImportIndicator';
-import beeLogo from '@/assets/bee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 import { cn } from '@/lib/utils';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
@@ -45,9 +47,11 @@ export const Sidebar = ({
   isMobileDrawer = false,
 }: SidebarProps = {}) => {
   const isCollapsed = !isMobileDrawer && forceCollapsed;
+  const isPreviewMode = isPreviewModeEnabled();
 
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
+    enabled: !isPreviewMode,
     queryFn: async () => {
       const {
         data: { user },
@@ -149,7 +153,18 @@ export const Sidebar = ({
     refetchInterval: 60000,
   });
 
-  const viewCounts = viewData;
+  const viewCounts = isPreviewMode
+    ? {
+        toReply: 0,
+        done: 0,
+        snoozed: 0,
+        review: 0,
+        unread: 0,
+        drafts: 0,
+        workspaceId: null,
+        workspaceName: 'Preview workspace',
+      }
+    : viewData;
   const primaryItems: NavItem[] = [
     { to: '/', icon: Home, label: 'Home', end: true },
     { to: '/inbox', icon: Inbox, label: 'Inbox' },
@@ -165,6 +180,7 @@ export const Sidebar = ({
 
   const secondaryItems: NavItem[] = [
     { to: '/channels', icon: MessageSquare, label: 'Channels' },
+    { to: '/reviews', icon: Star, label: 'Reviews' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge base' },
     { to: '/settings', icon: Settings, label: 'Settings' },
@@ -172,12 +188,12 @@ export const Sidebar = ({
 
   const SidebarItem = ({ item, compact = false }: { item: NavItem; compact?: boolean }) => {
     const sharedClassName = compact
-      ? 'flex items-center justify-center w-10 h-10 rounded-lg transition-all relative text-[rgba(253,248,236,0.48)] hover:bg-white/5 hover:text-[#FDF8EC]'
-      : 'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-[rgba(253,248,236,0.58)] transition-all hover:bg-white/5 hover:text-[#FDF8EC]';
+      ? 'flex h-10 w-10 items-center justify-center rounded-xl text-[rgba(253,248,236,0.72)] transition-all relative hover:bg-[rgba(255,255,255,0.08)] hover:text-[#FDF8EC]'
+      : 'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-[rgba(253,248,236,0.76)] transition-all hover:bg-[rgba(255,255,255,0.08)] hover:text-[#FDF8EC]';
 
     const activeClassName = compact
-      ? 'bg-[rgba(201,168,76,0.15)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.08)]'
-      : 'bg-[rgba(201,168,76,0.15)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.08)]';
+      ? 'bg-[rgba(201,168,76,0.18)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.12)]'
+      : 'bg-[rgba(201,168,76,0.16)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.12)]';
 
     return compact ? (
       <Tooltip>
@@ -230,37 +246,44 @@ export const Sidebar = ({
       <TooltipProvider>
         <div
           className={cn(
-            'flex h-full w-[220px] flex-col bg-bb-espresso px-4 py-5 text-[#FDF8EC]',
+            'flex h-full min-h-[100dvh] w-[240px] self-stretch flex-col px-4 py-5 text-[#FDF8EC]',
             isMobileDrawer && 'w-full px-0 py-0',
           )}
+          style={{ backgroundColor: 'var(--bb-espresso)' }}
         >
-          <div className={cn('mb-6 flex items-center gap-3', isMobileDrawer && 'px-0 pt-1')}>
-            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-bb-gold shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
-              <img src={beeLogo} alt="BizzyBee" className="h-6 w-6 rounded-md object-cover" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-medium tracking-[0.03em] text-[#FDF8EC]">
-                BizzyBee
+          <div
+            className={cn('mb-6 flex flex-col items-start gap-3', isMobileDrawer && 'px-0 pt-1')}
+          >
+            <BizzyBeeLogo
+              variant="full"
+              size="md"
+              chip="light"
+              className="max-w-full"
+              imgClassName="max-w-[138px]"
+            />
+            <div className="min-w-0 px-1">
+              <p className="truncate text-[11px] uppercase tracking-[0.18em] text-bb-gold/90">
+                Workspace
               </p>
-              <p className="truncate text-[10px] text-[rgba(253,248,236,0.48)]">
+              <p className="truncate text-[11px] text-[rgba(253,248,236,0.62)]">
                 {viewCounts?.workspaceName || 'AI customer operations'}
               </p>
             </div>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-1.5">
             {primaryItems.map((item) => (
               <SidebarItem key={item.to} item={item} />
             ))}
           </nav>
 
-          <div className="mt-4 rounded-xl border border-white/5 bg-white/5">
+          <div className="mt-5 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.05)]">
             <EmailImportIndicator workspaceId={viewCounts?.workspaceId || null} />
           </div>
 
-          <div className="mt-4 h-px bg-white/8" />
+          <div className="mt-5 h-px bg-white/10" />
 
-          <nav className="mt-4 space-y-1">
+          <nav className="mt-5 space-y-1.5">
             {secondaryItems.map((item) => (
               <SidebarItem key={item.to} item={item} />
             ))}
@@ -276,7 +299,7 @@ export const Sidebar = ({
                 Workspace navigation
               </button>
             ) : (
-              <p className="px-3 text-[10px] leading-5 text-[rgba(253,248,236,0.36)]">
+              <p className="px-3 text-[10px] leading-5 text-[rgba(253,248,236,0.46)]">
                 Calm shell. Light canvas. Gold only where it matters.
               </p>
             )}
@@ -315,11 +338,14 @@ export const Sidebar = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col items-center h-full w-16 py-3 gap-1 bg-bb-espresso">
+      <div
+        className="flex h-full min-h-[100dvh] w-16 self-stretch flex-col items-center gap-1 py-3"
+        style={{ backgroundColor: 'var(--bb-espresso)' }}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="mb-3 cursor-pointer hover:scale-110 transition-transform">
-              <img src={beeLogo} alt="BizzyBee" className="h-8 w-8 rounded-lg object-cover" />
+            <div className="mb-3 cursor-pointer transition-transform hover:scale-105">
+              <BizzyBeeLogo variant="full" size="xs" chip="light" imgClassName="max-w-[40px]" />
             </div>
           </TooltipTrigger>
           <TooltipContent side="right">

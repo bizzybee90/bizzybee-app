@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import { isOnboardingComplete } from '@/lib/onboardingStatus';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
@@ -15,6 +16,11 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const lastCheckedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (isPreviewModeEnabled()) {
+      setLoading(false);
+      return;
+    }
+
     // Set up auth state listener first
     const {
       data: { subscription },
@@ -42,6 +48,10 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
   // Check onboarding status ONCE after user is loaded
   useEffect(() => {
+    if (isPreviewModeEnabled()) {
+      return;
+    }
+
     const checkOnboarding = async () => {
       if (!user || checkingOnboardingRef.current || hasCheckedOnboarding.current) return;
 
@@ -59,10 +69,15 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
           .from('users')
           .select('onboarding_completed, onboarding_step')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (error) {
           console.error('Error checking onboarding status:', error);
+          return;
+        }
+
+        if (!userData) {
+          navigate('/onboarding');
           return;
         }
 
@@ -82,6 +97,10 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
 
     checkOnboarding();
   }, [user, navigate, location.pathname]);
+
+  if (isPreviewModeEnabled()) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

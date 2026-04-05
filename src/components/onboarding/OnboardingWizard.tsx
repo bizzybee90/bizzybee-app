@@ -6,23 +6,43 @@ import { BusinessContextStep } from './BusinessContextStep';
 import { KnowledgeBaseStep } from './KnowledgeBaseStep';
 import { SearchTermsStep } from './SearchTermsStep';
 import { EmailConnectionStep } from './EmailConnectionStep';
+import { ChannelsSetupStep } from './ChannelsSetupStep';
 import { ProgressScreen } from './ProgressScreen';
-import bizzybeelogo from '@/assets/bizzybee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 import { CheckCircle2, Mail, BookOpen, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 
 interface OnboardingWizardProps {
   workspaceId: string;
   onComplete: () => void;
 }
 
-// New step order: welcome → business → knowledge → search_terms → email → progress → complete
-type Step = 'welcome' | 'business' | 'knowledge' | 'search_terms' | 'email' | 'progress' | 'complete';
+// New step order: welcome → business → knowledge → search_terms → email → channels → progress → complete
+type Step =
+  | 'welcome'
+  | 'business'
+  | 'knowledge'
+  | 'search_terms'
+  | 'email'
+  | 'channels'
+  | 'progress'
+  | 'complete';
 
-const STEPS: Step[] = ['welcome', 'business', 'knowledge', 'search_terms', 'email', 'progress', 'complete'];
+const STEPS: Step[] = [
+  'welcome',
+  'business',
+  'knowledge',
+  'search_terms',
+  'email',
+  'channels',
+  'progress',
+  'complete',
+];
 
 export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardProps) {
   const storageKey = `bizzybee:onboarding:${workspaceId}`;
+  const isPreviewMode = isPreviewModeEnabled();
 
   const businessContextDefaults = {
     companyName: '',
@@ -54,7 +74,11 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
       const prev = readStored();
       localStorage.setItem(
         storageKey,
-        JSON.stringify({ ...prev, ...patch, updatedAt: Date.now() } satisfies StoredOnboardingDraft)
+        JSON.stringify({
+          ...prev,
+          ...patch,
+          updatedAt: Date.now(),
+        } satisfies StoredOnboardingDraft),
       );
     } catch {
       // ignore
@@ -77,6 +101,8 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
   // Fetch live FAQ count and trigger inbox hydration when reaching complete step
   useEffect(() => {
     if (currentStep !== 'complete') return;
+    if (isPreviewMode) return;
+
     const fetchCount = async () => {
       const { count } = await supabase
         .from('faq_database')
@@ -89,7 +115,7 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
     // Email import is handled automatically by the aurinko-webhook
     // as emails arrive. No batch import needed.
     console.log('Onboarding complete. Emails will be classified as they arrive via webhook.');
-  }, [currentStep, workspaceId]);
+  }, [currentStep, isPreviewMode, workspaceId]);
 
   useEffect(() => {
     writeStored({ businessContext });
@@ -99,13 +125,14 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
   // Save progress to database
   const saveProgress = async (step: Step) => {
     writeStored({ step });
+    if (isPreviewMode) return;
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
-        await supabase
-          .from('users')
-          .update({ onboarding_step: step })
-          .eq('id', user.id);
+        await supabase.from('users').update({ onboarding_step: step }).eq('id', user.id);
       }
     } catch (error) {
       console.error('Error saving progress:', error);
@@ -115,8 +142,14 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
   // Load saved progress on mount
   useEffect(() => {
     const loadProgress = async () => {
+      if (isPreviewMode) {
+        return;
+      }
+
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
           const { data } = await supabase
             .from('users')
@@ -148,7 +181,7 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
     };
     loadProgress();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [isPreviewMode, workspaceId]);
 
   const stepIndex = STEPS.indexOf(currentStep);
   const progress = (stepIndex / (STEPS.length - 1)) * 100;
@@ -175,21 +208,30 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
 
   return (
     <div className="min-h-screen bg-muted/30 flex items-center justify-center p-6">
-      <Card className={`w-full max-w-2xl shadow-lg shadow-black/5 border-border/50 ${currentStep === 'welcome' ? 'p-10' : ''}`}>
+      <Card
+        className={`w-full max-w-2xl shadow-lg shadow-black/5 border-border/50 ${currentStep === 'welcome' ? 'p-10' : ''}`}
+      >
         <CardHeader className="text-center pb-2">
           {/* Skip button */}
           <div className="flex justify-end mb-2">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={async () => {
-                const { data: { user } } = await supabase.auth.getUser();
+                if (isPreviewMode) {
+                  window.location.href = '/?preview=1';
+                  return;
+                }
+
+                const {
+                  data: { user },
+                } = await supabase.auth.getUser();
                 if (user) {
                   await supabase
                     .from('users')
-                    .update({ 
+                    .update({
                       onboarding_completed: true,
-                      onboarding_step: 'skipped'
+                      onboarding_step: 'skipped',
                     })
                     .eq('id', user.id);
                 }
@@ -201,11 +243,15 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
             </Button>
           </div>
           {/* Logo - Bold, prominent brand presence */}
-          <div className={`flex justify-center ${currentStep === 'welcome' ? 'pt-4 mb-14' : 'mb-8'}`}>
-            <img 
-              src={bizzybeelogo} 
-              alt="BizzyBee" 
-              className={currentStep === 'welcome' ? 'h-56 w-auto' : 'h-24 w-auto'}
+          <div
+            className={`flex justify-center ${currentStep === 'welcome' ? 'pt-4 mb-14' : 'mb-8'}`}
+          >
+            <BizzyBeeLogo
+              variant="full"
+              size={currentStep === 'welcome' ? 'hero' : 'xl'}
+              imgClassName={
+                currentStep === 'welcome' ? 'max-w-[240px] sm:max-w-[300px]' : 'max-w-[180px]'
+              }
             />
           </div>
           {currentStep !== 'welcome' && currentStep !== 'complete' && (
@@ -223,13 +269,14 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
                 </h1>
                 {/* Supporting copy - Softer, unified paragraph */}
                 <p className="text-muted-foreground/80 max-w-sm mx-auto leading-relaxed">
-                  We'll set things up together so BizzyBee learns how you work. It only takes a few minutes.
+                  We'll set things up together so BizzyBee learns how you work. It only takes a few
+                  minutes.
                 </p>
               </div>
               {/* CTA - Intentional, inviting */}
-              <Button 
-                onClick={handleNext} 
-                size="lg" 
+              <Button
+                onClick={handleNext}
+                size="lg"
                 className="px-14 py-7 text-base font-medium rounded-2xl bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 transition-all hover:shadow-lg hover:shadow-primary/25"
               >
                 Get started
@@ -264,11 +311,7 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
           )}
 
           {currentStep === 'search_terms' && (
-            <SearchTermsStep
-              workspaceId={workspaceId}
-              onNext={handleNext}
-              onBack={handleBack}
-            />
+            <SearchTermsStep workspaceId={workspaceId} onNext={handleNext} onBack={handleBack} />
           )}
 
           {currentStep === 'email' && (
@@ -280,12 +323,12 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
             />
           )}
 
+          {currentStep === 'channels' && (
+            <ChannelsSetupStep workspaceId={workspaceId} onNext={handleNext} onBack={handleBack} />
+          )}
+
           {currentStep === 'progress' && (
-            <ProgressScreen
-              workspaceId={workspaceId}
-              onNext={handleNext}
-              onBack={handleBack}
-            />
+            <ProgressScreen workspaceId={workspaceId} onNext={handleNext} onBack={handleBack} />
           )}
 
           {currentStep === 'complete' && (
@@ -299,10 +342,12 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
                   BizzyBee has learned from your competitors and email patterns.
                 </CardDescription>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
                 <div className="bg-muted/30 rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-primary">{liveFaqCount ?? (knowledgeResults.websiteFaqs + knowledgeResults.industryFaqs)}</div>
+                  <div className="text-2xl font-bold text-primary">
+                    {liveFaqCount ?? knowledgeResults.websiteFaqs + knowledgeResults.industryFaqs}
+                  </div>
                   <div className="text-xs text-muted-foreground">FAQs ready</div>
                 </div>
                 <div className="bg-muted/30 rounded-lg p-4 text-center">
@@ -323,8 +368,8 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
                   <MessageCircle className="h-4 w-4" />
                   Start Using BizzyBee
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => {
                     window.open('/knowledge-base', '_blank');
                   }}
@@ -333,13 +378,17 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
                   <BookOpen className="h-4 w-4" />
                   View Knowledge Base
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleBack} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBack}
+                  className="text-muted-foreground"
+                >
                   ← Back
                 </Button>
               </div>
             </div>
           )}
-
         </CardContent>
       </Card>
     </div>

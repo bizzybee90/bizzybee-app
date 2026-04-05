@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileSidebarSheet } from '@/components/sidebar/MobileSidebarSheet';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 
 interface ThreeColumnLayoutProps {
   sidebar: ReactNode;
@@ -16,7 +17,7 @@ export const ThreeColumnLayout = ({ sidebar, main }: ThreeColumnLayoutProps) => 
   if (isMobile) {
     return (
       <>
-        <div className="flex h-screen w-full bg-bb-linen overflow-hidden flex-col">
+        <div className="flex h-[100dvh] min-h-[100dvh] w-full bg-bb-linen overflow-hidden flex-col">
           <header className="flex-shrink-0 h-14 border-b border-bb-border bg-bb-white px-4 flex items-center justify-between">
             <Button
               variant="ghost"
@@ -26,7 +27,7 @@ export const ThreeColumnLayout = ({ sidebar, main }: ThreeColumnLayoutProps) => 
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-[15px] font-medium text-bb-text truncate">BizzyBee</h1>
+            <BizzyBeeLogo variant="full" size="sm" imgClassName="max-w-[118px]" />
             <div className="w-9" />
           </header>
           <main className="flex-1 overflow-y-auto">{main}</main>
@@ -41,13 +42,13 @@ export const ThreeColumnLayout = ({ sidebar, main }: ThreeColumnLayoutProps) => 
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      {/* Desktop Sidebar — espresso dark */}
-      <aside className="flex-shrink-0 overflow-y-auto relative z-50">{sidebar}</aside>
+    <div className="flex h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-bb-linen">
+      <aside className="relative z-50 flex-shrink-0 bg-bb-espresso shadow-[inset_-1px_0_0_rgba(255,255,255,0.04)]">
+        {sidebar}
+      </aside>
 
-      {/* Desktop Main Content — linen bg with white content card */}
-      <main className="flex-1 flex flex-col overflow-y-auto min-w-0 bg-bb-linen p-6">
-        <div className="flex-1 rounded-xl border-[0.5px] border-bb-border bg-bb-white overflow-y-auto">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-bb-linen p-5 lg:p-6">
+        <div className="flex-1 overflow-y-auto rounded-[24px] border border-[rgba(28,21,16,0.08)] bg-bb-white shadow-[0_18px_40px_rgba(28,21,16,0.06)]">
           {main}
         </div>
       </main>

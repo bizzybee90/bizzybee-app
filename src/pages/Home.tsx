@@ -27,6 +27,7 @@ import { LearningInsightsWidget } from '@/components/dashboard/LearningInsightsW
 import { InsightsWidget } from '@/components/dashboard/InsightsWidget';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 
 interface HomeStats {
   clearedToday: number;
@@ -41,6 +42,7 @@ export const Home = () => {
   const { workspace } = useWorkspace();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const previewOnboardingPath = isPreviewModeEnabled() ? '/onboarding?preview=1' : '/onboarding';
   const [stats, setStats] = useState<HomeStats>({
     clearedToday: 0,
     toReplyCount: 0,
@@ -53,9 +55,21 @@ export const Home = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!workspace?.id) return;
+      if (!workspace?.id) {
+        setLoading(false);
+        setStats({
+          clearedToday: 0,
+          toReplyCount: 0,
+          atRiskCount: 0,
+          reviewCount: 0,
+          draftCount: 0,
+          lastHandled: null,
+        });
+        return;
+      }
 
       try {
+        setLoading(true);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -195,7 +209,7 @@ export const Home = () => {
 
   const mainContent = (
     <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="p-4 md:p-6 space-y-6 min-h-full max-w-[1120px] mx-auto bg-bb-linen">
+      <div className="mx-auto min-h-full max-w-[1120px] space-y-6 bg-bb-linen p-4 md:p-6">
         {loading ? (
           <div className="space-y-4">
             <Skeleton className="h-28 rounded-2xl" />
@@ -208,6 +222,21 @@ export const Home = () => {
           </div>
         ) : (
           <>
+            {!workspace?.id && (
+              <div className="rounded-[24px] border border-bb-border bg-bb-cream p-6 shadow-[0_10px_24px_rgba(28,21,16,0.04)]">
+                <p className="text-[18px] font-medium text-bb-text">Workspace setup incomplete</p>
+                <p className="mt-2 max-w-xl text-[13px] text-bb-text-secondary">
+                  BizzyBee is live, but this account is not linked to a workspace yet. Finish
+                  onboarding or reconnect your workspace to load inbox data.
+                </p>
+                <div className="mt-4">
+                  <Button onClick={() => navigate(previewOnboardingPath)}>
+                    Continue onboarding
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* ── Greeting ── */}
             <div className="mb-2">
               <h1 className="text-[18px] font-medium tracking-[-0.022em] text-bb-text">

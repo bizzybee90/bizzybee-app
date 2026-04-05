@@ -42,10 +42,12 @@ import { cleanEmailContent } from '@/utils/emailParser';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useReviewFeedback } from '@/hooks/useReviewFeedback';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { PanelNotice } from '@/components/settings/PanelNotice';
 import {
   Select,
   SelectContent,
@@ -54,6 +56,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DOMPurify from 'dompurify';
+import { getPreviewAwarePath, isPreviewModeEnabled } from '@/lib/previewMode';
 
 // Helper to strip HTML tags safely
 const stripHtml = (html: string): string => {
@@ -118,19 +121,42 @@ const CATEGORIES = [
 type AutomationLevel = 'auto' | 'draft_first' | 'always_review';
 type TonePreference = 'keep_current' | 'more_formal' | 'more_brief' | 'more_friendly';
 
+const REVIEW_PREFERENCES_KEY = 'bizzybee:review-teach-more-preferences';
+
+function readReviewPreferences() {
+  try {
+    const raw = localStorage.getItem(REVIEW_PREFERENCES_KEY);
+    return raw
+      ? (JSON.parse(raw) as {
+          automationLevel?: AutomationLevel;
+          tonePreference?: TonePreference;
+        })
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function Review() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const isPreviewMode = isPreviewModeEnabled();
+  const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showChangePicker, setShowChangePicker] = useState(false);
   const [changeReason, setChangeReason] = useState('');
   const [selectedChangeCategory, setSelectedChangeCategory] = useState('');
-  const [showTeachMore, setShowTeachMore] = useState(false);
   const [showDraftEditor, setShowDraftEditor] = useState(false);
   const [showCorrectionFlow, setShowCorrectionFlow] = useState(false);
-  const [automationLevel, setAutomationLevel] = useState<AutomationLevel>('auto');
-  const [tonePreference, setTonePreference] = useState<TonePreference>('keep_current');
+  const savedPreferences = readReviewPreferences();
+  const [automationLevel, setAutomationLevel] = useState<AutomationLevel>(
+    savedPreferences.automationLevel ?? 'auto',
+  );
+  const [tonePreference, setTonePreference] = useState<TonePreference>(
+    savedPreferences.tonePreference ?? 'keep_current',
+  );
   const [confirmedToday, setConfirmedToday] = useState<Set<string>>(new Set());
   const [showConfirmedSection, setShowConfirmedSection] = useState(false);
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
@@ -139,23 +165,30 @@ export default function Review() {
   const { toast } = useToast();
   const { celebrateConfirmation, celebratePatternLearned, celebrateQueueComplete } =
     useReviewFeedback();
+  const shouldPersistSenderRulePreferences =
+    automationLevel !== 'auto' || tonePreference !== 'keep_current';
+
+  useEffect(() => {
+    localStorage.setItem(
+      REVIEW_PREFERENCES_KEY,
+      JSON.stringify({
+        automationLevel,
+        tonePreference,
+      }),
+    );
+  }, [automationLevel, tonePreference]);
 
   // Fetch ALL conversations that need reconciliation (training_reviewed = false)
-  const { data: unreviewedQueue = [], isLoading } = useQuery({
-    queryKey: ['reconciliation-queue'],
+  const {
+    data: unreviewedQueue = [],
+    isLoading,
+    error: queueError,
+    refetch: refetchQueue,
+  } = useQuery({
+    queryKey: ['reconciliation-queue', workspace?.id],
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.workspace_id) return [];
+      if (!workspace?.id) return [];
 
       const { data, error } = await supabase
         .from('conversations')
@@ -168,7 +201,7 @@ export default function Review() {
           messages(body, created_at, raw_payload, actor_name)
         `,
         )
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .eq('training_reviewed', false)
         .not('email_classification', 'is', null)
         .order('created_at', { ascending: false })
@@ -186,21 +219,11 @@ export default function Review() {
   });
 
   // Fetch recently confirmed today
-  const { data: recentlyConfirmed = [] } = useQuery({
-    queryKey: ['reconciliation-confirmed-today'],
+  const { data: recentlyConfirmed = [], error: confirmedError } = useQuery({
+    queryKey: ['reconciliation-confirmed-today', workspace?.id],
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return [];
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.workspace_id) return [];
+      if (!workspace?.id) return [];
 
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -216,7 +239,7 @@ export default function Review() {
           messages(body, created_at, raw_payload, actor_name)
         `,
         )
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .eq('training_reviewed', true)
         .gte('training_reviewed_at', todayStart.toISOString())
         .order('training_reviewed_at', { ascending: false })
@@ -234,21 +257,11 @@ export default function Review() {
   });
 
   // Weekly stats
-  const { data: weeklyStats } = useQuery({
-    queryKey: ['reconciliation-weekly-stats'],
+  const { data: weeklyStats, error: weeklyStatsError } = useQuery({
+    queryKey: ['reconciliation-weekly-stats', workspace?.id],
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!userData?.workspace_id) return null;
+      if (!workspace?.id) return null;
 
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
@@ -257,7 +270,7 @@ export default function Review() {
       const { count: totalProcessed } = await supabase
         .from('conversations')
         .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .not('email_classification', 'is', null)
         .gte('created_at', weekAgo.toISOString());
 
@@ -265,7 +278,7 @@ export default function Review() {
       const { count: autoHandled } = await supabase
         .from('conversations')
         .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .eq('decision_bucket', 'auto_handled')
         .gte('created_at', weekAgo.toISOString());
 
@@ -273,7 +286,7 @@ export default function Review() {
       const { count: corrections } = await supabase
         .from('triage_corrections')
         .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', userData.workspace_id)
+        .eq('workspace_id', workspace.id)
         .gte('created_at', weekAgo.toISOString());
 
       const total = totalProcessed || 0;
@@ -297,6 +310,32 @@ export default function Review() {
   const totalItems = totalToReview + confirmedTodayCount;
   const progressPercent =
     totalItems > 0 ? Math.round((confirmedTodayCount / totalItems) * 100) : 100;
+  const hasDraftReadyItems = unreviewedQueue.some((conversation) =>
+    Boolean(conversation.ai_draft_response),
+  );
+  const trainingChecklist = [
+    {
+      label: 'Workspace connected',
+      complete: Boolean(workspace?.id),
+    },
+    {
+      label: 'Review queue available',
+      complete: !isLoading && !queueError,
+    },
+    {
+      label: 'Learning feedback has started',
+      complete:
+        confirmedTodayCount > 0 ||
+        recentlyConfirmed.length > 0 ||
+        Boolean((weeklyStats?.corrections ?? 0) > 0 || (weeklyStats?.totalProcessed ?? 0) > 0),
+    },
+    {
+      label: 'AI draft assistance is available',
+      complete: hasDraftReadyItems,
+    },
+  ];
+  const nextTrainingStep =
+    trainingChecklist.find((item) => !item.complete)?.label ?? 'Training module is ready';
 
   const currentConversation = unreviewedQueue[currentIndex] || null;
 
@@ -315,12 +354,7 @@ export default function Review() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user.id)
-        .single();
+      if (!workspace?.id) throw new Error('Workspace not loaded');
 
       const conv = unreviewedQueue.find((c) => c.id === conversationId);
       const senderEmail = conv?.customer?.email;
@@ -350,9 +384,9 @@ export default function Review() {
       if (error) throw error;
 
       // If changed, log correction
-      if (newCategory && userData?.workspace_id) {
+      if (newCategory) {
         await supabase.from('triage_corrections').insert({
-          workspace_id: userData.workspace_id,
+          workspace_id: workspace.id,
           conversation_id: conversationId,
           original_classification: conv?.email_classification,
           new_classification: newCategory,
@@ -367,19 +401,19 @@ export default function Review() {
             .from('triage_corrections')
             .select('id', { count: 'exact', head: true })
             .eq('sender_domain', senderDomain)
-            .eq('workspace_id', userData.workspace_id);
+            .eq('workspace_id', workspace.id);
 
           if (count && count >= 2) {
             const { data: existingRule } = await supabase
               .from('sender_rules')
               .select('id')
               .eq('sender_pattern', `@${senderDomain}`)
-              .eq('workspace_id', userData.workspace_id)
+              .eq('workspace_id', workspace.id)
               .single();
 
             if (!existingRule) {
               await supabase.from('sender_rules').insert({
-                workspace_id: userData.workspace_id,
+                workspace_id: workspace.id,
                 sender_pattern: `@${senderDomain}`,
                 default_classification: newCategory,
                 skip_llm: true,
@@ -390,13 +424,13 @@ export default function Review() {
         }
       }
 
-      // Save teaching data if provided
-      if (senderDomain && userData?.workspace_id && showTeachMore) {
+      // Persist sender handling preferences when the operator intentionally changes them.
+      if (senderDomain && shouldPersistSenderRulePreferences) {
         const { data: existingRule } = await supabase
           .from('sender_rules')
           .select('id')
           .eq('sender_pattern', `@${senderDomain}`)
-          .eq('workspace_id', userData.workspace_id)
+          .eq('workspace_id', workspace.id)
           .single();
 
         if (existingRule) {
@@ -409,7 +443,7 @@ export default function Review() {
             .eq('id', existingRule.id);
         } else {
           await supabase.from('sender_rules').insert({
-            workspace_id: userData.workspace_id,
+            workspace_id: workspace.id,
             sender_pattern: `@${senderDomain}`,
             automation_level: automationLevel,
             tone_preference: tonePreference,
@@ -428,9 +462,11 @@ export default function Review() {
       // Track locally
       setConfirmedToday((prev) => new Set([...prev, variables.conversationId]));
 
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-queue'] });
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-confirmed-today'] });
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-weekly-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-queue', workspace?.id] });
+      queryClient.invalidateQueries({
+        queryKey: ['reconciliation-confirmed-today', workspace?.id],
+      });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-weekly-stats', workspace?.id] });
 
       if (result.changed && result.newCategory) {
         const conv = unreviewedQueue.find((c) => c.id === variables.conversationId);
@@ -452,7 +488,6 @@ export default function Review() {
       setShowChangePicker(false);
       setChangeReason('');
       setSelectedChangeCategory('');
-      setShowTeachMore(false);
       setAutomationLevel('auto');
       setTonePreference('keep_current');
 
@@ -587,6 +622,83 @@ export default function Review() {
 
   // All caught up state
   const allCaughtUp = !isLoading && unreviewedQueue.length === 0;
+  const hasReviewError = Boolean(queueError || confirmedError || weeklyStatsError);
+  const reviewErrorMessage =
+    queueError instanceof Error
+      ? queueError.message
+      : confirmedError instanceof Error
+        ? confirmedError.message
+        : weeklyStatsError instanceof Error
+          ? weeklyStatsError.message
+          : 'BizzyBee could not load the review queue right now.';
+
+  if (workspaceLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Sparkles className="h-5 w-5 animate-pulse text-bb-gold" />
+          <span className="text-sm">Loading training workspace…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!workspace?.id) {
+    return (
+      <div className="flex h-screen bg-background">
+        {!isMobile && <Sidebar />}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-xl">
+            <PanelNotice
+              title="Finish setup before reviewing training"
+              description="BizzyBee needs a workspace and onboarding context before the training queue can load. Finish setup first, then come back here to teach the AI."
+              actionLabel="Open onboarding"
+              actionTo={onboardingPath}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isPreviewMode) {
+    return (
+      <div className="flex min-h-[100dvh] bg-background">
+        {!isMobile && <Sidebar />}
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-xl">
+            <PanelNotice
+              title="Finish setup before reviewing training"
+              description="This preview can open the Training module, but BizzyBee needs onboarding and a real workspace before the review queue can load."
+              actionLabel="Open onboarding"
+              actionTo={onboardingPath}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasReviewError) {
+    return (
+      <div className="flex h-screen bg-background">
+        {!isMobile && <Sidebar />}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-xl">
+            <PanelNotice
+              title="Review queue unavailable"
+              description={reviewErrorMessage}
+              action={
+                <Button size="sm" variant="outline" onClick={() => void refetchQueue()}>
+                  Try again
+                </Button>
+              }
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ============ MOBILE ============
   if (isMobile) {
@@ -856,8 +968,67 @@ export default function Review() {
           </div>
         </div>
 
+        <div className="px-4 pt-4">
+          <Card className="border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                  Training readiness
+                </p>
+                <h2 className="text-sm font-medium text-slate-900">
+                  AI reconciliation control center
+                </h2>
+                <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                  Training should feel like a managed workflow: clear queue health, clear learning
+                  progress, and a visible next step for the team.
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={
+                  trainingChecklist.every((item) => item.complete)
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-600'
+                }
+              >
+                {trainingChecklist.filter((item) => item.complete).length}/
+                {trainingChecklist.length} ready
+              </Badge>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {trainingChecklist.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3"
+                >
+                  <span className="text-sm text-slate-700">{item.label}</span>
+                  <Badge
+                    className={
+                      item.complete
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-slate-200 bg-white text-slate-500 hover:bg-white'
+                    }
+                  >
+                    {item.complete ? 'Ready' : 'Pending'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-sm font-medium text-slate-900">Next training step</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {nextTrainingStep === 'Training module is ready'
+                  ? 'Training now has a strong workflow foundation. The next gains come from ongoing accuracy improvements and deeper operator feedback.'
+                  : `${nextTrainingStep} is the next blocker before Training feels fully production-ready.`}
+              </p>
+            </div>
+          </Card>
+        </div>
+
         {/* 3-Column Layout */}
-        <div className="flex-1 flex overflow-hidden gap-4 p-4">
+        <div className="flex-1 flex overflow-hidden gap-4 p-4 pt-4">
           {/* Column 1: Reconciliation Queue (350px) */}
           <div className="w-[350px] min-w-[350px] flex-shrink-0 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-100">
@@ -1501,7 +1672,7 @@ export default function Review() {
           open={showCorrectionFlow}
           onOpenChange={setShowCorrectionFlow}
           onUpdate={() => {
-            queryClient.invalidateQueries({ queryKey: ['reconciliation-queue'] });
+            queryClient.invalidateQueries({ queryKey: ['reconciliation-queue', workspace?.id] });
           }}
         />
       )}

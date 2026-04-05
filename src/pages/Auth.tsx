@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import beeLogo from '@/assets/bee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
+import { enablePreviewMode, isLocalhost } from '@/lib/previewMode';
 
 type AuthMode = 'signin' | 'signup' | 'recovery-request' | 'recovery-confirm';
 
@@ -57,6 +58,7 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const canUsePreviewMode = isLocalhost();
 
   const isSignUp = mode === 'signup';
   const isSignIn = mode === 'signin';
@@ -285,6 +287,11 @@ const Auth = () => {
     }
   };
 
+  const handlePreviewMode = () => {
+    enablePreviewMode();
+    navigate('/?preview=1');
+  };
+
   const handleGoogle = async () => {
     setGoogleLoading(true);
 
@@ -346,16 +353,11 @@ const Auth = () => {
       <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-[460px]">
           <div className="mb-7 flex flex-col items-center gap-4 text-center">
-            <div className="inline-flex items-center gap-3 rounded-full border border-[#4c3520] bg-[#1b140d]/85 px-4 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-              <img
-                src={beeLogo}
-                alt="BizzyBee bee icon"
-                className="h-10 w-10 rounded-full object-cover"
-              />
-              <div className="text-left">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-[#f1c56a]">BizzyBee</p>
-                <p className="text-sm text-[#d2c0a4]">AI customer operations</p>
-              </div>
+            <div className="inline-flex flex-col items-center gap-2 rounded-[22px] border border-[#4c3520] bg-[#1b140d]/85 px-5 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+              <BizzyBeeLogo variant="full" size="md" chip="light" imgClassName="max-w-[140px]" />
+              <p className="text-[11px] uppercase tracking-[0.28em] text-[#f1c56a]">
+                AI customer operations
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -524,6 +526,17 @@ const Auth = () => {
                         ) : (
                           'Send magic link'
                         )}
+                      </Button>
+                    )}
+                    {canUsePreviewMode && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-12 w-full rounded-2xl border-[#4a3823] bg-[#16100b] text-[#d8ccb8] hover:bg-[#20160f] hover:text-[#fff5e2]"
+                        disabled={isSubmitting}
+                        onClick={handlePreviewMode}
+                      >
+                        Open local preview
                       </Button>
                     )}
                   </div>

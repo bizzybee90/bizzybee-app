@@ -36,6 +36,7 @@ interface PowerModeLayoutProps {
     | 'unread'
     | 'drafts-ready';
   channelFilter?: string;
+  topNotice?: React.ReactNode;
 }
 
 const getFilterTitle = (filter: string) => {
@@ -61,7 +62,11 @@ const getFilterTitle = (filter: string) => {
   }
 };
 
-export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerModeLayoutProps) => {
+export const PowerModeLayout = ({
+  filter = 'all-open',
+  channelFilter,
+  topNotice,
+}: PowerModeLayoutProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -186,7 +191,7 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
 
   // Desktop layout — matches Review.tsx pattern
   return (
-    <div className="flex h-screen">
+    <div className="flex h-[100dvh] min-h-[100dvh] bg-bb-linen overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden bg-bb-linen">
         {/* Top Bar */}
@@ -211,50 +216,60 @@ export const PowerModeLayout = ({ filter = 'all-open', channelFilter }: PowerMod
 
         {/* Content area */}
         {!selectedConversation ? (
-          <div className="flex-1 flex overflow-hidden gap-4 p-4">
-            <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
-              <JaceStyleInbox
-                filter={filter}
-                selectedId={selectedConversation?.id}
-                onSelect={handleSelectConversation}
-                searchValue={searchQuery}
-                onSearchChange={setSearchQuery}
-                hideHeader
-              />
-            </main>
-            {/* Empty state right pane */}
-            <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative items-center justify-center rounded-2xl border border-bb-border/40 shadow-sm">
-              <div className="text-center">
-                <p className="text-[17px] font-medium text-bb-text">Select a conversation</p>
-                <p className="text-[15px] mt-1 text-bb-warm-gray">
-                  Choose from the list to get started
-                </p>
+          <div className="flex-1 overflow-hidden p-4">
+            <div className="flex h-full flex-col gap-4">
+              {topNotice ? <div className="flex-shrink-0">{topNotice}</div> : null}
+              <div className="flex min-h-0 flex-1 overflow-hidden gap-4">
+                <main className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
+                  <JaceStyleInbox
+                    filter={filter}
+                    selectedId={selectedConversation?.id}
+                    onSelect={handleSelectConversation}
+                    searchValue={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    hideHeader
+                  />
+                </main>
+                {/* Empty state right pane */}
+                <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative items-center justify-center rounded-2xl border border-bb-border/40 shadow-sm">
+                  <div className="text-center">
+                    <p className="text-[17px] font-medium text-bb-text">Select a conversation</p>
+                    <p className="text-[15px] mt-1 text-bb-warm-gray">
+                      Choose from the list to get started
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex overflow-hidden gap-4 p-4">
-            {/* Middle Pane (Message List Column) */}
-            <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
-              <JaceStyleInbox
-                filter={filter}
-                selectedId={selectedConversation?.id}
-                onSelect={handleSelectConversation}
-                searchValue={searchQuery}
-                onSearchChange={setSearchQuery}
-                hideHeader
-              />
-            </div>
+          <div className="flex-1 overflow-hidden p-4">
+            <div className="flex h-full flex-col gap-4">
+              {topNotice ? <div className="flex-shrink-0">{topNotice}</div> : null}
+              <div className="flex min-h-0 flex-1 overflow-hidden gap-4">
+                {/* Middle Pane (Message List Column) */}
+                <div className="w-[350px] min-w-[350px] flex-shrink-0 overflow-hidden flex flex-col bg-bb-white rounded-xl border-[0.5px] border-bb-border">
+                  <JaceStyleInbox
+                    filter={filter}
+                    selectedId={selectedConversation?.id}
+                    onSelect={handleSelectConversation}
+                    searchValue={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    hideHeader
+                  />
+                </div>
 
-            {/* Right Pane (Reading/Preview Column) */}
-            <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative rounded-xl border-[0.5px] border-bb-border">
-              <ConversationThread
-                key={refreshKey}
-                conversation={selectedConversation}
-                onUpdate={handleUpdate}
-                onBack={handleBack}
-                hideBackButton={false}
-              />
+                {/* Right Pane (Reading/Preview Column) */}
+                <div className="flex-1 bg-bb-white overflow-hidden flex flex-col relative rounded-xl border-[0.5px] border-bb-border">
+                  <ConversationThread
+                    key={refreshKey}
+                    conversation={selectedConversation}
+                    onUpdate={handleUpdate}
+                    onBack={handleBack}
+                    hideBackButton={false}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}

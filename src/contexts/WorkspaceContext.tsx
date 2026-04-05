@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { WorkspaceContext } from './workspace-context';
+
+const PREVIEW_WORKSPACE: Workspace = {
+  id: 'preview-workspace',
+  name: 'Mac Cleaning',
+  slug: 'mac-cleaning-preview',
+  timezone: 'Europe/London',
+  business_hours_start: '09:00',
+  business_hours_end: '17:00',
+  business_days: [1, 2, 3, 4, 5],
+  created_at: new Date('2026-01-01T09:00:00.000Z').toISOString(),
+};
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -11,6 +23,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const fetchWorkspace = async () => {
+      if (isPreviewModeEnabled()) {
+        if (!cancelled) {
+          setWorkspace(PREVIEW_WORKSPACE);
+          setLoading(false);
+        }
+        return;
+      }
+
       if (!cancelled) {
         setLoading(true);
       }

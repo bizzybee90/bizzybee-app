@@ -14,7 +14,10 @@ import { TriageCorrectionFlow } from './TriageCorrectionFlow';
 import { InboxQuickActions } from './InboxQuickActions';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { isDateToday, isDateYesterday, safeFormat } from '@/lib/dates';
+import { PanelNotice } from '@/components/settings/PanelNotice';
+import { getPreviewAwarePath, isPreviewModeEnabled } from '@/lib/previewMode';
 
 interface JaceStyleInboxProps {
   onSelect: (conversation: Conversation) => void;
@@ -56,7 +59,10 @@ export const JaceStyleInbox = ({
   filter = 'needs-me',
   hideHeader = false,
 }: JaceStyleInboxProps) => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { workspace } = useWorkspace();
+  const isPreviewMode = isPreviewModeEnabled();
+  const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
+  const [searchParams] = useSearchParams();
   const subFilter = searchParams.get('filter'); // 'at-risk', 'to-reply', 'drafts'
 
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -78,18 +84,7 @@ export const JaceStyleInbox = ({
   }, [searchQuery]);
 
   const fetchConversations = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return [];
-
-    const { data: userData } = await supabase
-      .from('users')
-      .select('workspace_id')
-      .eq('id', user.id)
-      .single();
-
-    if (!userData?.workspace_id) return [];
+    if (!workspace?.id) return [];
 
     let query = supabase
       .from('conversations')
@@ -105,7 +100,7 @@ export const JaceStyleInbox = ({
         assigned_user:users!conversations_assigned_to_fkey(id, name, email)
       ` as string,
       )
-      .eq('workspace_id', userData.workspace_id)
+      .eq('workspace_id', workspace.id)
       .order('updated_at', { ascending: false });
 
     // Apply sub-filter from URL query params (at-risk, to-reply, drafts)
@@ -175,14 +170,18 @@ export const JaceStyleInbox = ({
   };
 
   const { data: autoHandledCount = 0 } = useQuery({
-    queryKey: ['auto-handled-count'],
+    queryKey: ['auto-handled-count', workspace?.id],
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
+      if (!workspace?.id) return 0;
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const { count } = await supabase
         .from('conversations')
         .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', workspace.id)
         .gte('auto_handled_at', today.toISOString());
 
       return count || 0;
@@ -194,8 +193,11 @@ export const JaceStyleInbox = ({
     data: conversations = [],
     isLoading,
     isFetching,
+    error,
+    refetch,
   } = useQuery({
-    queryKey: ['jace-inbox', filter, subFilter, debouncedSearch],
+    queryKey: ['jace-inbox', workspace?.id, filter, subFilter, debouncedSearch],
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       const result = await fetchConversations();
       setLastUpdated(new Date());
@@ -245,7 +247,7 @@ export const JaceStyleInbox = ({
   });
 
   const handleRefresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['jace-inbox'] });
+    await queryClient.invalidateQueries({ queryKey: ['jace-inbox', workspace?.id] });
   };
 
   const getTimeSinceUpdate = () => {
@@ -262,7 +264,7 @@ export const JaceStyleInbox = ({
   };
 
   const handleCorrectionUpdate = () => {
-    queryClient.invalidateQueries({ queryKey: ['jace-inbox'] });
+    queryClient.invalidateQueries({ queryKey: ['jace-inbox', workspace?.id] });
   };
 
   // Fixed width for all status badges to ensure consistent alignment
@@ -427,6 +429,58 @@ export const JaceStyleInbox = ({
     );
   }
 
+  if (!workspace?.id) {
+    return (
+      <div className="flex h-full items-center justify-center bg-bb-white p-6">
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Finish setup before using the inbox"
+            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
+            actionLabel="Open onboarding"
+            actionTo="/onboarding?reset=true"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isPreviewMode) {
+    return (
+      <div className="flex h-full items-center justify-center bg-bb-white p-6">
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Finish setup before using the inbox"
+            description="This preview shell can open the app, but the inbox needs onboarding and real channels before conversations can load."
+            actionLabel="Open onboarding"
+            actionTo={onboardingPath}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center bg-bb-white p-6">
+        <div className="w-full max-w-lg">
+          <PanelNotice
+            title="Inbox unavailable"
+            description={
+              error instanceof Error
+                ? error.message
+                : 'BizzyBee could not load the inbox right now.'
+            }
+            action={
+              <Button size="sm" variant="outline" onClick={() => void refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Get title based on sub-filter
   const getFilterTitle = () => {
     if (subFilter === 'at-risk') return 'At Risk';
@@ -527,9 +581,13 @@ export const JaceStyleInbox = ({
             <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-bb-gold-light shadow-inner ring-8 ring-bb-cream">
               <Sparkles className="h-10 w-10 animate-pulse text-bb-gold" />
             </div>
-            <p className="text-lg font-medium text-bb-text">You're all caught up</p>
+            <p className="text-lg font-medium text-bb-text">
+              {searchQuery ? 'No matching conversations' : "You're all caught up"}
+            </p>
             <p className="mt-1 text-sm text-bb-warm-gray">
-              No messages need your attention right now
+              {searchQuery
+                ? 'Try a different search term or clear your filters.'
+                : 'No messages need your attention right now'}
             </p>
             <p className="mt-3 text-xs text-bb-muted">⌘K to search • J/K to navigate</p>
           </div>

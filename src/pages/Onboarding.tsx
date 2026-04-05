@@ -4,11 +4,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { isOnboardingComplete } from '@/lib/onboardingStatus';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isReset = searchParams.get('reset') === 'true';
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,51 +30,45 @@ export default function Onboarding() {
       setLoading(false);
     }, 20000);
 
-    const initializeOnboarding = async (userId: string) => {
+    const initializeOnboarding = async (authUser: {
+      id: string;
+      email?: string | null;
+      user_metadata?: Record<string, unknown>;
+    }) => {
       try {
-        logger.debug('Initializing for user', { userId });
+        logger.debug('Initializing for user', { userId: authUser.id });
+
+        if (workspaceLoading) {
+          return;
+        }
+
+        if (workspace?.id) {
+          logger.debug('Using workspace from shared context', { workspaceId: workspace.id });
+          if (isMounted) {
+            clearSafetyTimeout(loadingSafetyTimeout);
+            setWorkspaceId(workspace.id);
+            setLoading(false);
+          }
+          return;
+        }
 
         // Get user's workspace and onboarding status
-        const { data: userData, error: userError } = await supabase
+        const initialUserQuery = await supabase
           .from('users')
           .select('workspace_id, onboarding_completed, onboarding_step')
-          .eq('id', userId)
-          .single();
+          .eq('id', authUser.id)
+          .maybeSingle();
+        let userData = initialUserQuery.data;
+        const userError = initialUserQuery.error;
 
         if (userError) {
           logger.error('Error fetching user', userError);
-          // User might not exist yet - wait a bit for trigger
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          // Keep going. A missing/hidden profile row should not block onboarding bootstrap.
+          userData = null;
+        }
 
-          const { data: retryData, error: retryError } = await supabase
-            .from('users')
-            .select('workspace_id, onboarding_completed, onboarding_step')
-            .eq('id', userId)
-            .single();
-
-          if (retryError) {
-            logger.error('Retry failed', retryError);
-            if (isMounted) {
-              clearSafetyTimeout(loadingSafetyTimeout);
-              setError('Failed to load user data. Please refresh the page.');
-              setLoading(false);
-            }
-            return;
-          }
-
-          if (!isReset && isOnboardingComplete(retryData)) {
-            navigate('/');
-            return;
-          }
-
-          if (retryData?.workspace_id) {
-            if (isMounted) {
-              clearSafetyTimeout(loadingSafetyTimeout);
-              setWorkspaceId(retryData.workspace_id);
-              setLoading(false);
-            }
-            return;
-          }
+        if (!userData) {
+          logger.debug('User row missing or not readable yet, continuing with bootstrap flow');
         }
 
         logger.debug('User data loaded', {
@@ -104,7 +101,7 @@ export default function Onboarding() {
           .from('workspaces')
           .insert({
             name: 'My Workspace',
-            slug: `workspace-${userId.slice(0, 8)}`,
+            slug: `workspace-${authUser.id.slice(0, 8)}`,
           })
           .select()
           .single();
@@ -119,14 +116,24 @@ export default function Onboarding() {
           return;
         }
 
-        // Update user with workspace
         const { error: updateError } = await supabase
           .from('users')
-          .update({ workspace_id: workspace.id })
-          .eq('id', userId);
+          .update({
+            workspace_id: workspace.id,
+            onboarding_completed: false,
+            onboarding_step: 'welcome',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', authUser.id);
 
         if (updateError) {
           logger.error('Error updating user', updateError);
+          if (isMounted) {
+            clearSafetyTimeout(loadingSafetyTimeout);
+            setError('Failed to attach the workspace to your account. Please refresh the page.');
+            setLoading(false);
+          }
+          return;
         }
 
         logger.debug('Workspace created', { workspaceId: workspace.id });
@@ -145,6 +152,15 @@ export default function Onboarding() {
       }
     };
 
+    if (isPreviewModeEnabled()) {
+      clearSafetyTimeout(loadingSafetyTimeout);
+      setWorkspaceId(workspace?.id ?? 'preview-workspace');
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     // 1) Immediate session check (handles refreshes where INITIAL_SESSION event can be missed)
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!isMounted) return;
@@ -160,7 +176,7 @@ export default function Onboarding() {
         return;
       }
 
-      initializeOnboarding(session.user.id);
+      initializeOnboarding(session.user);
     });
 
     // 2) Keep listening for auth state changes (sign-in, refresh, sign-out)
@@ -177,7 +193,7 @@ export default function Onboarding() {
       }
 
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
-        initializeOnboarding(session.user.id);
+        initializeOnboarding(session.user);
       }
     });
 
@@ -186,9 +202,14 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [isReset, navigate]);
+  }, [isReset, navigate, workspace?.id, workspaceLoading]);
 
   const handleComplete = async () => {
+    if (isPreviewModeEnabled()) {
+      navigate('/?preview=1');
+      return;
+    }
+
     try {
       const {
         data: { user },
