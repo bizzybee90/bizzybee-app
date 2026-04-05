@@ -13,13 +13,14 @@ import {
   Zap,
   FileEdit,
   Phone,
+  type LucideIcon,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { EmailImportIndicator } from './EmailImportIndicator';
-import bizzybeelogo from '@/assets/bizzybee-logo.png';
+import beeLogo from '@/assets/bee-logo.png';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
@@ -28,23 +29,40 @@ interface SidebarProps {
   isMobileDrawer?: boolean;
 }
 
+interface NavItem {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  count?: number;
+  end?: boolean;
+}
+
 export const Sidebar = ({
   forceCollapsed = false,
   onNavigate,
   onFiltersClick,
   isMobileDrawer = false,
 }: SidebarProps = {}) => {
-  // In mobile drawer mode, show full sidebar with labels
-  const isCollapsed = isMobileDrawer ? false : true; // Always icon rail on desktop
+  const isCollapsed = !isMobileDrawer && forceCollapsed;
 
-  // Fetch view counts and workspace ID
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
     queryFn: async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return { toReply: 0, done: 0, snoozed: 0, review: 0, workspaceId: null };
+      if (!user) {
+        return {
+          toReply: 0,
+          done: 0,
+          snoozed: 0,
+          review: 0,
+          unread: 0,
+          drafts: 0,
+          workspaceId: null,
+          workspaceName: 'AI customer operations',
+        };
+      }
 
       const { data: userData } = await supabase
         .from('users')
@@ -53,7 +71,22 @@ export const Sidebar = ({
         .single();
 
       if (!userData?.workspace_id)
-        return { toReply: 0, done: 0, snoozed: 0, review: 0, workspaceId: null };
+        return {
+          toReply: 0,
+          done: 0,
+          snoozed: 0,
+          review: 0,
+          unread: 0,
+          drafts: 0,
+          workspaceId: null,
+          workspaceName: 'AI customer operations',
+        };
+
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select('name')
+        .eq('id', userData.workspace_id)
+        .single();
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -108,6 +141,7 @@ export const Sidebar = ({
         unread: unreadResult.count || 0,
         drafts: draftsResult.count || 0,
         workspaceId: userData.workspace_id,
+        workspaceName: workspace?.name || 'AI customer operations',
       };
     },
     staleTime: 30000,
@@ -115,136 +149,164 @@ export const Sidebar = ({
   });
 
   const viewCounts = viewData;
+  const primaryItems: NavItem[] = [
+    { to: '/', icon: Home, label: 'Home', end: true },
+    { to: '/inbox', icon: Inbox, label: 'Inbox' },
+    { to: '/needs-action', icon: Zap, label: 'Needs action', count: viewCounts?.toReply },
+    { to: '/unread', icon: Mail, label: 'Unread', count: viewCounts?.unread },
+    { to: '/drafts', icon: FileEdit, label: 'Drafts', count: viewCounts?.drafts },
+    { to: '/review', icon: ClipboardCheck, label: 'Training', count: viewCounts?.review },
+    { to: '/snoozed', icon: Clock, label: 'Snoozed', count: viewCounts?.snoozed },
+    { to: '/done', icon: Archive, label: 'Cleared', count: viewCounts?.done },
+    { to: '/sent', icon: Send, label: 'Sent' },
+    { to: '/ai-phone', icon: Phone, label: 'AI phone' },
+  ];
 
-  // Mobile drawer: show full labels
-  if (isMobileDrawer) {
+  const secondaryItems: NavItem[] = [
+    { to: '/channels', icon: MessageSquare, label: 'Channels' },
+    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge base' },
+    { to: '/settings', icon: Settings, label: 'Settings' },
+  ];
+
+  const SidebarItem = ({ item, compact = false }: { item: NavItem; compact?: boolean }) => {
+    const sharedClassName = compact
+      ? 'flex items-center justify-center w-10 h-10 rounded-lg transition-all relative text-[rgba(253,248,236,0.48)] hover:bg-white/5 hover:text-[#FDF8EC]'
+      : 'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-[rgba(253,248,236,0.58)] transition-all hover:bg-white/5 hover:text-[#FDF8EC]';
+
+    const activeClassName = compact
+      ? 'bg-[rgba(201,168,76,0.15)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.08)]'
+      : 'bg-[rgba(201,168,76,0.15)] text-bb-gold shadow-[inset_0_0_0_1px_rgba(201,168,76,0.08)]';
+
+    return compact ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <NavLink
+            to={item.to}
+            end={item.end}
+            onClick={onNavigate}
+            className={sharedClassName}
+            activeClassName={activeClassName}
+          >
+            <item.icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+            {item.count ? (
+              <span className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-bb-gold px-1 text-[10px] font-medium leading-none text-bb-espresso">
+                {item.count > 99 ? '99+' : item.count}
+              </span>
+            ) : null}
+          </NavLink>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          <p>
+            {item.label}
+            {item.count ? ` (${item.count})` : ''}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      <NavLink
+        to={item.to}
+        end={item.end}
+        onClick={onNavigate}
+        className={sharedClassName}
+        activeClassName={activeClassName}
+      >
+        <item.icon className="h-[16px] w-[16px] flex-shrink-0" strokeWidth={1.7} />
+        <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+          <span className="truncate">{item.label}</span>
+          {item.count ? (
+            <span className="rounded-full bg-bb-gold px-2 py-0.5 text-[10px] font-medium leading-none text-bb-espresso">
+              {item.count > 99 ? '99+' : item.count}
+            </span>
+          ) : null}
+        </span>
+      </NavLink>
+    );
+  };
+
+  if (!isCollapsed) {
     return (
       <TooltipProvider>
-        <div className="flex flex-col h-full overflow-y-auto p-4">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-bb-gold">
-              <img src={bizzybeelogo} alt="BizzyBee" className="h-5 w-5 object-contain" />
+        <div
+          className={cn(
+            'flex h-full w-[220px] flex-col bg-bb-espresso px-4 py-5 text-[#FDF8EC]',
+            isMobileDrawer && 'w-full px-0 py-0',
+          )}
+        >
+          <div className={cn('mb-6 flex items-center gap-3', isMobileDrawer && 'px-0 pt-1')}>
+            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-bb-gold shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+              <img src={beeLogo} alt="BizzyBee" className="h-6 w-6 rounded-md object-cover" />
             </div>
-            <div>
-              <p className="text-[13px] font-medium text-[#FDF8EC]">BizzyBee</p>
-              <p className="text-[10px] text-bb-muted">AI customer operations</p>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium tracking-[0.03em] text-[#FDF8EC]">
+                BizzyBee
+              </p>
+              <p className="truncate text-[10px] text-[rgba(253,248,236,0.48)]">
+                {viewCounts?.workspaceName || 'AI customer operations'}
+              </p>
             </div>
           </div>
-          <nav className="space-y-1 flex-1">
-            {[
-              { to: '/', icon: Home, label: 'Home', end: true },
-              { to: '/inbox', icon: Inbox, label: 'Inbox' },
-              {
-                to: '/needs-action',
-                icon: Zap,
-                label: 'Needs Action',
-                count: viewCounts?.toReply,
-                color: 'text-destructive',
-              },
-              {
-                to: '/unread',
-                icon: Mail,
-                label: 'Unread',
-                count: viewCounts?.unread,
-                color: 'text-blue-500',
-              },
-              {
-                to: '/drafts',
-                icon: FileEdit,
-                label: 'Drafts',
-                count: viewCounts?.drafts,
-                color: 'text-amber-500',
-              },
-              {
-                to: '/review',
-                icon: ClipboardCheck,
-                label: 'Training',
-                count: viewCounts?.review,
-                color: 'text-purple-500',
-              },
-              {
-                to: '/snoozed',
-                icon: Clock,
-                label: 'Snoozed',
-                count: viewCounts?.snoozed,
-                color: 'text-amber-500',
-              },
-              {
-                to: '/done',
-                icon: Archive,
-                label: 'Cleared',
-                count: viewCounts?.done,
-                color: 'text-green-500',
-              },
-              { to: '/sent', icon: Send, label: 'Sent' },
-              { to: '/ai-phone', icon: Phone, label: 'AI Phone' },
-              { to: '/channels', icon: MessageSquare, label: 'Channels' },
-              { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-              { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge Base' },
-              { to: '/settings', icon: Settings, label: 'Settings' },
-            ].map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={onNavigate}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-[12px] text-[rgba(253,248,236,0.55)] hover:bg-[rgba(255,255,255,0.05)] transition-all"
-                activeClassName="bg-[rgba(201,168,76,0.15)] text-bb-gold rounded-md"
-              >
-                <item.icon className={`h-5 w-5 ${item.color || 'text-muted-foreground'}`} />
-                <span className="flex-1 flex items-center justify-between">
-                  <span>{item.label}</span>
-                  {item.count ? (
-                    <span className={`text-xs font-semibold ${item.color || ''}`}>
-                      {item.count}
-                    </span>
-                  ) : null}
-                </span>
-              </NavLink>
+
+          <nav className="space-y-1">
+            {primaryItems.map((item) => (
+              <SidebarItem key={item.to} item={item} />
             ))}
           </nav>
+
+          <div className="mt-4 rounded-xl border border-white/5 bg-white/5">
+            <EmailImportIndicator workspaceId={viewCounts?.workspaceId || null} />
+          </div>
+
+          <div className="mt-4 h-px bg-white/8" />
+
+          <nav className="mt-4 space-y-1">
+            {secondaryItems.map((item) => (
+              <SidebarItem key={item.to} item={item} />
+            ))}
+          </nav>
+
+          <div className="mt-auto pt-4">
+            {onFiltersClick ? (
+              <button
+                type="button"
+                onClick={onFiltersClick}
+                className="w-full rounded-lg border border-white/5 px-3 py-2 text-left text-[11px] uppercase tracking-[0.08em] text-[rgba(253,248,236,0.42)] transition-colors hover:bg-white/5"
+              >
+                Workspace navigation
+              </button>
+            ) : (
+              <p className="px-3 text-[10px] leading-5 text-[rgba(253,248,236,0.36)]">
+                Calm shell. Light canvas. Gold only where it matters.
+              </p>
+            )}
+          </div>
         </div>
       </TooltipProvider>
     );
   }
 
-  // Desktop: Icon rail
-  const IconRailItem = ({
-    to,
-    icon: Icon,
-    label,
-    count,
-    color,
-    end,
-  }: {
-    to: string;
-    icon: any;
-    label: string;
-    count?: number;
-    color?: string;
-    end?: boolean;
-  }) => (
+  const IconRailItem = ({ item }: { item: NavItem }) => (
     <Tooltip>
       <TooltipTrigger asChild>
         <NavLink
-          to={to}
-          end={end}
+          to={item.to}
+          end={item.end}
           onClick={onNavigate}
-          className="flex items-center justify-center w-10 h-10 rounded-md transition-all relative text-[rgba(253,248,236,0.4)]"
+          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all relative text-[rgba(253,248,236,0.4)] hover:bg-white/5"
           activeClassName="text-bb-gold bg-[rgba(201,168,76,0.15)]"
         >
-          <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
-          {count ? (
+          <item.icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+          {item.count ? (
             <span className="absolute -top-0.5 -right-0.5 text-bb-espresso text-[10px] font-medium rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none bg-bb-gold">
-              {count > 99 ? '99+' : count}
+              {item.count > 99 ? '99+' : item.count}
             </span>
           ) : null}
         </NavLink>
       </TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>
         <p>
-          {label}
-          {count ? ` (${count})` : ''}
+          {item.label}
+          {item.count ? ` (${item.count})` : ''}
         </p>
       </TooltipContent>
     </Tooltip>
@@ -253,79 +315,29 @@ export const Sidebar = ({
   return (
     <TooltipProvider>
       <div className="flex flex-col items-center h-full w-16 py-3 gap-1 bg-bb-espresso">
-        {/* Logo */}
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="mb-3 cursor-pointer hover:scale-110 transition-transform">
-              <img src={bizzybeelogo} alt="BizzyBee" className="h-8 w-8 object-contain" />
+              <img src={beeLogo} alt="BizzyBee" className="h-8 w-8 rounded-lg object-cover" />
             </div>
           </TooltipTrigger>
           <TooltipContent side="right">
-            <p className="font-semibold">BizzyBee</p>
+            <p className="font-medium">BizzyBee</p>
           </TooltipContent>
         </Tooltip>
 
-        {/* Primary nav - top anchored */}
         <nav className="flex flex-col items-center gap-1">
-          <IconRailItem to="/" icon={Home} label="Home" end />
-          <IconRailItem to="/inbox" icon={Inbox} label="Inbox" />
-          <IconRailItem
-            to="/needs-action"
-            icon={Zap}
-            label="Needs Action"
-            count={viewCounts?.toReply}
-            color="text-destructive"
-          />
-          <IconRailItem
-            to="/unread"
-            icon={Mail}
-            label="Unread"
-            count={viewCounts?.unread}
-            color="text-blue-500"
-          />
-          <IconRailItem
-            to="/drafts"
-            icon={FileEdit}
-            label="Drafts"
-            count={viewCounts?.drafts}
-            color="text-amber-500"
-          />
-          <IconRailItem
-            to="/review"
-            icon={ClipboardCheck}
-            label="Training"
-            count={viewCounts?.review}
-            color="text-purple-500"
-          />
-          <IconRailItem
-            to="/snoozed"
-            icon={Clock}
-            label="Snoozed"
-            count={viewCounts?.snoozed}
-            color="text-amber-500"
-          />
-          <IconRailItem
-            to="/done"
-            icon={Archive}
-            label="Cleared"
-            count={viewCounts?.done}
-            color="text-green-500"
-          />
-          <IconRailItem to="/sent" icon={Send} label="Sent" color="text-blue-500" />
-          <IconRailItem to="/ai-phone" icon={Phone} label="AI Phone" />
+          {primaryItems.map((item) => (
+            <IconRailItem key={item.to} item={item} />
+          ))}
         </nav>
 
-        {/* Email import */}
         <EmailImportIndicator workspaceId={viewData?.workspaceId || null} isCollapsed={true} />
-
-        {/* Spacer */}
         <div className="flex-1" />
-
-        {/* Secondary nav - bottom anchored */}
         <nav className="flex flex-col items-center gap-1 pt-2 border-t border-[rgba(255,255,255,0.08)]">
-          <IconRailItem to="/analytics" icon={BarChart3} label="Analytics" />
-          <IconRailItem to="/knowledge-base" icon={BookOpen} label="Knowledge Base" />
-          <IconRailItem to="/settings" icon={Settings} label="Settings" />
+          {secondaryItems.map((item) => (
+            <IconRailItem key={item.to} item={item} />
+          ))}
         </nav>
       </div>
     </TooltipProvider>

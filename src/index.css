@@ -8,7 +8,15 @@
   overflow-wrap: break-word;
 }
 
-h1, h2, h3, h4, h5, h6, p, span, div {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+div {
   max-width: 100%;
 }
 
@@ -18,77 +26,90 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* ── Shared BizzyBee Design Tokens ── */
-    /* Backgrounds */
-    --bg-canvas: #FFFFFF;
-    --bg-secondary: #F5F5F7;
-    --bg-grouped: #F2F2F7;
-    --bg-elevated: #FFFFFF;
+    /* ── BizzyBee core palette ── */
+    --bb-espresso: #1c1510;
+    --bb-espresso-80: #2e2318;
+    --bb-espresso-60: #3d3025;
+    --bb-gold: #c9a84c;
+    --bb-gold-light: #fdf8ec;
+    --bb-gold-border: #e8d28a;
+    --bb-linen: #f7f5f0;
+    --bb-cream: #faf8f4;
+    --bb-white: #ffffff;
+    --bb-warm-gray: #8a8078;
+    --bb-muted: #b0a898;
+    --bb-border: #e0ddd6;
+    --bb-border-light: #f0ede6;
+    --bb-text: #1c1510;
+    --bb-text-secondary: #5c5248;
+    --bb-success: #2a7a48;
+    --bb-success-bg: #e8f5ec;
+    --bb-warning: #9a6b1a;
+    --bb-warning-bg: #fdf8ec;
+    --bb-danger: #a32d2d;
+    --bb-danger-bg: #fde8e8;
+    --bb-neutral: #5c5248;
+    --bb-neutral-bg: #ede8df;
 
-    /* Text */
-    --text-primary: #1D1D1F;
-    --text-secondary: #86868B;
-    --text-tertiary: #AEAEB2;
-
-    /* Brand */
-    --accent-primary: #C4973B;
-    --accent-hover: #B8860B;
-
-    /* System Colours */
-    --system-red: #FF3B30;
-    --system-green: #34C759;
-    --system-orange: #FF9500;
-    --system-blue: #007AFF;
-    --system-purple: #AF52DE;
-
-    /* Borders & Separators */
-    --border-subtle: rgba(0, 0, 0, 0.04);
-    --border-input: rgba(0, 0, 0, 0.12);
-    --separator: rgba(60, 60, 67, 0.12);
-
-    /* Shadows */
-    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
-    --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.12);
-
-    /* Radius */
+    /* Legacy/shared helpers still used in a few components */
+    --bg-canvas: var(--bb-white);
+    --bg-secondary: var(--bb-linen);
+    --bg-grouped: var(--bb-cream);
+    --bg-elevated: var(--bb-white);
+    --text-primary: var(--bb-text);
+    --text-secondary: var(--bb-text-secondary);
+    --text-tertiary: var(--bb-muted);
+    --accent-primary: var(--bb-gold);
+    --accent-hover: #b3923a;
+    --system-red: var(--bb-danger);
+    --system-green: var(--bb-success);
+    --system-orange: var(--bb-warning);
+    --system-blue: #4a6a94;
+    --system-purple: #7c6897;
+    --border-subtle: rgba(28, 21, 16, 0.06);
+    --border-input: rgba(28, 21, 16, 0.1);
+    --separator: rgba(92, 82, 72, 0.12);
+    --shadow-card: 0 1px 2px rgba(28, 21, 16, 0.04), 0 10px 24px rgba(28, 21, 16, 0.04);
+    --shadow-elevated: 0 18px 40px rgba(28, 21, 16, 0.08);
+    --shadow-modal: 0 24px 60px rgba(28, 21, 16, 0.16);
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 16px;
     --radius-xl: 20px;
     --radius-pill: 980px;
+    --font-family:
+      -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue',
+      system-ui, sans-serif;
+    --font-serif: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
 
-    /* Font */
-    --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+    /* ── Tailwind/shadcn mapping ── */
+    --background: 43 26% 95%;
+    --foreground: 27 27% 9%;
 
-    /* ── Tailwind HSL Mapping (synced with tokens above) ── */
-    --background: 240 11% 96%;       /* #F5F5F7 — app canvas */
-    --foreground: 240 3% 12%;        /* #1D1D1F — primary text */
-
-    --card: 0 0% 100%;               /* #FFFFFF — elevated cards */
-    --card-foreground: 240 3% 12%;   /* #1D1D1F */
+    --card: 0 0% 100%;
+    --card-foreground: 27 27% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 3% 12%;
+    --popover-foreground: 27 27% 9%;
 
-    --primary: 40 54% 50%;           /* #C4973B — brand accent */
-    --primary-foreground: 0 0% 100%;
+    --primary: 44 54% 54%;
+    --primary-foreground: 27 27% 9%;
 
-    --secondary: 240 11% 96%;        /* #F5F5F7 */
-    --secondary-foreground: 240 3% 12%;
+    --secondary: 36 44% 97%;
+    --secondary-foreground: 30 12% 32%;
 
-    --muted: 240 20% 96%;            /* #F2F2F7 — grouped bg */
-    --muted-foreground: 240 2% 54%;  /* #86868B — secondary text */
+    --muted: 42 29% 95%;
+    --muted-foreground: 27 7% 51%;
 
-    --accent: 240 11% 96%;
-    --accent-foreground: 240 3% 12%;
+    --accent: 42 29% 95%;
+    --accent-foreground: 27 27% 9%;
 
-    --destructive: 4 100% 59%;       /* #FF3B30 — system red */
+    --destructive: 0 57% 41%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 0% / 0.04;        /* rgba(0,0,0,0.04) — subtle */
-    --input: 0 0% 0% / 0.12;         /* rgba(0,0,0,0.12) — input borders */
-    --ring: 40 54% 50%;              /* matches primary */
+    --border: 38 13% 86%;
+    --input: 38 13% 86%;
+    --ring: 44 54% 54%;
 
     --radius: 0.75rem;
 
@@ -101,124 +122,146 @@ All colors MUST be HSL.
     --tablet-column-gap: 1px;
 
     /* Priority / status colors — iOS system palette */
-    --priority-urgent: 4 100% 59%;
+    --priority-urgent: 0 57% 41%;
     --priority-urgent-foreground: 0 0% 100%;
 
-    --priority-high: 35 100% 50%;
-    --priority-high-foreground: 0 0% 100%;
+    --priority-high: 36 71% 35%;
+    --priority-high-foreground: 42 71% 96%;
 
-    --priority-medium: 35 100% 50%;
-    --priority-medium-foreground: 0 0% 100%;
+    --priority-medium: 44 54% 54%;
+    --priority-medium-foreground: 27 27% 9%;
 
-    --priority-low: 240 2% 54%;
+    --priority-low: 30 12% 32%;
     --priority-low-foreground: 0 0% 100%;
 
-    --urgent: 4 100% 59%;
+    --urgent: 0 57% 41%;
     --urgent-foreground: 0 0% 100%;
 
-    --success: 142 69% 49%;          /* #34C759 */
+    --success: 141 49% 32%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 35 100% 50%;          /* #FF9500 */
-    --warning-foreground: 0 0% 100%;
+    --warning: 36 71% 35%;
+    --warning-foreground: 42 71% 96%;
 
-    --channel-sms: 280 68% 60%;
-    --channel-whatsapp: 142 69% 49%;
-    --channel-email: 211 100% 50%;
-    --channel-phone: 35 100% 50%;
-    --channel-webchat: 280 68% 60%;
+    --channel-sms: 280 30% 48%;
+    --channel-whatsapp: 141 49% 32%;
+    --channel-email: 214 34% 42%;
+    --channel-phone: 36 71% 35%;
+    --channel-webchat: 280 30% 48%;
 
-    --sidebar-background: 240 11% 96%;   /* #F5F5F7 — matches bg-secondary */
-    --sidebar-foreground: 240 2% 54%;    /* #86868B */
-    --sidebar-primary: 40 54% 50%;       /* #C4973B — active items use accent */
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 40 54% 50% / 0.08; /* subtle amber pill behind active */
-    --sidebar-accent-foreground: 240 3% 12%;
-    --sidebar-border: 0 0% 0% / 0.04;
-    --sidebar-ring: 40 54% 50%;
+    --sidebar-background: 27 27% 9%;
+    --sidebar-foreground: 42 71% 96%;
+    --sidebar-primary: 44 54% 54%;
+    --sidebar-primary-foreground: 27 27% 9%;
+    --sidebar-accent: 44 54% 54% / 0.15;
+    --sidebar-accent-foreground: 44 54% 54%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 44 54% 54%;
   }
 
   .dark {
-    --background: 220 15% 8%;
-    --foreground: 220 10% 95%;
+    --bb-espresso: #120e0b;
+    --bb-espresso-80: #1b140e;
+    --bb-espresso-60: #291f17;
+    --bb-gold: #d6b65d;
+    --bb-gold-light: #fbf4e1;
+    --bb-gold-border: #a98734;
+    --bb-linen: #15110e;
+    --bb-cream: #1a1511;
+    --bb-white: #211a14;
+    --bb-warm-gray: #b7aca0;
+    --bb-muted: #8e8378;
+    --bb-border: #2e2721;
+    --bb-border-light: #241e18;
+    --bb-text: #f7efe3;
+    --bb-text-secondary: #d1c3b2;
+    --bb-success: #5cb27a;
+    --bb-success-bg: #193224;
+    --bb-warning: #d6b65d;
+    --bb-warning-bg: #2d2413;
+    --bb-danger: #d46a6a;
+    --bb-danger-bg: #371c1c;
+    --bb-neutral: #c6baab;
+    --bb-neutral-bg: #2a241e;
 
-    --card: 220 15% 11%;
-    --card-foreground: 220 10% 95%;
+    --background: 27 23% 9%;
+    --foreground: 42 40% 92%;
 
-    --popover: 220 15% 11%;
-    --popover-foreground: 220 10% 95%;
+    --card: 26 21% 12%;
+    --card-foreground: 42 40% 92%;
 
-    --primary: 35 55% 55%;
-    --primary-foreground: 0 0% 100%;
+    --popover: 26 21% 12%;
+    --popover-foreground: 42 40% 92%;
 
-    --secondary: 220 15% 16%;
-    --secondary-foreground: 220 10% 95%;
+    --primary: 44 59% 60%;
+    --primary-foreground: 27 27% 9%;
 
-    --muted: 220 15% 16%;
-    --muted-foreground: 220 10% 65%;
+    --secondary: 26 19% 16%;
+    --secondary-foreground: 42 40% 92%;
 
-    --accent: 220 15% 16%;
-    --accent-foreground: 220 10% 95%;
+    --muted: 26 18% 16%;
+    --muted-foreground: 30 14% 70%;
 
-    --destructive: 0 62% 50%;
+    --accent: 26 18% 16%;
+    --accent-foreground: 42 40% 92%;
+
+    --destructive: 0 54% 56%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 18%;
-    --input: 220 15% 18%;
-    --ring: 35 55% 55%;
-    
-    /* Priority colors - uniform across all views */
-    --priority-urgent: 0 84% 60%;
+    --border: 27 16% 19%;
+    --input: 27 16% 19%;
+    --ring: 44 59% 60%;
+
+    --priority-urgent: 0 54% 56%;
     --priority-urgent-foreground: 0 0% 100%;
-    
-    --priority-high: 38 92% 50%;
-    --priority-high-foreground: 0 0% 100%;
-    
-    --priority-medium: 45 93% 47%;
-    --priority-medium-foreground: 0 0% 100%;
-    
-    --priority-low: 220 10% 65%;
-    --priority-low-foreground: 220 15% 8%;
-    
-    --urgent: 25 95% 53%;
+
+    --priority-high: 44 59% 60%;
+    --priority-high-foreground: 27 27% 9%;
+
+    --priority-medium: 36 55% 48%;
+    --priority-medium-foreground: 27 27% 9%;
+
+    --priority-low: 30 14% 70%;
+    --priority-low-foreground: 27 23% 9%;
+
+    --urgent: 0 54% 56%;
     --urgent-foreground: 0 0% 100%;
-    
-    --success: 142 71% 45%;
+
+    --success: 141 35% 53%;
     --success-foreground: 0 0% 100%;
-    
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    
-    --channel-sms: 267 84% 64%;
-    --channel-whatsapp: 142 71% 45%;
-    --channel-email: 217 91% 60%;
-    --channel-phone: 25 95% 53%;
-    --channel-webchat: 280 71% 60%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --warning: 44 59% 60%;
+    --warning-foreground: 27 27% 9%;
+
+    --channel-sms: 280 30% 68%;
+    --channel-whatsapp: 141 35% 53%;
+    --channel-email: 214 35% 66%;
+    --channel-phone: 36 55% 48%;
+    --channel-webchat: 280 30% 68%;
+    --sidebar-background: 26 21% 12%;
+    --sidebar-foreground: 42 71% 96%;
+    --sidebar-primary: 44 59% 60%;
+    --sidebar-primary-foreground: 27 27% 9%;
+    --sidebar-accent: 44 59% 60% / 0.18;
+    --sidebar-accent-foreground: 42 71% 96%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 44 59% 60%;
   }
 }
-
 
 @layer utilities {
   .smooth-transition {
     @apply transition-all duration-300 ease-in-out;
   }
-  
+
   .hover-lift {
     @apply transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md;
   }
-  
+
   .focus-mode-overlay {
     @apply fixed inset-0 bg-background/50 backdrop-blur-sm z-40 animate-in fade-in-0 duration-200;
   }
-  
+
   /* Apple-quality mobile utilities */
   @media (max-width: 900px) {
     .mobile-native-card {
@@ -296,10 +339,10 @@ All colors MUST be HSL.
 
   /* Glassmorphic sticky header */
   .glass-header {
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba(250, 248, 244, 0.86);
     backdrop-filter: saturate(180%) blur(20px);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-bottom: 0.5px solid var(--separator);
+    border-bottom: 0.5px solid var(--bb-border);
   }
 
   /* ── Classification Pills ── */
@@ -314,12 +357,30 @@ All colors MUST be HSL.
     line-height: 1.5;
     border: none;
   }
-  .pill-enquiry { background: rgba(0, 122, 255, 0.08); color: #007AFF; }
-  .pill-quote { background: rgba(52, 199, 89, 0.08); color: #34C759; }
-  .pill-complaint { background: rgba(255, 59, 48, 0.08); color: #FF3B30; }
-  .pill-booking { background: rgba(175, 82, 222, 0.08); color: #AF52DE; }
-  .pill-urgent { background: rgba(255, 59, 48, 0.08); color: #FF3B30; }
-  .pill-draft-ready { background: rgba(52, 199, 89, 0.08); color: #34C759; }
+  .pill-enquiry {
+    background: rgba(0, 122, 255, 0.08);
+    color: #007aff;
+  }
+  .pill-quote {
+    background: rgba(52, 199, 89, 0.08);
+    color: #34c759;
+  }
+  .pill-complaint {
+    background: rgba(255, 59, 48, 0.08);
+    color: #ff3b30;
+  }
+  .pill-booking {
+    background: rgba(175, 82, 222, 0.08);
+    color: #af52de;
+  }
+  .pill-urgent {
+    background: rgba(255, 59, 48, 0.08);
+    color: #ff3b30;
+  }
+  .pill-draft-ready {
+    background: rgba(52, 199, 89, 0.08);
+    color: #34c759;
+  }
   .pill-neutral {
     background: var(--bg-grouped);
     color: #636366;
@@ -341,11 +402,24 @@ All colors MUST be HSL.
     font-family: var(--font-family);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bb-linen);
+    color: var(--bb-text);
+  }
+
+  ::selection {
+    background: rgba(201, 168, 76, 0.22);
+    color: var(--bb-text);
   }
 
   /* Base transition for all interactive elements */
-  button, a, input, select, textarea,
-  [role="button"], [role="tab"], [role="menuitem"] {
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'] {
     transition: all 200ms ease;
   }
 }

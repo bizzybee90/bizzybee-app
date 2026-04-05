@@ -267,7 +267,7 @@ export const JaceStyleInbox = ({
 
   // Fixed width for all status badges to ensure consistent alignment
   const BADGE_CLASS =
-    'text-[10px] px-2 py-0.5 h-auto min-w-[90px] text-center justify-center font-semibold uppercase tracking-wider rounded-md';
+    'text-[10px] px-2 py-0.5 h-auto min-w-[90px] text-center justify-center font-medium uppercase tracking-[0.08em] rounded-full';
 
   // State-based labels: what does the user need to DO, not how hard is it
   const getStateConfig = (bucket: string, hasAiDraft: boolean) => {
@@ -275,19 +275,19 @@ export const JaceStyleInbox = ({
       return {
         badge: (
           <Badge
-            className={`bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 ${BADGE_CLASS}`}
+            className={`bg-bb-danger-bg text-bb-danger border border-transparent ${BADGE_CLASS}`}
           >
             Needs attention
           </Badge>
         ),
-        rowClass: 'bg-red-50/30 border-red-100',
+        rowClass: 'bg-bb-danger-bg/50',
       };
     }
     if (bucket === 'quick_win' && hasAiDraft) {
       return {
         badge: (
           <Badge
-            className={`bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 ${BADGE_CLASS}`}
+            className={`bg-bb-neutral-bg text-bb-neutral border border-transparent ${BADGE_CLASS}`}
           >
             Draft ready
           </Badge>
@@ -299,7 +299,7 @@ export const JaceStyleInbox = ({
       return {
         badge: (
           <Badge
-            className={`bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 ${BADGE_CLASS}`}
+            className={`bg-bb-warning-bg text-bb-warning border border-transparent ${BADGE_CLASS}`}
           >
             Needs reply
           </Badge>
@@ -311,7 +311,7 @@ export const JaceStyleInbox = ({
       return {
         badge: (
           <Badge
-            className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}
+            className={`bg-bb-neutral-bg text-bb-neutral border border-transparent ${BADGE_CLASS}`}
           >
             FYI
           </Badge>
@@ -323,7 +323,7 @@ export const JaceStyleInbox = ({
       return {
         badge: (
           <Badge
-            className={`bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 ${BADGE_CLASS}`}
+            className={`bg-bb-success-bg text-bb-success border border-transparent ${BADGE_CLASS}`}
           >
             Done
           </Badge>
@@ -355,32 +355,38 @@ export const JaceStyleInbox = ({
       <div
         onClick={() => onSelect(conversation)}
         className={cn(
-          'px-3 py-2.5 cursor-pointer transition-all',
+          'px-4 py-3 cursor-pointer transition-all',
           isSelected
-            ? 'bg-purple-50/60 border border-purple-200 ring-1 ring-purple-100 shadow-sm z-10 rounded-xl'
-            : 'border-b border-slate-100 hover:bg-slate-50',
+            ? 'mx-2 rounded-xl border border-bb-gold-border bg-bb-gold-light shadow-sm'
+            : 'border-b border-bb-border-light hover:bg-bb-cream',
+          stateConfig.rowClass,
         )}
       >
-        {/* Row 1: Avatar + Sender + Time */}
-        <div className="flex items-center gap-2 mb-0.5">
-          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <span className="text-[10px] font-bold text-primary">{initial}</span>
+        <div className="mb-1 flex items-center gap-3">
+          <div
+            className={cn(
+              'flex h-[30px] w-[30px] items-center justify-center rounded-full flex-shrink-0',
+              conversation.decision_bucket === 'act_now'
+                ? 'bg-bb-warning-bg text-bb-warning'
+                : 'bg-bb-cream text-bb-text-secondary',
+            )}
+          >
+            <span className="text-[11px] font-medium">{initial}</span>
           </div>
-          <span className="text-sm font-semibold text-slate-900 truncate flex-1 min-w-0">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-bb-text">
             {customerName}
           </span>
-          <span className="text-[11px] text-muted-foreground whitespace-nowrap flex-shrink-0">
-            {formatTime(conv.updated_at || conv.created_at)}
+          <span className="flex-shrink-0 whitespace-nowrap text-[10px] text-bb-muted">
+            {formatTime(conversation.updated_at || conversation.created_at)}
           </span>
         </div>
-        {/* Row 2: Subject + Category + Badge (indented under avatar) */}
-        <div className="pl-9 flex items-center gap-2">
-          <span className="text-xs text-slate-500 truncate flex-1 min-w-0">
-            {conv.title || 'No subject'}
+        <div className="flex items-center gap-2 pl-[42px]">
+          <span className="min-w-0 flex-1 truncate text-[11px] text-bb-warm-gray">
+            {conversation.title || 'No subject'}
           </span>
-          {conv.category && (
+          {conversation.category && (
             <CategoryLabel
-              classification={conv.category}
+              classification={conversation.category}
               size="xs"
               editable
               onClick={(e) => handleCategoryClick(conversation, e)}
@@ -402,8 +408,8 @@ export const JaceStyleInbox = ({
     if (conversations.length === 0) return null;
     return (
       <div>
-        <div className="px-3 py-1.5 bg-purple-50/80 border-b border-slate-100 sticky top-0 z-10">
-          <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
+        <div className="sticky top-0 z-10 border-b border-bb-border-light bg-bb-cream/90 px-4 py-2 backdrop-blur-sm">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-bb-warm-gray">
             {title}
           </span>
         </div>
@@ -416,8 +422,8 @@ export const JaceStyleInbox = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center h-full bg-bb-white">
+        <Loader2 className="h-8 w-8 animate-spin text-bb-warm-gray" />
       </div>
     );
   }
@@ -442,13 +448,12 @@ export const JaceStyleInbox = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex h-full flex-col bg-bb-white">
       {!hideHeader && (
         <>
-          {/* Header with title and metrics */}
           <div
             className={cn(
-              'bg-white/80 backdrop-blur-sm border-b border-slate-100',
+              'border-b border-bb-border-light bg-bb-white/90 backdrop-blur-sm',
               isMobile ? 'px-4 py-3' : 'px-6 py-4',
             )}
           >
@@ -459,30 +464,30 @@ export const JaceStyleInbox = ({
                     variant="ghost"
                     size="sm"
                     onClick={clearSubFilter}
-                    className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                    className="h-8 px-2 text-bb-warm-gray hover:text-bb-text"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </Button>
                 )}
-                <h1 className="text-base font-semibold text-foreground">{getFilterTitle()}</h1>
+                <h1 className="text-[15px] font-medium text-bb-text">{getFilterTitle()}</h1>
                 {subFilter && (
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-sm text-bb-warm-gray">
                     ({filteredConversations.length})
                   </span>
                 )}
               </div>
               {filter === 'needs-me' && autoHandledCount > 0 && !subFilter && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span className="text-foreground/80">
+                  <Sparkles className="h-4 w-4 text-bb-gold" />
+                  <span className="text-bb-text-secondary">
                     BizzyBee cleared{' '}
-                    <span className="font-semibold text-primary">{autoHandledCount}</span> today
+                    <span className="font-medium text-bb-gold">{autoHandledCount}</span> today
                   </span>
                 </div>
               )}
             </div>
             {subFilter && (
-              <p className="text-xs text-muted-foreground mt-1 ml-10">
+              <p className="ml-10 mt-1 text-xs text-bb-warm-gray">
                 {subFilter === 'at-risk' && 'Conversations with SLA warnings or breaches'}
                 {subFilter === 'drafts' && 'AI drafted responses ready for your review'}
                 {subFilter === 'to-reply' && 'Conversations needing your attention'}
@@ -490,8 +495,7 @@ export const JaceStyleInbox = ({
             )}
           </div>
 
-          {/* Search bar */}
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50">
+          <div className="border-b border-bb-border-light px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <div className="flex-1">
                 <SearchInput
@@ -500,7 +504,7 @@ export const JaceStyleInbox = ({
                   placeholder="Search or ask BizzyBee..."
                 />
               </div>
-              <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center justify-end gap-2 text-xs text-bb-warm-gray">
                 <span>Updated {getTimeSinceUpdate()}</span>
                 <Button
                   variant="ghost"
@@ -520,15 +524,15 @@ export const JaceStyleInbox = ({
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {filteredConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-100 to-blue-50 flex items-center justify-center mb-6 shadow-inner ring-8 ring-purple-50/50">
-              <Sparkles className="w-10 h-10 text-purple-500 animate-pulse" />
+          <div className="flex h-64 flex-col items-center justify-center text-bb-warm-gray">
+            <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-bb-gold-light shadow-inner ring-8 ring-bb-cream">
+              <Sparkles className="h-10 w-10 animate-pulse text-bb-gold" />
             </div>
-            <p className="text-lg font-semibold text-foreground/80">You're all caught up!</p>
-            <p className="text-sm mt-1 text-muted-foreground/70">
+            <p className="text-lg font-medium text-bb-text">You're all caught up</p>
+            <p className="mt-1 text-sm text-bb-warm-gray">
               No messages need your attention right now
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-3">⌘K to search • J/K to navigate</p>
+            <p className="mt-3 text-xs text-bb-muted">⌘K to search • J/K to navigate</p>
           </div>
         ) : (
           <>
