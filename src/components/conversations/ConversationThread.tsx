@@ -35,6 +35,8 @@ export const ConversationThread = ({
   const [customer, setCustomer] = useState<import('@/lib/types').Customer | null>(null);
   const [intelligenceDrawerOpen, setIntelligenceDrawerOpen] = useState(false);
   const [isWide, setIsWide] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const { toast } = useToast();
   const draftSaveTimeoutRef = useRef<NodeJS.Timeout>();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -51,7 +53,7 @@ export const ConversationThread = ({
   useEffect(() => {
     setDraftText('');
     scrollContainerRef.current?.scrollTo(0, 0);
-  }, [conversation.id]);
+  }, [conversation.id, reloadKey]);
 
   // Fetch real customer data
   useEffect(() => {
@@ -72,6 +74,10 @@ export const ConversationThread = ({
 
   useEffect(() => {
     const fetchMessages = async () => {
+      setLoading(true);
+      setLoadError(null);
+      setMessages([]);
+
       const { data } = await supabase
         .from('messages')
         .select('*')
@@ -84,7 +90,10 @@ export const ConversationThread = ({
       setLoading(false);
     };
 
-    fetchMessages();
+    fetchMessages().catch((error) => {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load conversation.');
+      setLoading(false);
+    });
 
     const channel = supabase
       .channel(`messages-${conversation.id}`)
@@ -123,7 +132,7 @@ export const ConversationThread = ({
 
         const { error: insertError } = await supabase.from('messages').insert({
           conversation_id: conversation.id,
-          actor_type: 'system',
+          actor_type: 'human_agent',
           actor_id: user.id,
           actor_name: userData?.name || 'Agent',
           direction: 'outbound',
@@ -215,6 +224,24 @@ export const ConversationThread = ({
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-md rounded-2xl border border-bb-border bg-bb-white p-6 text-center shadow-sm">
+          <p className="text-sm font-medium text-bb-text">Conversation unavailable</p>
+          <p className="mt-2 text-sm text-bb-warm-gray">{loadError}</p>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => setReloadKey((value) => value + 1)}
+          >
+            Refresh thread
+          </Button>
+        </div>
       </div>
     );
   }
@@ -392,11 +419,7 @@ export const ConversationThread = ({
                 ''
               }
               onDraftTextCleared={() => setDraftText('')}
-              onDraftChange={(text) => {
-                if (text) {
-                  localStorage.setItem(`draft-${conversation.id}`, text);
-                }
-              }}
+              onDraftChange={setDraftText}
               senderName={customer?.name || 'sender'}
             />
           )}

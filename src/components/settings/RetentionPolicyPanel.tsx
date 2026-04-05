@@ -8,6 +8,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { Loader2, Shield } from 'lucide-react';
+import { PanelNotice } from './PanelNotice';
 
 export const RetentionPolicyPanel = () => {
   const [policy, setPolicy] = useState<any>(null);
@@ -16,11 +18,14 @@ export const RetentionPolicyPanel = () => {
   const [anonymize, setAnonymize] = useState(true);
   const [excludeVip, setExcludeVip] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { isAdmin } = useUserRole();
-  const { workspace } = useWorkspace();
+  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
 
   const loadPolicy = useCallback(async () => {
-    if (!workspace?.id) return;
+    if (!workspace?.id) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -82,13 +87,35 @@ export const RetentionPolicyPanel = () => {
     }
   };
 
+  if (roleLoading || workspaceLoading || loading) {
+    return (
+      <Card className="flex items-center justify-center border-[0.5px] border-bb-border bg-bb-white p-6">
+        <Loader2 className="h-5 w-5 animate-spin text-bb-warm-gray" />
+      </Card>
+    );
+  }
+
+  if (!workspace?.id) {
+    return (
+      <PanelNotice
+        icon={Shield}
+        title="Finish setup before configuring retention"
+        description="BizzyBee needs a workspace before it can store a retention policy for your customer data."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
+  }
+
   if (!isAdmin) {
     return (
-      <Card className="p-6">
-        <p className="text-center text-muted-foreground">
-          Admin access required to manage retention policies
-        </p>
-      </Card>
+      <PanelNotice
+        icon={Shield}
+        title="Retention policy changes require admin access"
+        description="An admin can set how long data is kept and whether old records are deleted or anonymised."
+        actionLabel="Open Workspace & Access"
+        actionTo="/settings?category=workspace"
+      />
     );
   }
 

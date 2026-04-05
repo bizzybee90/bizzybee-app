@@ -9,8 +9,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Upload, Save, Eye, Building2, Code } from 'lucide-react';
+import { Upload, Save, Eye, Building2, Code, Loader2, Mail } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { PanelNotice } from './PanelNotice';
 
 interface EmailSettings {
   id?: string;
@@ -36,7 +37,7 @@ const defaultSettings: EmailSettings = {
 };
 
 export function EmailSettingsPanel() {
-  const { workspace } = useWorkspace();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const workspaceId = workspace?.id;
   const { toast } = useToast();
   const [settings, setSettings] = useState<EmailSettings>(defaultSettings);
@@ -48,6 +49,12 @@ export function EmailSettingsPanel() {
   const [customHtml, setCustomHtml] = useState('');
 
   const fetchSettings = useCallback(async () => {
+    if (!workspaceId) {
+      setSettings(defaultSettings);
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('email_settings')
@@ -71,10 +78,18 @@ export function EmailSettingsPanel() {
   }, [workspaceId]);
 
   useEffect(() => {
-    if (workspaceId) {
-      void fetchSettings();
+    if (workspaceLoading) {
+      return;
     }
-  }, [fetchSettings, workspaceId]);
+
+    if (!workspaceId) {
+      setLoading(false);
+      setSettings(defaultSettings);
+      return;
+    }
+
+    void fetchSettings();
+  }, [fetchSettings, workspaceId, workspaceLoading]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,8 +223,24 @@ export function EmailSettingsPanel() {
     }
   };
 
-  if (loading) {
-    return <div className="animate-pulse">Loading email settings...</div>;
+  if (workspaceLoading || loading) {
+    return (
+      <Card className="flex items-center justify-center border-[0.5px] border-bb-border bg-bb-white p-6">
+        <Loader2 className="h-5 w-5 animate-spin text-bb-warm-gray" />
+      </Card>
+    );
+  }
+
+  if (!workspaceId) {
+    return (
+      <PanelNotice
+        icon={Mail}
+        title="Finish setup before editing email settings"
+        description="Connect a workspace first so BizzyBee knows which brand, signature, and sender identity to save."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
   }
 
   return (

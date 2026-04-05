@@ -5,22 +5,19 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { RotateCcw, Loader2 } from 'lucide-react';
 
-interface OnboardingTriggerPanelProps {
-  workspaceId: string;
-}
-
-export function OnboardingTriggerPanel({ workspaceId }: OnboardingTriggerPanelProps) {
+export function OnboardingTriggerPanel() {
   const [isResetting, setIsResetting] = useState(false);
   const navigate = useNavigate();
 
   const handleRerunOnboarding = async () => {
     setIsResetting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Reset onboarding status
-      await supabase
+      const { error } = await supabase
         .from('users')
         .update({
           onboarding_completed: false,
@@ -29,15 +26,21 @@ export function OnboardingTriggerPanel({ workspaceId }: OnboardingTriggerPanelPr
         })
         .eq('id', user.id);
 
+      if (error) {
+        throw error;
+      }
+
       // Clear localStorage draft so wizard doesn't resume from old step
       try {
         const keys = Object.keys(localStorage);
-        keys.forEach(key => {
+        keys.forEach((key) => {
           if (key.startsWith('bizzybee:onboarding:')) {
             localStorage.removeItem(key);
           }
         });
-      } catch { /* ignore */ }
+      } catch {
+        // Ignore localStorage cleanup failures and continue into onboarding.
+      }
 
       toast.success('Redirecting to onboarding...');
       navigate('/onboarding?reset=true');
@@ -52,13 +55,10 @@ export function OnboardingTriggerPanel({ workspaceId }: OnboardingTriggerPanelPr
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Re-run the setup wizard to reconfigure your business details, connect new email accounts, or adjust your automation preferences.
+        Re-run the setup wizard to update your business details, connect channels again, or revisit
+        your automation choices without starting from scratch.
       </p>
-      <Button 
-        onClick={handleRerunOnboarding} 
-        disabled={isResetting}
-        variant="outline"
-      >
+      <Button onClick={handleRerunOnboarding} disabled={isResetting} variant="outline">
         {isResetting ? (
           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
         ) : (

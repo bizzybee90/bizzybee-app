@@ -1,6 +1,6 @@
 import { Menu, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import bizzybeelogo from '@/assets/bizzybee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 
 interface MobileHeaderProps {
   onMenuClick: () => void;
@@ -9,7 +9,12 @@ interface MobileHeaderProps {
   backToText?: string;
 }
 
-export const MobileHeader = ({ onMenuClick, showBackButton, onBackClick, backToText = 'Back' }: MobileHeaderProps) => {
+export const MobileHeader = ({
+  onMenuClick,
+  showBackButton,
+  onBackClick,
+  backToText = 'Back',
+}: MobileHeaderProps) => {
   return (
     <header className="sticky top-0 z-50 bg-background border-b border-border/50 shadow-sm">
       <div className="flex items-center justify-between px-4 h-14">
@@ -25,16 +30,11 @@ export const MobileHeader = ({ onMenuClick, showBackButton, onBackClick, backToT
             <span className="text-sm font-medium">{backToText}</span>
           </Button>
         ) : (
-          <img src={bizzybeelogo} alt="BizzyBee" className="h-8 w-auto" />
+          <BizzyBeeLogo variant="full" size="sm" imgClassName="max-w-[120px]" />
         )}
 
         {/* Right: Hamburger menu */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMenuClick}
-          className="h-9 w-9"
-        >
+        <Button variant="ghost" size="icon" onClick={onMenuClick} className="h-9 w-9">
           <Menu className="h-5 w-5" />
         </Button>
       </div>

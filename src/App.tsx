@@ -34,6 +34,7 @@ const EmailOAuthCallback = React.lazy(() => import('./pages/EmailOAuthCallback')
 const KnowledgeBase = React.lazy(() => import('./pages/KnowledgeBase'));
 const DevOpsDashboard = React.lazy(() => import('./pages/admin/DevOpsDashboard'));
 const AiPhone = React.lazy(() => import('./pages/AiPhone'));
+const Reviews = React.lazy(() => import('./pages/Reviews'));
 
 const PageLoader = () => (
   <div className="flex min-h-screen items-center justify-center bg-background">
@@ -237,6 +238,14 @@ const RouterContent = () => {
         element={
           <ProtectedRoute>
             <AnalyticsDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reviews"
+        element={
+          <ProtectedRoute>
+            <Reviews />
           </ProtectedRoute>
         }
       />

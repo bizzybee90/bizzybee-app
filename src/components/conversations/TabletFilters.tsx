@@ -4,7 +4,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
+import { getChannelDefinitionsForSurface } from '@/lib/channels';
+
+const conversationChannelOptions = getChannelDefinitionsForSurface('conversation').filter(
+  (definition) => definition.module === 'channels',
+);
 
 interface TabletFiltersProps {
   statusFilter: string[];
@@ -28,11 +33,12 @@ export const TabletFilters = ({
   onCategoryChange,
 }: TabletFiltersProps) => {
   return (
-    <div className="flex gap-2 flex-wrap">{/* Removed unnecessary styling */}
+    <div className="flex gap-2 flex-wrap">
+      {/* Removed unnecessary styling */}
       {/* Status Filter */}
       <Select
-        value={statusFilter[0] || "all"}
-        onValueChange={(value) => onStatusChange(value === "all" ? [] : [value])}
+        value={statusFilter[0] || 'all'}
+        onValueChange={(value) => onStatusChange(value === 'all' ? [] : [value])}
       >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="Status" />
@@ -48,8 +54,8 @@ export const TabletFilters = ({
 
       {/* Priority Filter */}
       <Select
-        value={priorityFilter[0] || "all"}
-        onValueChange={(value) => onPriorityChange(value === "all" ? [] : [value])}
+        value={priorityFilter[0] || 'all'}
+        onValueChange={(value) => onPriorityChange(value === 'all' ? [] : [value])}
       >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="Priority" />
@@ -64,25 +70,26 @@ export const TabletFilters = ({
 
       {/* Channel Filter */}
       <Select
-        value={channelFilter[0] || "all"}
-        onValueChange={(value) => onChannelChange(value === "all" ? [] : [value])}
+        value={channelFilter[0] || 'all'}
+        onValueChange={(value) => onChannelChange(value === 'all' ? [] : [value])}
       >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="Channel" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All Channels</SelectItem>
-          <SelectItem value="email">Email</SelectItem>
-          <SelectItem value="sms">SMS</SelectItem>
-          <SelectItem value="whatsapp">WhatsApp</SelectItem>
-          <SelectItem value="webchat">Webchat</SelectItem>
+          {conversationChannelOptions.map((channel) => (
+            <SelectItem key={channel.key} value={channel.key}>
+              {channel.shortLabel}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
       {/* Category Filter */}
       <Select
-        value={categoryFilter[0] || "all"}
-        onValueChange={(value) => onCategoryChange(value === "all" ? [] : [value])}
+        value={categoryFilter[0] || 'all'}
+        onValueChange={(value) => onCategoryChange(value === 'all' ? [] : [value])}
       >
         <SelectTrigger className="w-32">
           <SelectValue placeholder="Category" />

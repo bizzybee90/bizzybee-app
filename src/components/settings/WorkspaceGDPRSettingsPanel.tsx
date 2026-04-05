@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { PanelNotice } from './PanelNotice';
 
 interface SubProcessor {
   name: string;
@@ -45,8 +46,8 @@ interface GDPRSettings {
 }
 
 export const WorkspaceGDPRSettingsPanel = () => {
-  const { workspace } = useWorkspace();
-  const { isAdmin } = useUserRole();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<GDPRSettings | null>(null);
@@ -57,7 +58,10 @@ export const WorkspaceGDPRSettingsPanel = () => {
   });
 
   const loadSettings = useCallback(async () => {
-    if (!workspace?.id) return;
+    if (!workspace?.id) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -191,21 +195,35 @@ export const WorkspaceGDPRSettingsPanel = () => {
     });
   };
 
-  if (!isAdmin) {
-    return (
-      <Card className="p-6">
-        <p className="text-center text-muted-foreground">
-          Admin access required to manage GDPR settings
-        </p>
-      </Card>
-    );
-  }
-
-  if (loading) {
+  if (roleLoading || workspaceLoading || loading) {
     return (
       <Card className="p-6 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </Card>
+    );
+  }
+
+  if (!workspace?.id) {
+    return (
+      <PanelNotice
+        icon={Shield}
+        title="Finish setup before configuring GDPR settings"
+        description="BizzyBee needs a workspace before it can save your legal entity details, privacy policy, and DPA acceptance."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <PanelNotice
+        icon={Shield}
+        title="GDPR settings require admin access"
+        description="Only an admin should be able to change the DPA, privacy policy, and data protection contacts for a workspace."
+        actionLabel="Open Workspace & Access"
+        actionTo="/settings?category=workspace"
+      />
     );
   }
 

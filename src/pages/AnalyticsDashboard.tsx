@@ -30,6 +30,8 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileSidebarSheet } from '@/components/sidebar/MobileSidebarSheet';
 import { BackButton } from '@/components/shared/BackButton';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { PanelNotice } from '@/components/settings/PanelNotice';
 
 type TimeRange = 'today' | '7days' | '30days';
 
@@ -47,9 +49,11 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsDashboard() {
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const [timeRange, setTimeRange] = useState<TimeRange>('7days');
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -64,7 +68,19 @@ export default function AnalyticsDashboard() {
   }, [timeRange]);
 
   const fetchAnalytics = useCallback(async () => {
+    if (workspaceLoading) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setData(null);
+      setFetchError(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setFetchError(null);
     const { start, end, days } = getDateRange();
 
     try {
@@ -74,6 +90,7 @@ export default function AnalyticsDashboard() {
         .select(
           'id, channel, status, is_escalated, auto_responded, human_edited, first_response_at, created_at, resolved_at, customer_satisfaction, conversation_type',
         )
+        .eq('workspace_id', workspace.id)
         .gte('created_at', start.toISOString())
         .lte('created_at', end.toISOString());
 
@@ -173,10 +190,12 @@ export default function AnalyticsDashboard() {
       });
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
+      setFetchError('Failed to load analytics data.');
+      setData(null);
     } finally {
       setLoading(false);
     }
-  }, [getDateRange]);
+  }, [getDateRange, workspace?.id, workspaceLoading]);
 
   useEffect(() => {
     void fetchAnalytics();
@@ -277,6 +296,20 @@ export default function AnalyticsDashboard() {
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
+        ) : !workspace?.id ? (
+          <PanelNotice
+            icon={TrendingUp}
+            title="Analytics will appear after setup"
+            description="Finish onboarding and start bringing conversations into BizzyBee. Once the workspace is connected, this page will show volume, containment, response time, and channel mix."
+            actionLabel="Open onboarding"
+            actionTo="/onboarding?reset=true"
+          />
+        ) : fetchError ? (
+          <PanelNotice
+            icon={TrendingUp}
+            title="Analytics couldn't load right now"
+            description="The page is no longer stuck on a spinner, but the data query still failed. Try refreshing after onboarding or after your first conversations arrive."
+          />
         ) : data ? (
           <>
             {/* Key Metrics */}
@@ -503,7 +536,7 @@ export default function AnalyticsDashboard() {
             </div>
           </>
         ) : (
-          <div className="text-center text-bb-warm-gray py-12">Failed to load analytics data</div>
+          <div className="text-center text-bb-warm-gray py-12">No analytics data yet</div>
         )}
       </div>
     );

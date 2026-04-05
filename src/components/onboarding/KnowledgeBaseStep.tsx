@@ -17,7 +17,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import bizzybeeLogoSrc from '@/assets/bizzybee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 
 interface KnowledgeBaseStepProps {
   workspaceId: string;
@@ -324,8 +324,7 @@ export function KnowledgeBaseStep({
         {/* Header with dual logos */}
         <div className="flex items-center justify-center gap-4 pt-2">
           <div className="flex items-center gap-2">
-            <img src={bizzybeeLogoSrc} alt="BizzyBee" className="h-10 w-10 rounded-lg" />
-            <span className="font-bold text-base">BizzyBee</span>
+            <BizzyBeeLogo variant="full" size="sm" imgClassName="max-w-[118px]" />
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
           <div className="flex items-center gap-2">

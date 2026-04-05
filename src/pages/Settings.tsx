@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,8 +16,6 @@ import { ChannelManagementPanel } from '@/components/settings/ChannelManagementP
 import { AISettingsCard } from '@/components/settings/AISettingsCard';
 import { ConversationOrderingPanel } from '@/components/settings/ConversationOrderingPanel';
 import { KnowledgeBasePanel } from '@/components/settings/KnowledgeBasePanel';
-import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
-import { EmailSettingsPanel } from '@/components/settings/EmailSettingsPanel';
 import { BusinessContextPanel } from '@/components/settings/BusinessContextPanel';
 import { SenderRulesPanel } from '@/components/settings/SenderRulesPanel';
 import { HouseRulesPanel } from '@/components/settings/HouseRulesPanel';
@@ -29,6 +28,8 @@ import { LearningAnalyticsDashboard } from '@/components/settings/LearningAnalyt
 import { InboxLearningInsightsPanel } from '@/components/settings/InboxLearningInsightsPanel';
 import { DataResetPanel } from '@/components/settings/DataResetPanel';
 import { OnboardingTriggerPanel } from '@/components/settings/OnboardingTriggerPanel';
+import { WorkspaceAccessPanel } from '@/components/settings/WorkspaceAccessPanel';
+import { PanelNotice } from '@/components/settings/PanelNotice';
 import { BackButton } from '@/components/shared/BackButton';
 import { SettingsSection } from '@/components/settings/SettingsSection';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
@@ -36,7 +37,18 @@ import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Bot, Plug, Shield, Layout, Code, ChevronRight, ExternalLink, Wrench } from 'lucide-react';
+import {
+  Bot,
+  Plug,
+  Shield,
+  Layout,
+  Code,
+  ChevronRight,
+  ExternalLink,
+  Star,
+  Wrench,
+  Users,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SettingsCategory {
@@ -48,12 +60,80 @@ interface SettingsCategory {
 }
 
 export default function Settings() {
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [openCategory, setOpenCategory] = useState<string | null>(searchParams.get('category'));
   const isMobile = useIsMobile();
-  const navigate = useNavigate();
   const { workspace } = useWorkspace();
+  const settingsModuleLinks = [
+    {
+      title: 'Workspace',
+      description: 'Permissions, onboarding, and ownership',
+      to: '/settings?category=workspace',
+      icon: Users,
+      tone: 'bg-bb-gold/10 text-bb-espresso',
+    },
+    {
+      title: 'Knowledge',
+      description: 'What BizzyBee knows and uses to answer',
+      to: '/knowledge-base',
+      icon: Star,
+      tone: 'bg-emerald-100 text-emerald-700',
+    },
+    {
+      title: 'Channels',
+      description: 'Provider setup and channel readiness',
+      to: '/channels',
+      icon: Plug,
+      tone: 'bg-blue-100 text-blue-700',
+    },
+    {
+      title: 'Reviews',
+      description: 'Google review workflow and alerts',
+      to: '/reviews',
+      icon: Star,
+      tone: 'bg-amber-100 text-amber-700',
+    },
+  ];
+
+  useEffect(() => {
+    const requestedCategory = searchParams.get('category');
+    if (requestedCategory) {
+      setOpenCategory(requestedCategory);
+    }
+  }, [searchParams]);
 
   const settingsCategories: SettingsCategory[] = [
+    {
+      id: 'workspace',
+      icon: Users,
+      title: 'Workspace & Access',
+      description: 'Team permissions, onboarding, and core setup',
+      content: (
+        <div className="space-y-3">
+          <SettingsSection
+            title="Workspace Access"
+            description="See who is in the workspace and manage roles"
+            defaultOpen
+          >
+            <WorkspaceAccessPanel />
+          </SettingsSection>
+          <SettingsSection
+            title="Re-run Setup Wizard"
+            description="Go back through onboarding when your setup changes"
+          >
+            <OnboardingTriggerPanel />
+          </SettingsSection>
+          {workspace?.id && (
+            <SettingsSection
+              title="Data Reset"
+              description="Reset workspace data before setting BizzyBee up again"
+            >
+              <DataResetPanel workspaceId={workspace.id} />
+            </SettingsSection>
+          )}
+        </div>
+      ),
+    },
     {
       id: 'ai',
       icon: Bot,
@@ -116,22 +196,28 @@ export default function Settings() {
     {
       id: 'connections',
       icon: Plug,
-      title: 'Connections',
-      description: 'Email accounts, channels, and integrations',
+      title: 'Channels & Integrations',
+      description: 'Email, messaging channels, and provider setup',
       content: (
         <div className="space-y-3">
           <SettingsSection
-            title="Email Settings"
-            description="Connected email accounts"
+            title="Channel Setup"
+            description="Connect email, enable messaging channels, and review provider readiness"
             defaultOpen
           >
-            <EmailSettingsPanel />
-          </SettingsSection>
-          <SettingsSection title="Channels" description="Manage communication channels">
             <ChannelManagementPanel />
           </SettingsSection>
-          <SettingsSection title="Integrations" description="Third-party connections">
-            <IntegrationsPanel />
+          <SettingsSection
+            title="Reviews"
+            description="Google review management lives in its own module"
+          >
+            <PanelNotice
+              icon={Star}
+              title="Open the dedicated Reviews module"
+              description="Google Business Messages stays in Channels. Public reviews, reply workflow, alerts, and reputation analytics now belong to Reviews."
+              actionLabel="Open Reviews"
+              actionTo="/reviews"
+            />
           </SettingsSection>
         </div>
       ),
@@ -239,18 +325,6 @@ export default function Settings() {
               </Card>
             </div>
           </SettingsSection>
-
-          {workspace?.id && (
-            <SettingsSection title="Re-run Setup Wizard" description="Start onboarding again">
-              <OnboardingTriggerPanel workspaceId={workspace.id} />
-            </SettingsSection>
-          )}
-
-          {workspace?.id && (
-            <SettingsSection title="Data Reset" description="Reset data and re-onboard">
-              <DataResetPanel workspaceId={workspace.id} />
-            </SettingsSection>
-          )}
           <SettingsSection title="Customer Merge" description="Merge duplicate customers">
             <CustomerMergePanel />
           </SettingsSection>
@@ -267,10 +341,47 @@ export default function Settings() {
     <div className="container mx-auto py-4 md:py-6 px-4 max-w-3xl">
       <div className="mb-6">
         <BackButton to="/" label="Back to Dashboard" />
-        <h1 className="text-[18px] font-medium text-bb-text mt-2">Settings</h1>
-        <p className="text-[12px] text-bb-warm-gray mt-1">
-          Manage your workspace configuration and preferences.
-        </p>
+        <div className="mt-2 rounded-[28px] border border-bb-border bg-bb-white px-5 py-5 shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
+          <div className="space-y-2">
+            <Badge className="w-fit border-bb-gold/25 bg-bb-gold/10 text-bb-espresso hover:bg-bb-gold/10">
+              Workspace control
+            </Badge>
+            <h1 className="text-[24px] font-semibold tracking-[-0.02em] text-bb-text">Settings</h1>
+            <p className="text-[13px] leading-6 text-bb-warm-gray">
+              Configure the parts of BizzyBee that power your workspace. Settings should support
+              first-class modules, not replace them.
+            </p>
+            {workspace?.name && (
+              <p className="text-[12px] text-bb-text-secondary">
+                Current workspace:{' '}
+                <span className="font-medium text-bb-text">{workspace.name}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {settingsModuleLinks.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <Link
+              key={item.title}
+              to={item.to}
+              className="rounded-2xl border border-bb-border bg-bb-white p-4 transition-colors hover:bg-bb-linen/60"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className={`rounded-xl p-2 ${item.tone}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <ChevronRight className="h-4 w-4 text-bb-warm-gray" />
+              </div>
+              <p className="mt-4 text-sm font-medium text-bb-text">{item.title}</p>
+              <p className="mt-1 text-xs leading-5 text-bb-warm-gray">{item.description}</p>
+            </Link>
+          );
+        })}
       </div>
 
       <div className="space-y-3">

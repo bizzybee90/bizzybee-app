@@ -14,7 +14,7 @@ import {
   BookOpen,
   Settings,
 } from 'lucide-react';
-import beeLogo from '@/assets/bee-logo.png';
+import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 
 interface NavItem {
   to: string;
@@ -82,12 +82,10 @@ export function AppSidebar({ accountName = 'BizzyBee' }: AppSidebarProps) {
   return (
     <aside className="flex h-screen w-[200px] flex-col bg-bb-espresso">
       {/* Logo lockup */}
-      <div className="flex items-center gap-2.5 px-4 py-5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-bb-gold">
-          <img src={beeLogo} alt="" className="h-5 w-5" />
-        </div>
+      <div className="flex flex-col items-start gap-3 px-4 py-5">
+        <BizzyBeeLogo variant="full" size="sm" chip="light" imgClassName="max-w-[128px]" />
         <div>
-          <p className="text-[13px] font-medium text-bb-gold-light">BizzyBee</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-bb-gold-light">Workspace</p>
           <p className="text-[10px] text-bb-muted">{accountName}</p>
         </div>
       </div>

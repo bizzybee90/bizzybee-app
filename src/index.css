@@ -27,13 +27,13 @@ All colors MUST be HSL.
 @layer base {
   :root {
     /* ── BizzyBee core palette ── */
-    --bb-espresso: #1c1510;
+    --bb-espresso: #2c1f14;
     --bb-espresso-80: #2e2318;
     --bb-espresso-60: #3d3025;
     --bb-gold: #c9a84c;
     --bb-gold-light: #fdf8ec;
     --bb-gold-border: #e8d28a;
-    --bb-linen: #f7f5f0;
+    --bb-linen: #f9f8f6;
     --bb-cream: #faf8f4;
     --bb-white: #ffffff;
     --bb-warm-gray: #8a8078;

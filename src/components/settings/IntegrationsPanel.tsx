@@ -1,131 +1,71 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Phone, ExternalLink, CheckCircle2, Copy } from 'lucide-react';
-import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { Card } from '@/components/ui/card';
+import { PanelNotice } from './PanelNotice';
+import { Bot, Mail, MessageSquare, Phone, Store } from 'lucide-react';
+
+const providerCards = [
+  {
+    title: 'Email',
+    description: 'Connect Gmail, Outlook, Apple Mail, or IMAP through the Channels section.',
+    icon: Mail,
+    status: 'Managed in Channels',
+  },
+  {
+    title: 'SMS & WhatsApp',
+    description:
+      'Twilio-backed delivery is supported, but provider credentials still need to be configured outside this screen.',
+    icon: MessageSquare,
+    status: 'Requires provider setup',
+  },
+  {
+    title: 'Facebook, Instagram & Google Business',
+    description:
+      'Inbound and outbound channel support exists, but account linking is still part of the broader channel setup work.',
+    icon: Store,
+    status: 'Channel setup in progress',
+  },
+  {
+    title: 'AI Phone',
+    description:
+      'Voice support is handled separately from written channels and uses its own provisioning flow.',
+    icon: Phone,
+    status: 'Separate provisioning',
+  },
+];
 
 export const IntegrationsPanel = () => {
-  const [testingTwilio, setTestingTwilio] = useState(false);
-
-  const handleTestTwilio = async () => {
-    setTestingTwilio(true);
-    try {
-      const { count, error } = await supabase
-        .from('email_provider_configs')
-        .select('*', { count: 'exact', head: true });
-      if (error) throw error;
-      toast.success('Supabase connection verified');
-    } catch (err) {
-      console.error('Connection test error:', err);
-      toast.error('Connection test failed');
-    } finally {
-      setTestingTwilio(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
-  };
-
-  const twilioWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/receive-message`;
-
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h2 className="text-2xl font-bold mb-2">API Integrations</h2>
-        <p className="text-muted-foreground">
-          Manage your external service integrations for SMS and WhatsApp delivery
-        </p>
+    <div className="space-y-4">
+      <PanelNotice
+        icon={Bot}
+        title="This screen is now truthful about provider setup"
+        description="Provider-level secrets and external account linking are not fully managed from this panel yet. Use Channels for customer-facing channel enablement, and treat the items below as the current operational status."
+      />
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {providerCards.map((card) => {
+          const Icon = card.icon;
+
+          return (
+            <Card key={card.title} className="border-[0.5px] border-bb-border bg-bb-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-bb-linen p-2 text-bb-gold">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-bb-text">{card.title}</h3>
+                    <p className="mt-1 text-sm text-bb-warm-gray">{card.description}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="border-bb-border text-bb-warm-gray">
+                  {card.status}
+                </Badge>
+              </div>
+            </Card>
+          );
+        })}
       </div>
-
-      {/* Twilio Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Phone className="h-5 w-5 text-blue-600" />
-            Twilio (SMS & WhatsApp)
-          </CardTitle>
-          <CardDescription>
-            Send SMS and WhatsApp messages to customers
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between py-3 border-b">
-            <span className="text-sm font-medium">Status</span>
-            <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              Connected
-            </Badge>
-          </div>
-
-          <div className="flex items-center justify-between py-3 border-b">
-            <span className="text-sm font-medium">Phone Number</span>
-            <code className="text-sm bg-muted px-2 py-1 rounded">+44 **** **588</code>
-          </div>
-
-          <div className="flex items-center justify-between py-3 border-b">
-            <span className="text-sm font-medium">Account SID</span>
-            <code className="text-sm bg-muted px-2 py-1 rounded">AC*********************</code>
-          </div>
-
-          <div className="flex items-center justify-between py-3 border-b">
-            <span className="text-sm font-medium">Incoming Webhook URL</span>
-            <div className="flex items-center gap-2">
-              <code className="text-xs bg-muted px-2 py-1 rounded max-w-[280px] truncate">
-                {twilioWebhookUrl}
-              </code>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-7 w-7"
-                onClick={() => copyToClipboard(twilioWebhookUrl)}
-              >
-                <Copy className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleTestTwilio}
-              disabled={testingTwilio}
-            >
-              {testingTwilio ? 'Testing...' : 'Test Connection'}
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              asChild
-            >
-              <a 
-                href="https://console.twilio.com" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2"
-              >
-                Twilio Dashboard
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Info Card */}
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">
-            <strong>Note:</strong> Email is managed via the Channels tab using connected email accounts.
-            API credentials are securely stored as environment secrets. 
-            To update phone numbers or API keys, contact your workspace administrator.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 };

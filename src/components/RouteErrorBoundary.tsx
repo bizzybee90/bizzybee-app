@@ -47,7 +47,24 @@ export class RouteErrorBoundary extends Component<Props, State> {
               This page encountered an error. Try refreshing or navigating back.
             </p>
             <div className="flex gap-2 justify-center">
-              <Button variant="outline" onClick={() => window.history.back()}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const currentPath = window.location.pathname + window.location.search;
+                  if (window.history.length > 1) {
+                    window.history.back();
+                    window.setTimeout(() => {
+                      const nextPath = window.location.pathname + window.location.search;
+                      if (nextPath === currentPath) {
+                        window.location.assign('/');
+                      }
+                    }, 150);
+                    return;
+                  }
+
+                  window.location.assign('/');
+                }}
+              >
                 Go back
               </Button>
               <Button

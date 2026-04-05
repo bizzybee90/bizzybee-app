@@ -3,13 +3,14 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Eye, Edit, Download, Trash2, UserX } from 'lucide-react';
+import { Eye, Edit, Download, Trash2, UserX, Loader2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
+import { PanelNotice } from './PanelNotice';
 
 export const AuditLogPanel = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { isAdmin } = useUserRole();
+  const { isAdmin, loading: roleLoading } = useUserRole();
 
   useEffect(() => {
     if (isAdmin) {
@@ -57,13 +58,23 @@ export const AuditLogPanel = () => {
     return colors[action] || 'default';
   };
 
+  if (roleLoading) {
+    return (
+      <Card className="flex items-center justify-center border-[0.5px] border-bb-border bg-bb-white p-6">
+        <Loader2 className="h-5 w-5 animate-spin text-bb-warm-gray" />
+      </Card>
+    );
+  }
+
   if (!isAdmin) {
     return (
-      <Card className="p-6">
-        <p className="text-center text-muted-foreground">
-          Admin access required to view audit logs
-        </p>
-      </Card>
+      <PanelNotice
+        icon={Eye}
+        title="Audit logs are admin-only"
+        description="This panel reads customer data access history. An admin can review it and can change your access from Workspace & Access."
+        actionLabel="Open Workspace & Access"
+        actionTo="/settings?category=workspace"
+      />
     );
   }
 

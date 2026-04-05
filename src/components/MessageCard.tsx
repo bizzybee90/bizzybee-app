@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Phone, Mail, MessageCircle, Globe, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { normalizeChannelKey } from '@/lib/channels';
 
 interface MessageCardProps {
   message: {
@@ -52,8 +53,10 @@ const statusColors = {
 };
 
 export const MessageCard = ({ message, onRespond }: MessageCardProps) => {
-  const ChannelIcon = channelIcons[message.channel as keyof typeof channelIcons] || MessageSquare;
-  const channelColor = channelColors[message.channel as keyof typeof channelColors] || 'bg-primary';
+  const normalizedChannel = normalizeChannelKey(message.channel) ?? message.channel;
+  const ChannelIcon = channelIcons[normalizedChannel as keyof typeof channelIcons] || MessageSquare;
+  const channelColor =
+    channelColors[normalizedChannel as keyof typeof channelColors] || 'bg-primary';
 
   return (
     <Card className="transition-all hover:shadow-md">

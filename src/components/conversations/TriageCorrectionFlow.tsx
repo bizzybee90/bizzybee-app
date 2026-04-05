@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/hooks/use-toast';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import { Input } from '@/components/ui/input';
 import {
   ArrowRight,
@@ -182,6 +183,7 @@ export function TriageCorrectionFlow({
   onUpdate,
 }: TriageCorrectionFlowProps) {
   const { toast } = useToast();
+  const { workspace } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newClassification, setNewClassification] = useState(
     conversation.email_classification || '',
@@ -194,6 +196,16 @@ export function TriageCorrectionFlow({
   const currentClassification = conversation.email_classification || 'unknown';
   const senderEmail = conversation.customer?.email || null;
   const senderDomain = senderEmail?.split('@')[1] || null;
+
+  useEffect(() => {
+    if (!open) return;
+
+    setNewClassification(conversation.email_classification || '');
+    setCustomClassification('');
+    setCustomRequiresReply(false);
+    setCreateSenderRule(true);
+    setSenderRuleScope('domain');
+  }, [conversation.email_classification, conversation.id, open]);
 
   const isCustomMode = newClassification === '__custom__';
   const effectiveClassification = isCustomMode
@@ -232,16 +244,15 @@ export function TriageCorrectionFlow({
 
     setIsSubmitting(true);
     try {
+      if (!workspace?.id) {
+        throw new Error('Workspace not loaded');
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id')
-        .eq('id', user?.id)
-        .single();
 
-      if (!userData?.workspace_id) throw new Error('No workspace found');
+      if (!user) throw new Error('You must be signed in to save corrections');
 
       const newRequiresReply = effectiveRequiresReply;
 
@@ -249,7 +260,7 @@ export function TriageCorrectionFlow({
       const { error: correctionError, data: correctionData } = await supabase
         .from('triage_corrections')
         .insert({
-          workspace_id: userData.workspace_id,
+          workspace_id: workspace.id,
           conversation_id: conversation.id,
           original_classification: currentClassification,
           new_classification: finalClassification,
@@ -274,7 +285,7 @@ export function TriageCorrectionFlow({
         const { data: existingRule } = await supabase
           .from('sender_rules')
           .select('id')
-          .eq('workspace_id', userData.workspace_id)
+          .eq('workspace_id', workspace.id)
           .eq('sender_pattern', senderPattern)
           .maybeSingle();
 
@@ -293,7 +304,7 @@ export function TriageCorrectionFlow({
         } else {
           // Create new rule
           const { error: ruleError } = await supabase.from('sender_rules').insert({
-            workspace_id: userData.workspace_id,
+            workspace_id: workspace.id,
             sender_pattern: senderPattern,
             default_classification: finalClassification,
             default_requires_reply: newRequiresReply,

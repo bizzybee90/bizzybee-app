@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useChannelSetup } from '@/hooks/useChannelSetup';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
@@ -24,9 +25,19 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { MetricPillCard } from '@/components/shared/MetricPillCard';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { PanelNotice } from '@/components/settings/PanelNotice';
+import {
+  CHANNEL_DEFINITIONS,
+  getChannelSetupHref,
+  getChannelSetupActionLabel,
+  getChannelConnectionLabel,
+  getChannelSetupDescription,
+  normalizeChannelKey,
+  type ChannelKey,
+} from '@/lib/channels';
 
 interface ChannelStats {
-  channel: string;
+  channel: ChannelKey;
   unread: number;
   total: number;
   avgResponseTime: number | null;
@@ -38,7 +49,16 @@ interface ChannelStats {
   }>;
 }
 
-const channelConfig = {
+const channelConfig: Record<
+  ChannelKey,
+  {
+    icon: typeof Mail;
+    label: string;
+    color: string;
+    bgColor: string;
+    emoji: string;
+  }
+> = {
   email: {
     icon: Mail,
     label: 'Email',
@@ -62,7 +82,7 @@ const channelConfig = {
   },
   phone: {
     icon: Phone,
-    label: 'Phone',
+    label: 'AI Phone',
     color: 'text-orange-600',
     bgColor: 'bg-orange-50 dark:bg-orange-950/20',
     emoji: '📞',
@@ -74,21 +94,56 @@ const channelConfig = {
     bgColor: 'bg-indigo-50 dark:bg-indigo-950/20',
     emoji: '💻',
   },
+  facebook: {
+    icon: MessageCircle,
+    label: 'Facebook Messenger',
+    color: 'text-sky-600',
+    bgColor: 'bg-sky-50',
+    emoji: '📘',
+  },
+  instagram: {
+    icon: MessageCircle,
+    label: 'Instagram DMs',
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-50',
+    emoji: '📸',
+  },
+  google_business: {
+    icon: Mail,
+    label: 'Google Business',
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    emoji: '📍',
+  },
 };
 
 export default function ChannelsDashboard() {
-  const { workspace } = useWorkspace();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [channelStats, setChannelStats] = useState<ChannelStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [enabledChannels, setEnabledChannels] = useState<Record<string, boolean>>({});
   const [hiddenChannels, setHiddenChannels] = useState<Record<string, boolean>>({});
   const [showSettings, setShowSettings] = useState(false);
+  const {
+    loading: channelSetupLoading,
+    enabledChannelsByKey,
+    dashboardDefinitions,
+    channelConnectionStates,
+    channelsNeedingSetup,
+  } = useChannelSetup(workspace?.id);
+  const supportedChannels = useMemo(
+    () => dashboardDefinitions.map((definition) => definition.key),
+    [dashboardDefinitions],
+  );
 
   const fetchChannelStats = useCallback(async () => {
-    if (!workspace?.id) return;
+    if (!workspace?.id) {
+      setChannelStats([]);
+      setLoading(false);
+      return;
+    }
     setFetchError(null);
 
     try {
@@ -109,9 +164,10 @@ export default function ChannelsDashboard() {
       if (error) throw error;
 
       if (conversations) {
-        const channels = ['email', 'whatsapp', 'sms', 'phone', 'webchat'];
-        const stats = channels.map((channel) => {
-          const channelConvos = conversations.filter((c) => c.channel === channel);
+        const stats = supportedChannels.map((channel) => {
+          const channelConvos = conversations.filter(
+            (conversation) => normalizeChannelKey(conversation.channel) === channel,
+          );
           const unread = channelConvos.filter((c) => c.status === 'new').length;
 
           // Calculate average response time (in minutes)
@@ -149,27 +205,18 @@ export default function ChannelsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [workspace?.id]);
-
-  const fetchEnabledChannels = useCallback(async () => {
-    if (!workspace?.id) return;
-
-    const { data } = await supabase
-      .from('workspace_channels')
-      .select('channel, enabled')
-      .eq('workspace_id', workspace.id);
-
-    if (data) {
-      const enabled: Record<string, boolean> = {};
-      data.forEach((ch) => {
-        enabled[ch.channel] = ch.enabled || false;
-      });
-      setEnabledChannels(enabled);
-    }
-  }, [workspace?.id]);
+  }, [supportedChannels, workspace?.id]);
 
   useEffect(() => {
-    if (!workspace?.id) return;
+    if (workspaceLoading) {
+      return;
+    }
+
+    if (!workspace?.id) {
+      setLoading(false);
+      setFetchError(null);
+      return;
+    }
 
     // Load hidden channels from localStorage
     const saved = localStorage.getItem('hiddenChannels');
@@ -178,7 +225,6 @@ export default function ChannelsDashboard() {
     }
 
     fetchChannelStats();
-    fetchEnabledChannels();
 
     // Set up realtime subscription with workspace-specific channel name
     const realtimeChannel = supabase
@@ -201,7 +247,7 @@ export default function ChannelsDashboard() {
       realtimeChannel.unsubscribe();
       supabase.removeChannel(realtimeChannel);
     };
-  }, [fetchChannelStats, fetchEnabledChannels, workspace?.id]);
+  }, [fetchChannelStats, workspace?.id, workspaceLoading]);
 
   const toggleChannelVisibility = (channel: string) => {
     const updated = { ...hiddenChannels, [channel]: !hiddenChannels[channel] };
@@ -231,230 +277,318 @@ export default function ChannelsDashboard() {
   };
 
   const visibleChannelStats = channelStats.filter(
-    (stat) => enabledChannels[stat.channel] !== false && !hiddenChannels[stat.channel],
+    (stat) =>
+      (enabledChannelsByKey[stat.channel] === true || stat.total > 0 || stat.channel === 'email') &&
+      !hiddenChannels[stat.channel] &&
+      channelConfig[stat.channel],
   );
-
-  const mainContent = loading ? (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-        <p className="text-bb-warm-gray">Loading channels...</p>
-      </div>
-    </div>
-  ) : (
-    <div className="p-4 md:p-8 space-y-4 md:space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="min-w-0 flex-1 w-full sm:w-auto">
-          <h1 className="text-[18px] font-medium text-bb-text">Channels Dashboard</h1>
-          <p className="text-sm text-bb-warm-gray mt-1">
-            Monitor activity across all channels (last 7 days)
-          </p>
+  const statsByChannel = new Map(channelStats.map((stat) => [stat.channel, stat]));
+  const mainContent =
+    workspaceLoading || loading || channelSetupLoading ? (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-bb-warm-gray">Loading channels...</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowSettings(!showSettings)}
-          className="self-start sm:self-auto"
-        >
-          <Settings className="h-4 w-4 mr-2" />
-          {showSettings ? 'Hide' : 'Show'}
-        </Button>
       </div>
-
-      {showSettings && (
-        <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
-          <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-4">
-            Channel Visibility
-          </h3>
-          <div className="space-y-3">
-            {channelStats.map((stat) => {
-              const config = channelConfig[stat.channel as keyof typeof channelConfig];
-              const Icon = config.icon;
-              return (
-                <div
-                  key={stat.channel}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`h-5 w-5 ${config.color}`} />
-                    <Label
-                      htmlFor={`toggle-${stat.channel}`}
-                      className="cursor-pointer font-medium"
-                    >
-                      {config.label}
-                    </Label>
-                    {enabledChannels[stat.channel] === false && (
-                      <Badge variant="outline" className="text-xs">
-                        Disabled in workspace
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id={`toggle-${stat.channel}`}
-                      checked={
-                        !hiddenChannels[stat.channel] && enabledChannels[stat.channel] !== false
-                      }
-                      onCheckedChange={() => toggleChannelVisibility(stat.channel)}
-                      disabled={enabledChannels[stat.channel] === false}
-                    />
-                    {hiddenChannels[stat.channel] ? (
-                      <EyeOff className="h-4 w-4 text-bb-warm-gray" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-bb-warm-gray" />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+    ) : !workspace?.id ? (
+      <div className="p-4 md:p-8">
+        <PanelNotice
+          icon={Settings}
+          title="Channels appear after workspace setup"
+          description="Finish onboarding first, then enable Email, WhatsApp, SMS, Facebook, Instagram, Google Business, and web chat from Settings > Channels & Integrations."
+          actionLabel="Open onboarding"
+          actionTo="/onboarding?reset=true"
+        />
+      </div>
+    ) : (
+      <div className="p-4 md:p-8 space-y-4 md:space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 w-full sm:w-auto">
+            <h1 className="text-[18px] font-medium text-bb-text">Channels Dashboard</h1>
+            <p className="text-sm text-bb-warm-gray mt-1">
+              Monitor activity across all channels (last 7 days)
+            </p>
           </div>
-          <div className="mt-4 pt-4 border-t border-bb-border-light">
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => navigate('/settings')}
-              className="text-xs p-0 text-bb-gold"
-            >
-              Manage workspace channel settings →
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSettings(!showSettings)}
+            className="self-start sm:self-auto"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            {showSettings ? 'Hide' : 'Show'}
+          </Button>
         </div>
-      )}
 
-      {fetchError && (
-        <Card className="p-4 border-destructive bg-destructive/5">
-          <div className="flex items-center gap-2 text-destructive">
-            <p className="text-sm font-medium">{fetchError}</p>
-            <Button variant="outline" size="sm" onClick={fetchChannelStats}>
-              Retry
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      <div
-        className={
-          isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6'
-        }
-      >
-        {visibleChannelStats.map((stat) => {
-          const config = channelConfig[stat.channel as keyof typeof channelConfig];
-          const Icon = config.icon;
-
-          if (isMobile) {
-            return (
-              <div key={stat.channel} onClick={() => navigate(`/channel/${stat.channel}`)}>
-                <MetricPillCard
-                  title={config.label}
-                  value={`${stat.unread}`}
-                  subtitle={`${stat.total} total`}
-                  icon={<Icon className="h-5 w-5" />}
-                  iconColor={config.color}
-                  bgColor={config.bgColor}
-                  className="cursor-pointer active:scale-[0.98] transition-transform"
-                />
-              </div>
-            );
-          }
-
-          return (
-            <Card
-              key={stat.channel}
-              className={`p-4 md:p-6 ${config.bgColor} cursor-pointer hover:shadow-lg transition-all active:scale-[0.98]`}
-              onClick={() => navigate(`/channel/${stat.channel}`)}
-            >
-              <div className="flex items-start justify-between mb-4 gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="p-2.5 md:p-3 rounded-lg bg-bb-white flex-shrink-0">
-                    <Icon className={`h-5 w-5 md:h-6 md:w-6 ${config.color}`} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-base md:text-lg font-medium text-bb-text flex items-center gap-2 truncate">
-                      <span className="text-lg md:text-xl">{config.emoji}</span>
-                      <span className="truncate">{config.label}</span>
-                    </h3>
-                    <p className="text-xs md:text-sm text-bb-warm-gray truncate">
-                      {stat.total} conversation{stat.total !== 1 ? 's' : ''} (7 days)
-                    </p>
-                  </div>
-                </div>
-                {stat.unread > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="text-sm md:text-lg px-2 md:px-3 py-0.5 md:py-1 flex-shrink-0"
+        {showSettings && (
+          <div className="bg-bb-white rounded-lg border-[0.5px] border-bb-border p-6">
+            <h3 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-4">
+              Channel Visibility
+            </h3>
+            <div className="space-y-3">
+              {supportedChannels.map((channelKey) => {
+                const config = channelConfig[channelKey];
+                const Icon = config.icon;
+                const stat = statsByChannel.get(channelKey);
+                return (
+                  <div
+                    key={channelKey}
+                    className="flex items-center justify-between py-2 border-b last:border-0"
                   >
-                    {stat.unread}
-                  </Badge>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 p-3 md:p-4 bg-bb-white rounded-lg">
-                <div>
-                  <p className="text-xs text-bb-warm-gray mb-1">Unread</p>
-                  <p className={`text-xl md:text-2xl font-medium ${config.color}`}>{stat.unread}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-bb-warm-gray mb-1">Avg Response</p>
-                  <p className="text-xl md:text-2xl font-medium text-bb-text truncate">
-                    {formatResponseTime(stat.avgResponseTime)}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-2">
-                  Recent Activity
-                </h4>
-                <ScrollArea className="h-[160px] md:h-[200px]">
-                  {stat.recentConversations.length > 0 ? (
-                    <div className="space-y-2 pr-3">
-                      {stat.recentConversations.map((conv) => (
-                        <div
-                          key={conv.id}
-                          className="p-2.5 md:p-3 bg-bb-white rounded-lg hover:bg-accent/50 active:bg-accent transition-colors"
-                        >
-                          <div className="flex items-center justify-between mb-1 gap-2 min-w-0">
-                            <p className="font-medium text-xs md:text-sm truncate flex-1 min-w-0">
-                              {conv.title}
-                            </p>
-                            <Badge
-                              variant={getStatusColor(conv.status)}
-                              className="ml-2 text-xs flex-shrink-0"
-                            >
-                              {conv.status}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-bb-warm-gray">
-                            {format(new Date(conv.created_at), 'HH:mm')}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="flex items-center gap-3">
+                      <Icon className={`h-5 w-5 ${config.color}`} />
+                      <Label
+                        htmlFor={`toggle-${channelKey}`}
+                        className="cursor-pointer font-medium"
+                      >
+                        {config.label}
+                      </Label>
+                      {enabledChannelsByKey[channelKey] === false && (
+                        <Badge variant="outline" className="text-xs">
+                          Disabled in workspace
+                        </Badge>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-bb-warm-gray text-center py-8">
-                      No conversations in the last 7 days
-                    </p>
-                  )}
-                </ScrollArea>
-              </div>
-            </Card>
-          );
-        })}
-
-        {visibleChannelStats.length === 0 && (
-          <div className="col-span-2 bg-bb-white rounded-lg border-[0.5px] border-bb-border p-12">
-            <div className="text-center">
-              <p className="text-bb-warm-gray mb-4">No channels are currently visible.</p>
-              <Button variant="outline" onClick={() => setShowSettings(true)}>
-                <Settings className="h-4 w-4 mr-2" />
-                Show channel settings
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`toggle-${channelKey}`}
+                        checked={
+                          !hiddenChannels[channelKey] && enabledChannelsByKey[channelKey] !== false
+                        }
+                        onCheckedChange={() => toggleChannelVisibility(channelKey)}
+                        disabled={
+                          enabledChannelsByKey[channelKey] === false && (stat?.total ?? 0) === 0
+                        }
+                      />
+                      {hiddenChannels[channelKey] ? (
+                        <EyeOff className="h-4 w-4 text-bb-warm-gray" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-bb-warm-gray" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 pt-4 border-t border-bb-border-light">
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => navigate('/settings?category=connections')}
+                className="text-xs p-0 text-bb-gold"
+              >
+                Manage workspace channel settings →
               </Button>
             </div>
           </div>
         )}
+
+        {fetchError && (
+          <Card className="p-4 border-destructive bg-destructive/5">
+            <div className="flex items-center gap-2 text-destructive">
+              <p className="text-sm font-medium">{fetchError}</p>
+              <Button variant="outline" size="sm" onClick={fetchChannelStats}>
+                Retry
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {channelsNeedingSetup.length > 0 &&
+          (() => {
+            const primaryChannel = channelsNeedingSetup[0];
+            const primaryState =
+              channelConnectionStates.get(primaryChannel.key)?.state ?? 'needs_connection';
+            const primaryDescription = getChannelSetupDescription(primaryChannel, primaryState);
+
+            return (
+              <PanelNotice
+                icon={Settings}
+                title="Some enabled channels still need setup"
+                description={
+                  channelsNeedingSetup.length === 1
+                    ? `${primaryChannel.shortLabel} is enabled in this workspace, but ${primaryDescription.charAt(0).toLowerCase()}${primaryDescription.slice(1)}`
+                    : `${channelsNeedingSetup.map((definition) => definition.shortLabel).join(', ')} are enabled in this workspace, but still need connection or provider setup before they are fully ready.`
+                }
+                actionLabel={
+                  channelsNeedingSetup.length === 1
+                    ? getChannelSetupActionLabel(primaryChannel, primaryState)
+                    : 'Open channel setup'
+                }
+                actionTo={
+                  channelsNeedingSetup.length === 1
+                    ? getChannelSetupHref(primaryChannel.key)
+                    : '/settings?category=connections&section=messaging'
+                }
+              />
+            );
+          })()}
+
+        <PanelNotice
+          icon={MapPin}
+          title="Google reviews now live separately from Channels"
+          description="This dashboard covers Google Business messages, not public reviews. Reviews now has its own dedicated module for reply workflow, alerts, and reputation analytics."
+          actionLabel="Open Reviews"
+          actionTo="/reviews"
+        />
+
+        <div
+          className={
+            isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6'
+          }
+        >
+          {visibleChannelStats.map((stat) => {
+            const config = channelConfig[stat.channel];
+            const Icon = config.icon;
+            const connection = channelConnectionStates.get(stat.channel);
+            const definition = CHANNEL_DEFINITIONS[stat.channel];
+            const routeTo =
+              connection?.enabled &&
+              (connection.state === 'needs_connection' ||
+                connection.state === 'provider_setup_required') &&
+              stat.total === 0
+                ? getChannelSetupHref(stat.channel)
+                : `/channel/${stat.channel}`;
+
+            if (isMobile) {
+              return (
+                <div key={stat.channel} onClick={() => navigate(routeTo)}>
+                  <MetricPillCard
+                    title={config.label}
+                    value={`${stat.unread}`}
+                    subtitle={`${stat.total} total`}
+                    icon={<Icon className="h-5 w-5" />}
+                    iconColor={config.color}
+                    bgColor={config.bgColor}
+                    className="cursor-pointer active:scale-[0.98] transition-transform"
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <Card
+                key={stat.channel}
+                className={`p-4 md:p-6 ${config.bgColor} cursor-pointer hover:shadow-lg transition-all active:scale-[0.98]`}
+                onClick={() => navigate(routeTo)}
+              >
+                <div className="flex items-start justify-between mb-4 gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="p-2.5 md:p-3 rounded-lg bg-bb-white flex-shrink-0">
+                      <Icon className={`h-5 w-5 md:h-6 md:w-6 ${config.color}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base md:text-lg font-medium text-bb-text flex items-center gap-2 truncate">
+                        <span className="text-lg md:text-xl">{config.emoji}</span>
+                        <span className="truncate">{config.label}</span>
+                      </h3>
+                      <p className="text-xs md:text-sm text-bb-warm-gray truncate">
+                        {stat.total} conversation{stat.total !== 1 ? 's' : ''} (7 days)
+                      </p>
+                    </div>
+                  </div>
+                  {stat.unread > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="text-sm md:text-lg px-2 md:px-3 py-0.5 md:py-1 flex-shrink-0"
+                    >
+                      {stat.unread}
+                    </Badge>
+                  )}
+                  {stat.unread === 0 && connection?.enabled && connection.state !== 'ready' && (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-200 bg-amber-50 text-amber-700"
+                    >
+                      {getChannelConnectionLabel(definition, connection.state)}
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 md:gap-4 mb-4 p-3 md:p-4 bg-bb-white rounded-lg">
+                  <div>
+                    <p className="text-xs text-bb-warm-gray mb-1">Unread</p>
+                    <p className={`text-xl md:text-2xl font-medium ${config.color}`}>
+                      {stat.unread}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-bb-warm-gray mb-1">Avg Response</p>
+                    <p className="text-xl md:text-2xl font-medium text-bb-text truncate">
+                      {formatResponseTime(stat.avgResponseTime)}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-2">
+                    Recent Activity
+                  </h4>
+                  {connection?.enabled &&
+                    (connection.state === 'needs_connection' ||
+                      connection.state === 'provider_setup_required') &&
+                    stat.total === 0 && (
+                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {getChannelSetupDescription(definition, connection.state)}
+                      </div>
+                    )}
+                  {stat.channel === 'google_business' && (
+                    <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                      This card covers Google Business messages only. Public reviews now live in the
+                      Reviews module.
+                    </div>
+                  )}
+                  <ScrollArea className="h-[160px] md:h-[200px]">
+                    {stat.recentConversations.length > 0 ? (
+                      <div className="space-y-2 pr-3">
+                        {stat.recentConversations.map((conv) => (
+                          <div
+                            key={conv.id}
+                            className="p-2.5 md:p-3 bg-bb-white rounded-lg hover:bg-accent/50 active:bg-accent transition-colors"
+                          >
+                            <div className="flex items-center justify-between mb-1 gap-2 min-w-0">
+                              <p className="font-medium text-xs md:text-sm truncate flex-1 min-w-0">
+                                {conv.title}
+                              </p>
+                              <Badge
+                                variant={getStatusColor(conv.status)}
+                                className="ml-2 text-xs flex-shrink-0"
+                              >
+                                {conv.status}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-bb-warm-gray">
+                              {format(new Date(conv.created_at), 'HH:mm')}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-bb-warm-gray text-center py-8">
+                        No conversations in the last 7 days
+                      </p>
+                    )}
+                  </ScrollArea>
+                </div>
+              </Card>
+            );
+          })}
+
+          {visibleChannelStats.length === 0 && (
+            <div className="col-span-2">
+              <PanelNotice
+                icon={Settings}
+                title="No channels are enabled yet"
+                description="Turn on the channels you want BizzyBee to monitor and reply on from Settings > Channels & Integrations."
+                actionLabel="Open connection settings"
+                actionTo="/settings?category=connections&section=messaging"
+              />
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
 
   if (isMobile) {
     return <MobilePageLayout>{mainContent}</MobilePageLayout>;

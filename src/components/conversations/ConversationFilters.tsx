@@ -1,4 +1,12 @@
 import { cn } from '@/lib/utils';
+import { getChannelDefinitionsForSurface } from '@/lib/channels';
+
+const conversationChannelOptions = getChannelDefinitionsForSurface('conversation')
+  .filter((definition) => definition.module === 'channels')
+  .map((definition) => ({
+    label: definition.shortLabel,
+    value: definition.key,
+  }));
 
 interface ConversationFiltersProps {
   statusFilter: string[];
@@ -23,11 +31,15 @@ export const ConversationFilters = ({
   categoryFilter,
   setCategoryFilter,
   conversationTypeFilter,
-  setConversationTypeFilter
+  setConversationTypeFilter,
 }: ConversationFiltersProps) => {
-  const toggleFilter = (currentValues: string[], value: string, onChange: (values: string[]) => void) => {
+  const toggleFilter = (
+    currentValues: string[],
+    value: string,
+    onChange: (values: string[]) => void,
+  ) => {
     if (currentValues.includes(value)) {
-      onChange(currentValues.filter(v => v !== value));
+      onChange(currentValues.filter((v) => v !== value));
     } else {
       onChange([...currentValues, value]);
     }
@@ -44,7 +56,7 @@ export const ConversationFilters = ({
         { label: 'Open', value: 'open' },
         { label: 'Waiting', value: 'waiting_customer' },
         { label: 'Resolved', value: 'resolved' },
-      ]
+      ],
     },
     {
       label: 'Priority',
@@ -55,19 +67,13 @@ export const ConversationFilters = ({
         { label: 'High', value: 'high' },
         { label: 'Medium', value: 'medium' },
         { label: 'Low', value: 'low' },
-      ]
+      ],
     },
     {
       label: 'Channel',
       value: channelFilter,
       onChange: setChannelFilter,
-      options: [
-        { label: 'All', value: '__all__', isAll: true },
-        { label: 'SMS', value: 'sms' },
-        { label: 'WhatsApp', value: 'whatsapp' },
-        { label: 'Email', value: 'email' },
-        { label: 'Web', value: 'web_chat' },
-      ]
+      options: [{ label: 'All', value: '__all__', isAll: true }, ...conversationChannelOptions],
     },
     {
       label: 'Category',
@@ -81,7 +87,7 @@ export const ConversationFilters = ({
         { label: 'Product', value: 'product_inquiry' },
         { label: 'Complaint', value: 'complaint' },
         { label: 'Other', value: 'other' },
-      ]
+      ],
     },
   ];
 
@@ -95,7 +101,7 @@ export const ConversationFilters = ({
         { label: 'All', value: '__all__', isAll: true },
         { label: '🤖 AI', value: 'ai_handled' },
         { label: '🧑 Escalated', value: 'escalated' },
-      ]
+      ],
     });
   }
 
@@ -108,10 +114,10 @@ export const ConversationFilters = ({
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {filter.options.map((option) => {
-              const isSelected = option.isAll 
-                ? filter.value.length === 0 
+              const isSelected = option.isAll
+                ? filter.value.length === 0
                 : filter.value.includes(option.value);
-              
+
               const handleClick = () => {
                 if (option.isAll) {
                   filter.onChange([]);
@@ -119,17 +125,17 @@ export const ConversationFilters = ({
                   toggleFilter(filter.value, option.value, filter.onChange);
                 }
               };
-              
+
               return (
                 <button
                   key={option.value}
                   onClick={handleClick}
                   className={cn(
-                    "h-[36px] rounded-lg text-[13px] font-medium transition-all duration-200",
-                    "active:scale-95 border",
+                    'h-[36px] rounded-lg text-[13px] font-medium transition-all duration-200',
+                    'active:scale-95 border',
                     isSelected
-                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                      : "bg-muted/50 text-muted-foreground border-border/50 hover:border-primary/30 hover:bg-muted"
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'bg-muted/50 text-muted-foreground border-border/50 hover:border-primary/30 hover:bg-muted',
                   )}
                 >
                   {option.label}

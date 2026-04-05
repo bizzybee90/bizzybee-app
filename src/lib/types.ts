@@ -1,3 +1,5 @@
+import type { ChannelKey } from './channels';
+
 export type AppRole = 'admin' | 'manager' | 'reviewer';
 
 export type Priority = 'high' | 'medium' | 'low';
@@ -11,7 +13,7 @@ export type ConversationStatus =
   | 'ai_handling'
   | 'escalated'
   | 'pending_review';
-export type Channel = 'sms' | 'whatsapp' | 'email' | 'web_chat';
+export type Channel = ChannelKey;
 export type SLAStatus = 'safe' | 'warning' | 'breached';
 export type CustomerTier = 'vip' | 'regular' | 'trial' | 'prospect' | 'at_risk';
 export type UserStatus = 'available' | 'away' | 'busy';

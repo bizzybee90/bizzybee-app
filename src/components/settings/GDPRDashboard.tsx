@@ -7,10 +7,11 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { AlertCircle, CheckCircle, Clock, Database, FileText, Shield, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PanelNotice } from './PanelNotice';
 
 export const GDPRDashboard = () => {
-  const { workspace } = useWorkspace();
-  const { isAdmin } = useUserRole();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [stats, setStats] = useState({
     pendingDeletions: 0,
     monthlyExports: 0,
@@ -22,7 +23,10 @@ export const GDPRDashboard = () => {
   const [loading, setLoading] = useState(false);
 
   const loadStats = useCallback(async () => {
-    if (!workspace?.id) return;
+    if (!workspace?.id) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
@@ -109,13 +113,35 @@ export const GDPRDashboard = () => {
     toast.info('Data cleanup migrated to n8n');
   };
 
+  if (roleLoading || workspaceLoading || loading) {
+    return (
+      <Card className="flex items-center justify-center border-[0.5px] border-bb-border bg-bb-white p-6">
+        <Clock className="h-5 w-5 animate-spin text-bb-warm-gray" />
+      </Card>
+    );
+  }
+
+  if (!workspace?.id) {
+    return (
+      <PanelNotice
+        icon={Shield}
+        title="Finish setup before reviewing GDPR status"
+        description="Once BizzyBee is attached to a workspace, this dashboard can show deletion requests, retention status, and customer consent data."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
+  }
+
   if (!isAdmin) {
     return (
-      <Card className="p-6">
-        <p className="text-center text-muted-foreground">
-          Admin access required to view GDPR dashboard
-        </p>
-      </Card>
+      <PanelNotice
+        icon={Shield}
+        title="GDPR controls are admin-only"
+        description="This dashboard is reserved for privacy and compliance owners. An admin can review it or update your access in Workspace & Access."
+        actionLabel="Open Workspace & Access"
+        actionTo="/settings?category=workspace"
+      />
     );
   }
 
@@ -229,7 +255,7 @@ export const GDPRDashboard = () => {
           <h4 className="font-semibold">Quick Actions</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Button
-              onClick={() => (window.location.href = '/settings?tab=deletion')}
+              onClick={() => (window.location.href = '/settings?category=data')}
               variant="outline"
               disabled={stats.pendingDeletions === 0}
             >
@@ -242,13 +268,16 @@ export const GDPRDashboard = () => {
               Run Manual Cleanup
             </Button>
 
-            <Button onClick={() => (window.location.href = '/webhooks')} variant="outline">
+            <Button
+              onClick={() => (window.location.href = '/settings?category=data')}
+              variant="outline"
+            >
               <FileText className="h-4 w-4 mr-2" />
               View GDPR Audit Logs
             </Button>
 
             <Button
-              onClick={() => (window.location.href = '/settings?tab=retention')}
+              onClick={() => (window.location.href = '/settings?category=data')}
               variant="outline"
             >
               <Shield className="h-4 w-4 mr-2" />

@@ -32,6 +32,8 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowLeft,
+  ArrowRight,
+  Settings2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -281,6 +283,65 @@ export default function KnowledgeBase() {
     );
   };
 
+  const activeSourceCount = [
+    groupedFaqs.website.length > 0,
+    groupedFaqs.competitor.length > 0,
+    groupedFaqs.document.length > 0,
+    groupedFaqs.manual.length > 0,
+  ].filter(Boolean).length;
+  const manualFaqCount = groupedFaqs.manual.length;
+  const knowledgeChecklist = [
+    {
+      label: 'Workspace connected',
+      complete: Boolean(workspace?.id),
+    },
+    {
+      label: 'Knowledge loaded into BizzyBee',
+      complete: faqs.length > 0,
+    },
+    {
+      label: 'Manual business knowledge added',
+      complete: manualFaqCount > 0,
+    },
+    {
+      label: 'More than one source represented',
+      complete: activeSourceCount > 1,
+    },
+  ];
+  const knowledgeNextStep =
+    knowledgeChecklist.find((item) => !item.complete)?.label ?? 'Knowledge module is ready';
+  const knowledgeLaunchReady = knowledgeChecklist.every((item) => item.complete);
+  const knowledgeLaunchAction = !workspace?.id
+    ? { label: 'Open onboarding', to: '/onboarding?reset=true' }
+    : manualFaqCount === 0
+      ? { label: 'Add manual knowledge', to: '/knowledge-base' }
+      : activeSourceCount <= 1
+        ? { label: 'Re-run onboarding', to: '/onboarding?reset=true' }
+        : null;
+  const knowledgeQuickActions = [
+    {
+      title: 'Add manual knowledge',
+      description: 'Capture the company-specific detail BizzyBee cannot infer.',
+      action: () => setShowAddFaq(true),
+      icon: Plus,
+      tone: 'bg-bb-gold/10 text-bb-espresso',
+    },
+    {
+      title: 'Re-run onboarding',
+      description: 'Pull more website or onboarding knowledge into the module.',
+      to: '/onboarding?reset=true',
+      icon: ArrowRight,
+      tone: 'bg-blue-100 text-blue-700',
+    },
+    {
+      title: 'Open AI settings',
+      description: 'Connect this knowledge to rules, behavior, and training.',
+      to: '/settings?category=ai',
+      icon: Settings2,
+      tone: 'bg-emerald-100 text-emerald-700',
+    },
+  ];
+
   if (workspaceLoading) {
     return (
       <div className="flex h-screen bg-bb-linen">
@@ -509,14 +570,302 @@ export default function KnowledgeBase() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-5xl mx-auto p-6 space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <h1 className="text-[18px] font-medium text-bb-text tracking-tight">Knowledge Base</h1>
-            <Button className="gap-2" onClick={() => setShowAddFaq(true)}>
-              <Plus className="h-4 w-4" />
-              Add FAQ
-            </Button>
+          <div className="rounded-[28px] border border-bb-border bg-bb-white px-6 py-6 shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-3">
+                <Badge className="w-fit border-bb-gold/25 bg-bb-gold/10 text-bb-espresso hover:bg-bb-gold/10">
+                  Knowledge module
+                </Badge>
+                <div className="space-y-2">
+                  <h1 className="text-[28px] font-semibold tracking-[-0.02em] text-bb-text">
+                    Knowledge Base
+                  </h1>
+                  <p className="max-w-3xl text-sm leading-6 text-bb-warm-gray">
+                    This is the source of truth BizzyBee uses for answers, rules, and business
+                    context. The goal is not just to store FAQs, but to make knowledge visible,
+                    editable, and ready for production use.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button className="gap-2" onClick={() => setShowAddFaq(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add FAQ
+                </Button>
+                <Button asChild variant="outline">
+                  <Link to="/settings?category=ai">
+                    Open AI settings
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
+            <Card className="border-[0.5px] border-bb-border bg-bb-white p-5">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
+                      Module health
+                    </p>
+                    <h2 className="mt-2 text-lg font-semibold text-bb-text">Knowledge readiness</h2>
+                  </div>
+                  <Badge
+                    className={
+                      knowledgeChecklist.every((item) => item.complete)
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-bb-border bg-bb-linen text-bb-warm-gray hover:bg-bb-linen'
+                    }
+                  >
+                    {knowledgeChecklist.filter((item) => item.complete).length}/
+                    {knowledgeChecklist.length} ready
+                  </Badge>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {knowledgeChecklist.map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-linen/50 px-3 py-3"
+                    >
+                      <span className="text-sm text-bb-text">{item.label}</span>
+                      <Badge
+                        className={
+                          item.complete
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                            : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
+                        }
+                      >
+                        {item.complete ? 'Ready' : 'Pending'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-bb-border bg-bb-linen/60 p-4">
+                  <p className="text-sm font-medium text-bb-text">Next knowledge step</p>
+                  <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
+                    {knowledgeNextStep === 'Knowledge module is ready'
+                      ? 'Knowledge now has enough structure and source coverage to act like a real production module.'
+                      : `${knowledgeNextStep} is the next blocker before Knowledge feels fully operational.`}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-[0.5px] border-bb-border bg-bb-white p-5">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
+                    Source mix
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold text-bb-text">What BizzyBee knows</h2>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    {
+                      label: 'Website knowledge',
+                      value: groupedFaqs.website.length,
+                      tone: 'bg-blue-100 text-blue-700',
+                    },
+                    {
+                      label: 'Competitor research',
+                      value: groupedFaqs.competitor.length,
+                      tone: 'bg-purple-100 text-purple-700',
+                    },
+                    {
+                      label: 'Uploaded documents',
+                      value: groupedFaqs.document.length,
+                      tone: 'bg-amber-100 text-amber-700',
+                    },
+                    {
+                      label: 'Manual knowledge',
+                      value: groupedFaqs.manual.length,
+                      tone: 'bg-emerald-100 text-emerald-700',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-white px-3 py-3"
+                    >
+                      <span className="text-sm text-bb-text">{item.label}</span>
+                      <Badge className={item.tone}>{item.value}</Badge>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-bb-border bg-bb-linen/60 p-4">
+                  <p className="text-sm leading-6 text-bb-warm-gray">
+                    Knowledge should not be a dumping ground. It should clearly show where BizzyBee
+                    learned something and where you still need to add the company-specific detail
+                    that makes replies trustworthy.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-bb-border bg-bb-cream/60 p-4">
+                  <p className="text-sm font-medium text-bb-text">Go-live handoff</p>
+                  <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
+                    {knowledgeLaunchReady
+                      ? 'Knowledge now has enough source coverage and manual business context to support a production-grade AI system.'
+                      : `${knowledgeNextStep} is the next blocker before Knowledge can be handed over as a fully trusted module.`}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {knowledgeLaunchAction ? (
+                      knowledgeLaunchAction.to === '/knowledge-base' ? (
+                        <Button size="sm" variant="outline" onClick={() => setShowAddFaq(true)}>
+                          {knowledgeLaunchAction.label}
+                        </Button>
+                      ) : (
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={knowledgeLaunchAction.to}>{knowledgeLaunchAction.label}</Link>
+                        </Button>
+                      )
+                    ) : (
+                      <Badge
+                        className={
+                          knowledgeLaunchReady
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                            : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
+                        }
+                      >
+                        {knowledgeLaunchReady
+                          ? 'Internal handoff ready'
+                          : 'Manual knowledge needed'}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {knowledgeQuickActions.map((action) => {
+                    const Icon = action.icon;
+
+                    if ('action' in action) {
+                      return (
+                        <button
+                          key={action.title}
+                          type="button"
+                          onClick={action.action}
+                          className="w-full rounded-xl border border-bb-border bg-bb-white px-3 py-3 text-left transition-colors hover:bg-bb-linen/60"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className={`rounded-xl p-2 ${action.tone}`}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <ArrowRight className="h-4 w-4 text-bb-warm-gray" />
+                          </div>
+                          <p className="mt-4 text-sm font-medium text-bb-text">{action.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-bb-warm-gray">
+                            {action.description}
+                          </p>
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <Link
+                        key={action.title}
+                        to={action.to}
+                        className="block rounded-xl border border-bb-border bg-bb-white px-3 py-3 transition-colors hover:bg-bb-linen/60"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className={`rounded-xl p-2 ${action.tone}`}>
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-bb-warm-gray" />
+                        </div>
+                        <p className="mt-4 text-sm font-medium text-bb-text">{action.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-bb-warm-gray">
+                          {action.description}
+                        </p>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <Card className="border-[0.5px] border-bb-border bg-bb-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
+                  Go-live handoff
+                </p>
+                <h2 className="text-lg font-semibold text-bb-text">Knowledge launch path</h2>
+                <p className="max-w-2xl text-sm leading-6 text-bb-warm-gray">
+                  Knowledge is only first-class when the source mix is clear, the manual business
+                  knowledge exists, and the AI team can see exactly what still needs attention.
+                </p>
+              </div>
+              <Badge
+                className={
+                  knowledgeChecklist.every((item) => item.complete)
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                    : 'border-bb-border bg-bb-linen text-bb-warm-gray hover:bg-bb-linen'
+                }
+              >
+                {knowledgeChecklist.filter((item) => item.complete).length}/
+                {knowledgeChecklist.length} ready
+              </Badge>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {knowledgeChecklist.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-linen/50 px-3 py-3"
+                >
+                  <span className="text-sm text-bb-text">{item.label}</span>
+                  <Badge
+                    className={
+                      item.complete
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
+                    }
+                  >
+                    {item.complete ? 'Ready' : 'Pending'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-bb-border bg-bb-linen/60 p-4">
+              <p className="text-sm font-medium text-bb-text">Next knowledge step</p>
+              <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
+                {knowledgeLaunchReady
+                  ? 'Knowledge is ready to support launch-quality replies, rules, and AI behavior.'
+                  : `${knowledgeNextStep} is the final blocker before the module feels complete.`}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {knowledgeLaunchAction ? (
+                  knowledgeLaunchAction.to === '/knowledge-base' ? (
+                    <Button size="sm" variant="outline" onClick={() => setShowAddFaq(true)}>
+                      {knowledgeLaunchAction.label}
+                    </Button>
+                  ) : (
+                    <Button asChild size="sm" variant="outline">
+                      <Link to={knowledgeLaunchAction.to}>{knowledgeLaunchAction.label}</Link>
+                    </Button>
+                  )
+                ) : (
+                  <Badge
+                    className={
+                      knowledgeLaunchReady
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
+                    }
+                  >
+                    {knowledgeLaunchReady ? 'Internal handoff ready' : 'Manual knowledge needed'}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </Card>
 
           {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -575,6 +924,14 @@ export default function KnowledgeBase() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
+          </div>
+
+          <div className="rounded-2xl border border-bb-border bg-bb-white px-4 py-3">
+            <p className="text-sm text-bb-warm-gray">
+              {searchQuery
+                ? `Showing ${filteredFaqs.length} knowledge entries matching "${searchQuery}".`
+                : `Showing ${faqs.length} knowledge entries across ${activeSourceCount} active source${activeSourceCount === 1 ? '' : 's'}.`}
+            </p>
           </div>
 
           {/* Error State */}
