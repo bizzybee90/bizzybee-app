@@ -5,19 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
 import { Send, FileEdit, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
 import { sendReply } from '@/lib/api/sendReply';
+import { safeFormatDistanceToNow, toValidDate } from '@/lib/dates';
 
 interface DraftMessage {
   id: string;
   title: string;
   customerName?: string;
   draftPreview: string;
-  updatedAt: Date;
+  updatedAt: Date | null;
   classification?: string;
 }
 
@@ -70,7 +70,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
             draftPreview:
               d.ai_draft_response?.substring(0, 100) +
               (d.ai_draft_response && d.ai_draft_response.length > 100 ? '...' : ''),
-            updatedAt: new Date(d.updated_at!),
+            updatedAt: toValidDate(d.updated_at),
             classification: d.email_classification,
           })),
         );
@@ -272,7 +272,7 @@ export function DraftMessages({ onNavigate, maxItems = 5 }: DraftMessagesProps) 
                   {draft.draftPreview}
                 </p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
-                  {formatDistanceToNow(draft.updatedAt, { addSuffix: true })}
+                  {safeFormatDistanceToNow(draft.updatedAt, { addSuffix: true })}
                 </p>
               </div>
             </div>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle2, Send, Clock, Bot, User, AlertCircle, FileEdit, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
+import { safeFormatDistanceToNow, toValidDate } from '@/lib/dates';
 
 interface ActivityItem {
   id: string;
@@ -104,66 +104,88 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
 
         // Combine into activities
         const allActivities: ActivityItem[] = [];
+        const addActivity = (
+          activity: Omit<ActivityItem, 'timestamp'>,
+          rawTimestamp: string | null | undefined,
+        ) => {
+          const timestamp = toValidDate(rawTimestamp);
+          if (!timestamp) return;
+
+          allActivities.push({
+            ...activity,
+            timestamp,
+          });
+        };
 
         autoHandled?.forEach((c) => {
-          allActivities.push({
-            id: `auto-${c.id}`,
-            type: 'auto_handled',
-            title: decodeHtmlEntities(c.title) || 'Auto-handled',
-            description: c.email_classification?.replace(/_/g, ' ') || 'Notification',
-            timestamp: new Date(c.auto_handled_at!),
-            conversationId: c.id,
-            category: c.email_classification,
-          });
+          addActivity(
+            {
+              id: `auto-${c.id}`,
+              type: 'auto_handled',
+              title: decodeHtmlEntities(c.title) || 'Auto-handled',
+              description: c.email_classification?.replace(/_/g, ' ') || 'Notification',
+              conversationId: c.id,
+              category: c.email_classification,
+            },
+            c.auto_handled_at,
+          );
         });
 
         sentMessages?.forEach((m) => {
           const convJoin = m.conversations as { workspace_id?: string; title?: string } | null;
           if (convJoin?.workspace_id === workspace.id) {
-            allActivities.push({
-              id: `sent-${m.id}`,
-              type: 'sent',
-              title: decodeHtmlEntities(convJoin?.title) || 'Message sent',
-              description: decodeHtmlEntities(
-                m.body?.substring(0, 60) + (m.body && m.body.length > 60 ? '...' : ''),
-              ),
-              timestamp: new Date(m.created_at!),
-              conversationId: m.conversation_id || undefined,
-            });
+            addActivity(
+              {
+                id: `sent-${m.id}`,
+                type: 'sent',
+                title: decodeHtmlEntities(convJoin?.title) || 'Message sent',
+                description: decodeHtmlEntities(
+                  m.body?.substring(0, 60) + (m.body && m.body.length > 60 ? '...' : ''),
+                ),
+                conversationId: m.conversation_id || undefined,
+              },
+              m.created_at,
+            );
           }
         });
 
         drafts?.forEach((c) => {
-          allActivities.push({
-            id: `draft-${c.id}`,
-            type: 'draft_ready',
-            title: decodeHtmlEntities(c.title) || 'Draft ready',
-            description: 'AI response pending review',
-            timestamp: new Date(c.updated_at!),
-            conversationId: c.id,
-          });
+          addActivity(
+            {
+              id: `draft-${c.id}`,
+              type: 'draft_ready',
+              title: decodeHtmlEntities(c.title) || 'Draft ready',
+              description: 'AI response pending review',
+              conversationId: c.id,
+            },
+            c.updated_at,
+          );
         });
 
         reviewed?.forEach((c) => {
-          allActivities.push({
-            id: `review-${c.id}`,
-            type: 'reviewed',
-            title: decodeHtmlEntities(c.title) || 'Reviewed',
-            description: c.review_outcome === 'confirmed' ? 'AI confirmed' : 'AI corrected',
-            timestamp: new Date(c.reviewed_at!),
-            conversationId: c.id,
-          });
+          addActivity(
+            {
+              id: `review-${c.id}`,
+              type: 'reviewed',
+              title: decodeHtmlEntities(c.title) || 'Reviewed',
+              description: c.review_outcome === 'confirmed' ? 'AI confirmed' : 'AI corrected',
+              conversationId: c.id,
+            },
+            c.reviewed_at,
+          );
         });
 
         recentEmails?.forEach((e) => {
-          allActivities.push({
-            id: `inbox-${e.id}`,
-            type: 'inbox',
-            title: decodeHtmlEntities(e.subject) || 'No subject',
-            description: decodeHtmlEntities(e.from_name || e.from_email || 'Unknown sender'),
-            timestamp: new Date(e.received_at!),
-            category: e.category,
-          });
+          addActivity(
+            {
+              id: `inbox-${e.id}`,
+              type: 'inbox',
+              title: decodeHtmlEntities(e.subject) || 'No subject',
+              description: decodeHtmlEntities(e.from_name || e.from_email || 'Unknown sender'),
+              category: e.category,
+            },
+            e.received_at,
+          );
         });
 
         // Sort by timestamp and take top items
@@ -291,7 +313,7 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
               </span>
               <CategoryLabel classification={activity.category} size="xs" />
               <span className="text-xs text-muted-foreground/60">
-                {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+                {safeFormatDistanceToNow(activity.timestamp, { addSuffix: true })}
               </span>
             </div>
             <p className="text-sm font-medium text-foreground truncate">{activity.title}</p>

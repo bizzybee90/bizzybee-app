@@ -17,9 +17,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { ChannelIcon } from '@/components/shared/ChannelIcon';
+import { safeFormat } from '@/lib/dates';
 
 interface ConversationWithMessages {
   id: string;
@@ -255,7 +255,7 @@ export const AIConversationSummaryWidget = () => {
                                 </Badge>
                               )}
                               <span className="text-xs text-muted-foreground">
-                                {format(new Date(convo.created_at), 'h:mm a')}
+                                {safeFormat(convo.created_at, 'h:mm a')}
                               </span>
                               <ChannelIcon channel={convo.channel} className="h-3 w-3" />
                             </div>

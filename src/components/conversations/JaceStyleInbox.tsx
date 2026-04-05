@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles, RefreshCw, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, isToday, isYesterday } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChannelIcon } from '@/components/shared/ChannelIcon';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
@@ -15,6 +14,7 @@ import { TriageCorrectionFlow } from './TriageCorrectionFlow';
 import { InboxQuickActions } from './InboxQuickActions';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useKeyboardNavigation } from '@/hooks/useKeyboardNavigation';
+import { isDateToday, isDateYesterday, safeFormat } from '@/lib/dates';
 
 interface JaceStyleInboxProps {
   onSelect: (conversation: Conversation) => void;
@@ -225,10 +225,10 @@ export const JaceStyleInbox = ({
   };
 
   filteredConversations.forEach((conv: any) => {
-    const date = new Date(conv.updated_at || conv.created_at);
-    if (isToday(date)) {
+    const timestamp = conv.updated_at || conv.created_at;
+    if (isDateToday(timestamp)) {
       groupedConversations.today.push(conv as Conversation);
-    } else if (isYesterday(date)) {
+    } else if (isDateYesterday(timestamp)) {
       groupedConversations.yesterday.push(conv as Conversation);
     } else {
       groupedConversations.older.push(conv as unknown as Conversation);
@@ -335,8 +335,7 @@ export const JaceStyleInbox = ({
   };
 
   const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return format(date, 'h:mm a');
+    return safeFormat(dateStr, 'h:mm a');
   };
 
   const ConversationRow = ({ conversation }: { conversation: Conversation }) => {

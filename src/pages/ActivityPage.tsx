@@ -7,7 +7,7 @@ import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { CategoryLabel } from '@/components/shared/CategoryLabel';
 import { cn } from '@/lib/utils';
+import { safeFormatDistanceToNow, toValidDate } from '@/lib/dates';
 
 interface ActivityItem {
   id: string;
@@ -110,56 +111,76 @@ export const ActivityPage = () => {
 
         // Combine into activities
         const allActivities: ActivityItem[] = [];
+        const addActivity = (
+          activity: Omit<ActivityItem, 'timestamp'>,
+          rawTimestamp: string | null | undefined,
+        ) => {
+          const timestamp = toValidDate(rawTimestamp);
+          if (!timestamp) return;
+
+          allActivities.push({
+            ...activity,
+            timestamp,
+          });
+        };
 
         autoHandled.data?.forEach((c) => {
-          allActivities.push({
-            id: `auto-${c.id}`,
-            type: 'auto_handled',
-            title: c.title || 'Auto-handled',
-            description: c.email_classification?.replace(/_/g, ' ') || 'Notification',
-            timestamp: new Date(c.auto_handled_at!),
-            conversationId: c.id,
-            category: c.email_classification,
-          });
+          addActivity(
+            {
+              id: `auto-${c.id}`,
+              type: 'auto_handled',
+              title: c.title || 'Auto-handled',
+              description: c.email_classification?.replace(/_/g, ' ') || 'Notification',
+              conversationId: c.id,
+              category: c.email_classification,
+            },
+            c.auto_handled_at,
+          );
         });
 
         sentMessages.data?.forEach((m) => {
           const conv = m.conversations as unknown as JoinedConversation | null;
           if (conv?.workspace_id === workspace.id) {
-            allActivities.push({
-              id: `sent-${m.id}`,
-              type: 'sent',
-              title: conv?.title || 'Message sent',
-              description: m.body?.substring(0, 80) + (m.body && m.body.length > 80 ? '...' : ''),
-              timestamp: new Date(m.created_at!),
-              conversationId: m.conversation_id || undefined,
-              category: conv?.email_classification ?? undefined,
-            });
+            addActivity(
+              {
+                id: `sent-${m.id}`,
+                type: 'sent',
+                title: conv?.title || 'Message sent',
+                description: m.body?.substring(0, 80) + (m.body && m.body.length > 80 ? '...' : ''),
+                conversationId: m.conversation_id || undefined,
+                category: conv?.email_classification ?? undefined,
+              },
+              m.created_at,
+            );
           }
         });
 
         drafts.data?.forEach((c) => {
-          allActivities.push({
-            id: `draft-${c.id}`,
-            type: 'draft_ready',
-            title: c.title || 'Draft ready',
-            description: 'AI response pending review',
-            timestamp: new Date(c.updated_at!),
-            conversationId: c.id,
-            category: c.email_classification,
-          });
+          addActivity(
+            {
+              id: `draft-${c.id}`,
+              type: 'draft_ready',
+              title: c.title || 'Draft ready',
+              description: 'AI response pending review',
+              conversationId: c.id,
+              category: c.email_classification,
+            },
+            c.updated_at,
+          );
         });
 
         reviewed.data?.forEach((c) => {
-          allActivities.push({
-            id: `review-${c.id}`,
-            type: 'reviewed',
-            title: c.title || 'Reviewed',
-            description: c.review_outcome === 'confirmed' ? 'AI confirmed' : 'AI corrected',
-            timestamp: new Date(c.reviewed_at!),
-            conversationId: c.id,
-            category: c.email_classification,
-          });
+          addActivity(
+            {
+              id: `review-${c.id}`,
+              type: 'reviewed',
+              title: c.title || 'Reviewed',
+              description: c.review_outcome === 'confirmed' ? 'AI confirmed' : 'AI corrected',
+              conversationId: c.id,
+              category: c.email_classification,
+            },
+            c.reviewed_at,
+          );
         });
 
         // Sort by timestamp
@@ -346,7 +367,7 @@ export const ActivityPage = () => {
                       </span>
                       <CategoryLabel classification={activity.category} size="xs" />
                       <span className="text-xs text-bb-muted ml-auto">
-                        {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+                        {safeFormatDistanceToNow(activity.timestamp, { addSuffix: true })}
                       </span>
                     </div>
                     <p className="text-sm font-medium text-bb-text truncate">{activity.title}</p>
