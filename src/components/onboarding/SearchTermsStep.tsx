@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { generateSearchTerms } from '@/lib/generateSearchTerms';
 
-
 interface SearchTermsStepProps {
   workspaceId: string;
   onNext: () => void;
@@ -22,13 +21,13 @@ interface SearchTerm {
   enabled: boolean;
 }
 
-
 // generateSearchTerms is now imported from @/lib/generateSearchTerms
 
 export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStepProps) {
+  const isPreview = workspaceId === 'preview-workspace';
   const [searchTerms, setSearchTerms] = useState<SearchTerm[]>([]);
   const [customTerm, setCustomTerm] = useState('');
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [businessContext, setBusinessContext] = useState<{
@@ -41,6 +40,20 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
   // Load business context and generate terms
   useEffect(() => {
     const loadBusinessContext = async () => {
+      if (isPreview) {
+        // In preview mode, generate sample terms without querying Supabase
+        setBusinessContext({
+          businessType: 'window_cleaning',
+          location: 'Luton',
+          companyName: 'Preview Business',
+          websiteUrl: '',
+        });
+        const generatedTerms = generateSearchTerms('window_cleaning', 'Luton');
+        setSearchTerms(generatedTerms.map((term) => ({ term, enabled: true })));
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const { data, error } = await supabase
           .from('business_context')
@@ -61,13 +74,15 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
           // Generate search terms
           const generatedTerms = generateSearchTerms(
             data.business_type || '',
-            data.service_area || ''
+            data.service_area || '',
           );
-          
-          setSearchTerms(generatedTerms.map(term => ({
-            term,
-            enabled: true,
-          })));
+
+          setSearchTerms(
+            generatedTerms.map((term) => ({
+              term,
+              enabled: true,
+            })),
+          );
         }
       } catch (error) {
         console.error('Error loading business context:', error);
@@ -80,38 +95,43 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     loadBusinessContext();
   }, [workspaceId]);
 
-  const enabledTerms = useMemo(() => 
-    searchTerms.filter(t => t.enabled).map(t => t.term),
-    [searchTerms]
+  const enabledTerms = useMemo(
+    () => searchTerms.filter((t) => t.enabled).map((t) => t.term),
+    [searchTerms],
   );
 
   const handleToggleTerm = (index: number) => {
-    setSearchTerms(prev => prev.map((t, i) => 
-      i === index ? { ...t, enabled: !t.enabled } : t
-    ));
+    setSearchTerms((prev) => prev.map((t, i) => (i === index ? { ...t, enabled: !t.enabled } : t)));
   };
 
   const handleAddCustomTerm = () => {
     const trimmed = customTerm.trim().toLowerCase();
     if (!trimmed) return;
-    
+
     // Check for duplicates
-    if (searchTerms.some(t => t.term.toLowerCase() === trimmed)) {
+    if (searchTerms.some((t) => t.term.toLowerCase() === trimmed)) {
       toast.error('This search term already exists');
       return;
     }
-    
-    setSearchTerms(prev => [...prev, { term: trimmed, enabled: true }]);
+
+    setSearchTerms((prev) => [...prev, { term: trimmed, enabled: true }]);
     setCustomTerm('');
   };
 
   const handleRemoveTerm = (index: number) => {
-    setSearchTerms(prev => prev.filter((_, i) => i !== index));
+    setSearchTerms((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
     if (enabledTerms.length === 0) {
       toast.error('Please enable at least one search term');
+      return;
+    }
+
+    // In preview mode, skip Supabase write and just advance
+    if (isPreview) {
+      toast.success('Search terms saved');
+      onNext();
       return;
     }
 
@@ -121,20 +141,23 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       // Using type workaround since the new table isn't in generated types yet
       const { error } = await supabase
         .from('n8n_workflow_progress' as 'allowed_webhook_ips')
-        .upsert({
-          workspace_id: workspaceId,
-          workflow_type: 'search_terms_config',
-          status: 'completed',
-          details: {
-            search_queries: enabledTerms,
-            target_count: 15,
-            all_terms: searchTerms,
+        .upsert(
+          {
+            workspace_id: workspaceId,
+            workflow_type: 'search_terms_config',
+            status: 'completed',
+            details: {
+              search_queries: enabledTerms,
+              target_count: 15,
+              all_terms: searchTerms,
+            },
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          } as never,
+          {
+            onConflict: 'workspace_id,workflow_type',
           },
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as never, {
-          onConflict: 'workspace_id,workflow_type',
-        });
+        );
 
       if (error) throw error;
 
@@ -153,9 +176,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       <div className="space-y-6">
         <div className="text-center">
           <CardTitle className="text-xl">Configure Search Terms</CardTitle>
-          <CardDescription className="mt-2">
-            Loading your business information...
-          </CardDescription>
+          <CardDescription className="mt-2">Loading your business information...</CardDescription>
         </div>
         <div className="flex justify-center py-8">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -177,8 +198,9 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
         <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
         <div className="text-muted-foreground">
-          <span className="font-medium text-foreground">Auto-generated</span> based on your business type 
-          ({businessContext?.businessType || 'Unknown'}) and location ({businessContext?.location || 'Unknown'}).
+          <span className="font-medium text-foreground">Auto-generated</span> based on your business
+          type ({businessContext?.businessType || 'Unknown'}) and location (
+          {businessContext?.location || 'Unknown'}).
         </div>
       </div>
 
@@ -190,9 +212,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
             <div
               key={index}
               className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                term.enabled
-                  ? 'border-primary/30 bg-primary/5'
-                  : 'border-border bg-muted/30'
+                term.enabled ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/30'
               }`}
             >
               <Checkbox
@@ -248,7 +268,8 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
 
       {/* Explainer */}
       <p className="text-sm text-muted-foreground">
-        We'll find and deeply analyse your top 15 local competitors — extracting every FAQ, pricing detail, and service they offer that your site doesn't cover yet.
+        We'll find and deeply analyse your top 15 local competitors — extracting every FAQ, pricing
+        detail, and service they offer that your site doesn't cover yet.
       </p>
 
       {/* Summary */}
@@ -262,7 +283,11 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
           <ChevronLeft className="h-4 w-4" />
           Back
         </Button>
-        <Button onClick={handleSave} disabled={isSaving || enabledTerms.length === 0} className="gap-1">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || enabledTerms.length === 0}
+          className="gap-1"
+        >
           {isSaving ? (
             <>Saving...</>
           ) : (

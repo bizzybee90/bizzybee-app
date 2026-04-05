@@ -406,6 +406,7 @@ function InlineCompetitorReview({
 }
 
 export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenProps) {
+  const isPreview = workspaceId === 'preview-workspace';
   const [discoveryTrack, setDiscoveryTrack] = useState<TrackState>({
     status: 'pending',
     counts: [],
@@ -413,7 +414,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   const [scrapeTrack, setScrapeTrack] = useState<TrackState>({ status: 'waiting', counts: [] });
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [emailTrack, setEmailTrack] = useState<TrackState>({ status: 'pending', counts: [] });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isPreview);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [liveFaqCount, setLiveFaqCount] = useState(0);
   const liveFaqCountRef = useRef(0);
@@ -423,7 +424,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
 
   // Auto-trigger n8n workflows on mount (fire-and-forget)
   useEffect(() => {
-    if (autoTriggeredRef.current) return;
+    if (autoTriggeredRef.current || isPreview) return;
     autoTriggeredRef.current = true;
 
     const autoTrigger = async () => {
@@ -501,6 +502,8 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   }, [liveFaqCount]);
 
   useEffect(() => {
+    if (isPreview) return;
+
     // Initial count + periodic re-fetch to catch batch inserts
     const fetchCount = async () => {
       const { count } = await supabase
@@ -540,6 +543,8 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   }, [workspaceId]);
 
   useEffect(() => {
+    if (isPreview) return;
+
     const pollProgress = async () => {
       try {
         // Bug 5 Fix: Poll n8n_workflow_progress for ALL tracks + email_import_progress for email counts
@@ -736,6 +741,34 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  if (isPreview) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <CardTitle className="text-xl">Setting Up Your AI Agent</CardTitle>
+          <CardDescription className="mt-2">
+            Preview mode — async workflows not available
+          </CardDescription>
+        </div>
+        <div className="p-4 rounded-lg border border-amber-200 bg-amber-50 text-center">
+          <p className="text-sm text-amber-800">
+            In preview mode, competitor research, email classification, and FAQ generation workflows
+            are not executed. These require a real workspace to run.
+          </p>
+        </div>
+        <div className="flex flex-col items-center gap-3 pt-4">
+          <Button onClick={onNext} size="lg" className="gap-2">
+            Continue
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">
+            Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

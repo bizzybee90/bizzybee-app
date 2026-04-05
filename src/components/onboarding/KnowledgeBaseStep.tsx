@@ -44,6 +44,7 @@ export function KnowledgeBaseStep({
   onComplete,
   onBack,
 }: KnowledgeBaseStepProps) {
+  const isPreview = workspaceId === 'preview-workspace';
   const [status, setStatus] = useState<Status>('checking');
   const [jobDbId, setJobDbId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,11 @@ export function KnowledgeBaseStep({
   // Check if we already have website knowledge
   useEffect(() => {
     const checkExisting = async () => {
+      if (isPreview) {
+        setStatus('idle');
+        return;
+      }
+
       if (!businessContext.websiteUrl) {
         setStatus('idle');
         return;
@@ -121,7 +127,7 @@ export function KnowledgeBaseStep({
 
   // Polling logic: watch faq_database directly while status === 'polling'
   useEffect(() => {
-    if (status !== 'polling') return;
+    if (status !== 'polling' || isPreview) return;
 
     pollingStartRef.current = Date.now();
     lastCountRef.current = -1;
@@ -257,6 +263,11 @@ export function KnowledgeBaseStep({
 
   const startScraping = async () => {
     if (!businessContext.websiteUrl) return;
+
+    if (isPreview) {
+      toast.info('Website scraping is not available in preview mode');
+      return;
+    }
 
     setStatus('starting');
     setError(null);

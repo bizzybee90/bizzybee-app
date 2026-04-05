@@ -61,161 +61,7 @@ const PREVIEW_LOCATION_SUGGESTIONS = [
   'London',
 ];
 
-const BUSINESS_TYPES = [
-  // Cleaning Services
-  { value: 'window_cleaning', label: 'Window Cleaning' },
-  { value: 'carpet_cleaning', label: 'Carpet Cleaning' },
-  { value: 'pressure_washing', label: 'Pressure Washing' },
-  { value: 'general_cleaning', label: 'General Cleaning' },
-  { value: 'domestic_cleaning', label: 'Domestic Cleaning' },
-  { value: 'commercial_cleaning', label: 'Commercial Cleaning' },
-  { value: 'oven_cleaning', label: 'Oven Cleaning' },
-  { value: 'gutter_cleaning', label: 'Gutter Cleaning' },
-  { value: 'end_of_tenancy', label: 'End of Tenancy Cleaning' },
-  { value: 'upholstery_cleaning', label: 'Upholstery Cleaning' },
-  // Building & Construction
-  { value: 'builder', label: 'Builder' },
-  { value: 'bricklayer', label: 'Bricklayer' },
-  { value: 'carpenter', label: 'Carpenter' },
-  { value: 'carpentry', label: 'Carpentry' },
-  { value: 'joiner', label: 'Joiner' },
-  { value: 'plasterer', label: 'Plasterer' },
-  { value: 'tiler', label: 'Tiler' },
-  { value: 'flooring', label: 'Flooring' },
-  { value: 'roofer', label: 'Roofer' },
-  { value: 'scaffolding', label: 'Scaffolding' },
-  { value: 'demolition', label: 'Demolition' },
-  { value: 'groundworks', label: 'Groundworks' },
-  { value: 'driveway', label: 'Driveway Contractor' },
-  { value: 'fencing', label: 'Fencing' },
-  { value: 'decking', label: 'Decking' },
-  // Trades
-  { value: 'plumber', label: 'Plumber' },
-  { value: 'electrician', label: 'Electrician' },
-  { value: 'gas_engineer', label: 'Gas Engineer' },
-  { value: 'heating_engineer', label: 'Heating Engineer' },
-  { value: 'boiler_engineer', label: 'Boiler Engineer' },
-  { value: 'hvac', label: 'HVAC' },
-  { value: 'air_conditioning', label: 'Air Conditioning' },
-  { value: 'locksmith', label: 'Locksmith' },
-  { value: 'glazier', label: 'Glazier' },
-  { value: 'welder', label: 'Welder' },
-  { value: 'blacksmith', label: 'Blacksmith' },
-  // Decorating
-  { value: 'painter_decorator', label: 'Painter & Decorator' },
-  { value: 'interior_designer', label: 'Interior Designer' },
-  { value: 'kitchen_fitter', label: 'Kitchen Fitter' },
-  { value: 'bathroom_fitter', label: 'Bathroom Fitter' },
-  { value: 'curtains_blinds', label: 'Curtains & Blinds' },
-  // Outdoor & Garden
-  { value: 'landscaping', label: 'Landscaping' },
-  { value: 'gardener', label: 'Gardener' },
-  { value: 'lawn_care', label: 'Lawn Care' },
-  { value: 'tree_surgeon', label: 'Tree Surgeon' },
-  { value: 'arborist', label: 'Arborist' },
-  { value: 'garden_maintenance', label: 'Garden Maintenance' },
-  { value: 'pond_specialist', label: 'Pond Specialist' },
-  { value: 'irrigation', label: 'Irrigation' },
-  // Automotive
-  { value: 'mobile_mechanic', label: 'Mobile Mechanic' },
-  { value: 'auto_electrician', label: 'Auto Electrician' },
-  { value: 'car_valeting', label: 'Car Valeting' },
-  { value: 'mobile_tyres', label: 'Mobile Tyres' },
-  { value: 'windscreen_repair', label: 'Windscreen Repair' },
-  { value: 'breakdown_recovery', label: 'Breakdown Recovery' },
-  { value: 'mot_garage', label: 'MOT Garage' },
-  { value: 'bodyshop', label: 'Bodyshop' },
-  // Pet Services
-  { value: 'dog_groomer', label: 'Dog Groomer' },
-  { value: 'pet_groomer', label: 'Pet Groomer' },
-  { value: 'dog_walker', label: 'Dog Walker' },
-  { value: 'pet_sitter', label: 'Pet Sitter' },
-  { value: 'dog_trainer', label: 'Dog Trainer' },
-  { value: 'pet_boarding', label: 'Pet Boarding' },
-  { value: 'mobile_vet', label: 'Mobile Vet' },
-  // Home Services
-  { value: 'handyman', label: 'Handyman' },
-  { value: 'property_maintenance', label: 'Property Maintenance' },
-  { value: 'pest_control', label: 'Pest Control' },
-  { value: 'removals', label: 'Removals' },
-  { value: 'man_and_van', label: 'Man & Van' },
-  { value: 'storage', label: 'Storage' },
-  { value: 'house_clearance', label: 'House Clearance' },
-  { value: 'skip_hire', label: 'Skip Hire' },
-  { value: 'waste_removal', label: 'Waste Removal' },
-  { value: 'chimney_sweep', label: 'Chimney Sweep' },
-  { value: 'aerial_satellite', label: 'Aerial & Satellite' },
-  { value: 'security_systems', label: 'Security Systems' },
-  { value: 'cctv_installation', label: 'CCTV Installation' },
-  // Health & Beauty
-  { value: 'hairdresser', label: 'Hairdresser' },
-  { value: 'barber', label: 'Barber' },
-  { value: 'beauty_therapist', label: 'Beauty Therapist' },
-  { value: 'nail_technician', label: 'Nail Technician' },
-  { value: 'massage_therapist', label: 'Massage Therapist' },
-  { value: 'personal_trainer', label: 'Personal Trainer' },
-  { value: 'yoga_instructor', label: 'Yoga Instructor' },
-  { value: 'physiotherapist', label: 'Physiotherapist' },
-  { value: 'chiropractor', label: 'Chiropractor' },
-  { value: 'osteopath', label: 'Osteopath' },
-  { value: 'acupuncturist', label: 'Acupuncturist' },
-  { value: 'nutritionist', label: 'Nutritionist' },
-  // Events & Entertainment
-  { value: 'photographer', label: 'Photographer' },
-  { value: 'videographer', label: 'Videographer' },
-  { value: 'dj', label: 'DJ' },
-  { value: 'musician', label: 'Musician' },
-  { value: 'band', label: 'Band' },
-  { value: 'entertainer', label: 'Entertainer' },
-  { value: 'magician', label: 'Magician' },
-  { value: 'caterer', label: 'Caterer' },
-  { value: 'event_planner', label: 'Event Planner' },
-  { value: 'wedding_planner', label: 'Wedding Planner' },
-  { value: 'florist', label: 'Florist' },
-  { value: 'cake_maker', label: 'Cake Maker' },
-  { value: 'marquee_hire', label: 'Marquee Hire' },
-  // Professional Services
-  { value: 'accountant', label: 'Accountant' },
-  { value: 'bookkeeper', label: 'Bookkeeper' },
-  { value: 'solicitor', label: 'Solicitor' },
-  { value: 'estate_agent', label: 'Estate Agent' },
-  { value: 'letting_agent', label: 'Letting Agent' },
-  { value: 'surveyor', label: 'Surveyor' },
-  { value: 'architect', label: 'Architect' },
-  { value: 'consultant', label: 'Consultant' },
-  { value: 'coach', label: 'Coach' },
-  { value: 'tutor', label: 'Tutor' },
-  { value: 'translator', label: 'Translator' },
-  { value: 'driving_instructor', label: 'Driving Instructor' },
-  // IT & Tech
-  { value: 'it_support', label: 'IT Support' },
-  { value: 'computer_repair', label: 'Computer Repair' },
-  { value: 'web_developer', label: 'Web Developer' },
-  { value: 'app_developer', label: 'App Developer' },
-  { value: 'graphic_designer', label: 'Graphic Designer' },
-  { value: 'seo_marketing', label: 'SEO & Marketing' },
-  { value: 'social_media', label: 'Social Media Manager' },
-  // Other
-  { value: 'tailor', label: 'Tailor' },
-  { value: 'seamstress', label: 'Seamstress' },
-  { value: 'upholsterer', label: 'Upholsterer' },
-  { value: 'furniture_restoration', label: 'Furniture Restoration' },
-  { value: 'appliance_repair', label: 'Appliance Repair' },
-  { value: 'shoe_repair', label: 'Shoe Repair' },
-  { value: 'dry_cleaner', label: 'Dry Cleaner' },
-  { value: 'laundry_service', label: 'Laundry Service' },
-  { value: 'delivery_service', label: 'Delivery Service' },
-  { value: 'courier', label: 'Courier' },
-  { value: 'taxi', label: 'Taxi' },
-  { value: 'private_hire', label: 'Private Hire' },
-  { value: 'childminder', label: 'Childminder' },
-  { value: 'nanny', label: 'Nanny' },
-  { value: 'care_worker', label: 'Care Worker' },
-  { value: 'cleaner', label: 'Cleaner' },
-  { value: 'ironing_service', label: 'Ironing Service' },
-  { value: 'professional_services', label: 'Professional Services' },
-  { value: 'other', label: 'Other' },
-];
+import { BUSINESS_TYPES } from '@/lib/constants/business-types';
 
 export function BusinessContextStep({
   workspaceId,
@@ -470,9 +316,17 @@ export function BusinessContextStep({
     onChange({ ...value, serviceArea: serialized });
   };
 
+  const isPreview = workspaceId === 'preview-workspace';
+
   const handleSave = async () => {
     if (!value.companyName || selectedBusinessTypes.length === 0) {
       toast.error('Please enter your company name and select at least one business type');
+      return;
+    }
+
+    // In preview mode, skip all Supabase writes and just advance
+    if (isPreview) {
+      onNext();
       return;
     }
 

@@ -16,7 +16,7 @@ interface EmailConnectionStepProps {
   onEmailConnected: (email: string) => void;
 }
 
-type Provider = 'gmail' | 'outlook' | 'icloud' | 'yahoo';
+type Provider = 'gmail' | 'outlook' | 'icloud' | 'yahoo' | 'imap';
 type ImportMode = 'new_only' | 'last_1000' | 'last_10000' | 'last_30000' | 'all_history';
 
 interface MakeProgress {
@@ -83,6 +83,14 @@ const emailProviders = [
     available: true,
   },
   {
+    id: 'imap' as Provider,
+    name: 'Other (IMAP)',
+    icon: null,
+    iconColor: 'text-bb-warm-gray',
+    available: true,
+    subtitle: 'Fastmail, ProtonMail, Zoho, or any IMAP provider',
+  },
+  {
     id: 'yahoo' as Provider,
     name: 'Yahoo Mail',
     icon: null,
@@ -140,6 +148,7 @@ export function EmailConnectionStep({
   onBack,
   onEmailConnected,
 }: EmailConnectionStepProps) {
+  const isPreview = workspaceId === 'preview-workspace';
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
@@ -153,6 +162,12 @@ export function EmailConnectionStep({
 
   const checkEmailConnection = useCallback(
     async (isInitialLoad = false) => {
+      if (isPreview) {
+        setInitialLoading(false);
+        setIsConnecting(false);
+        return;
+      }
+
       try {
         const [configResult, progressResult] = await Promise.all([
           supabase
@@ -210,7 +225,7 @@ export function EmailConnectionStep({
 
   // Poll email_import_progress when import is started (new pipeline)
   useEffect(() => {
-    if (!importStarted || !workspaceId) return;
+    if (!importStarted || !workspaceId || isPreview) return;
 
     const poll = async () => {
       const { data, error } = await supabase
@@ -271,6 +286,11 @@ export function EmailConnectionStep({
   }, [checkEmailConnection]);
 
   const handleConnect = async (provider: Provider) => {
+    if (isPreview) {
+      toast.info('Email connection is not available in preview mode');
+      return;
+    }
+
     setIsConnecting(true);
     setSelectedProvider(provider);
 
@@ -309,7 +329,7 @@ export function EmailConnectionStep({
   };
 
   const startImport = async () => {
-    if (!workspaceId || importStarted) return;
+    if (!workspaceId || importStarted || isPreview) return;
 
     setImportStarted(true);
 
@@ -334,6 +354,8 @@ export function EmailConnectionStep({
   };
 
   const handleDisconnect = async () => {
+    if (isPreview) return;
+
     try {
       await Promise.all([
         supabase.from('email_provider_configs').delete().eq('workspace_id', workspaceId),
@@ -351,6 +373,8 @@ export function EmailConnectionStep({
   };
 
   const handleRetry = async () => {
+    if (isPreview) return;
+
     try {
       // Reset the new pipeline progress row so the UI can restart cleanly.
       // (If the row doesn't exist, this is a no-op.)
@@ -528,6 +552,11 @@ export function EmailConnectionStep({
                     <Mail className={`h-6 w-6 ${provider.iconColor || ''}`} />
                   )}
                   <span className="text-sm font-medium">{provider.name}</span>
+                  {'subtitle' in provider && provider.subtitle && (
+                    <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                      {provider.subtitle}
+                    </span>
+                  )}
                 </Button>
               ))}
             </div>
