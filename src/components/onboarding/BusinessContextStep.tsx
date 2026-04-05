@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, Loader2, X, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
+import { BUSINESS_TYPES } from '@/lib/constants/business-types';
 import {
   Select,
   SelectContent,
@@ -60,8 +61,6 @@ const PREVIEW_LOCATION_SUGGESTIONS = [
   'Hitchin',
   'London',
 ];
-
-import { BUSINESS_TYPES } from '@/lib/constants/business-types';
 
 export function BusinessContextStep({
   workspaceId,
