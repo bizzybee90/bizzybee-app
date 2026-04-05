@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, ChevronRight, Loader2, X, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 import {
   Select,
   SelectContent,
@@ -42,6 +43,23 @@ interface ServiceArea {
   name: string;
   radius?: number; // in miles
 }
+
+const DEFAULT_SERVICE_RADIUS = 20;
+const PREVIEW_LOCATION_SUGGESTIONS = [
+  'Luton',
+  'Dunstable',
+  'Harpenden',
+  'St Albans',
+  'Milton Keynes',
+  'Bedford',
+  'Hemel Hempstead',
+  'Watford',
+  'Stevenage',
+  'Leighton Buzzard',
+  'Aylesbury',
+  'Hitchin',
+  'London',
+];
 
 const BUSINESS_TYPES = [
   // Cleaning Services
@@ -199,7 +217,14 @@ const BUSINESS_TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBack }: BusinessContextStepProps) {
+export function BusinessContextStep({
+  workspaceId,
+  value,
+  onChange,
+  onNext,
+  onBack,
+}: BusinessContextStepProps) {
+  const isPreviewMode = isPreviewModeEnabled();
   const [isSaving, setIsSaving] = useState(false);
   const [businessTypeSearch, setBusinessTypeSearch] = useState('');
   const [serviceAreaSearch, setServiceAreaSearch] = useState('');
@@ -207,16 +232,24 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
   const [serviceAreaFocused, setServiceAreaFocused] = useState(false);
   const [placePredictions, setPlacePredictions] = useState<PlacePrediction[]>([]);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  const [newAreaRadius, setNewAreaRadius] = useState<string>(DEFAULT_SERVICE_RADIUS.toString());
+  const [placesError, setPlacesError] = useState<string | null>(null);
 
   // Parse service areas from pipe-separated string (supports radius like "Luton (20 miles)")
   const selectedAreas = useMemo((): ServiceArea[] => {
     if (!value.serviceArea) return [];
     // Support both old comma format and new pipe format
-    const raw = value.serviceArea.includes(' | ') 
-      ? value.serviceArea.split(' | ').map(s => s.trim()).filter(Boolean)
-      : value.serviceArea.split(',').map(s => s.trim()).filter(Boolean);
-    
-    return raw.map(area => {
+    const raw = value.serviceArea.includes(' | ')
+      ? value.serviceArea
+          .split(' | ')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : value.serviceArea
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+    return raw.map((area) => {
       // Parse radius if present: "Luton (20 miles)"
       const radiusMatch = area.match(/^(.+?)\s*\((\d+)\s*miles?\)$/i);
       if (radiusMatch) {
@@ -226,30 +259,39 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
     });
   }, [value.serviceArea]);
 
+  useEffect(() => {
+    const firstRadius = selectedAreas[0]?.radius;
+    if (firstRadius) {
+      setNewAreaRadius(firstRadius.toString());
+    }
+  }, [selectedAreas]);
+
   // Parse business types from comma-separated string
   const selectedBusinessTypes = useMemo(() => {
     if (!value.businessType) return [];
-    return value.businessType.split(',').map(s => s.trim()).filter(Boolean);
+    return value.businessType
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }, [value.businessType]);
 
   // Filter business types based on search with fuzzy matching - only show when typing
   const filteredBusinessTypes = useMemo(() => {
     // Don't show anything if no search input
     if (!businessTypeSearch || businessTypeSearch.trim().length < 1) return [];
-    
+
     const search = businessTypeSearch.toLowerCase().trim();
-    
+
     // Score and filter matches
-    const scored = BUSINESS_TYPES
-      .filter(type => 
-        !selectedBusinessTypes.includes(type.value) && 
-        !selectedBusinessTypes.includes(type.label)
-      )
-      .map(type => {
+    const scored = BUSINESS_TYPES.filter(
+      (type) =>
+        !selectedBusinessTypes.includes(type.value) && !selectedBusinessTypes.includes(type.label),
+    )
+      .map((type) => {
         const label = type.label.toLowerCase();
         const value = type.value.toLowerCase();
         let score = 0;
-        
+
         // Exact match gets highest score
         if (label === search || value === search) {
           score = 100;
@@ -259,57 +301,87 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
           score = 80;
         }
         // Word starts with search term (e.g., "plumb" matches "Plumber")
-        else if (label.split(/[\s&]+/).some(word => word.startsWith(search)) || 
-                 value.split('_').some(word => word.startsWith(search))) {
+        else if (
+          label.split(/[\s&]+/).some((word) => word.startsWith(search)) ||
+          value.split('_').some((word) => word.startsWith(search))
+        ) {
           score = 60;
         }
         // Contains search term
         else if (label.includes(search) || value.includes(search)) {
           score = 40;
         }
-        
+
         return { type, score };
       })
-      .filter(item => item.score > 0)
+      .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 12)
-      .map(item => item.type);
-    
+      .map((item) => item.type);
+
     return scored;
   }, [businessTypeSearch, selectedBusinessTypes]);
 
   // Debounced Google Places search
-  const searchPlaces = useCallback(async (input: string) => {
-    if (!input || input.trim().length < 2) {
-      setPlacePredictions([]);
-      return;
-    }
-
-    setIsLoadingPlaces(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('google-places-autocomplete', {
-        body: { input: input.trim() }
-      });
-
-      if (error) {
-        console.error('Places API error:', error);
+  const searchPlaces = useCallback(
+    async (input: string) => {
+      if (!input || input.trim().length < 2) {
         setPlacePredictions([]);
+        setPlacesError(null);
         return;
       }
 
-      // Filter out already selected areas
-      const areaNames = selectedAreas.map(a => a.name);
-      const filtered = (data.predictions || []).filter(
-        (p: PlacePrediction) => !areaNames.includes(p.description)
-      );
-      setPlacePredictions(filtered);
-    } catch (err) {
-      console.error('Error fetching places:', err);
-      setPlacePredictions([]);
-    } finally {
-      setIsLoadingPlaces(false);
-    }
-  }, [selectedAreas]);
+      if (isPreviewMode) {
+        const search = input.trim().toLowerCase();
+        const areaNames = selectedAreas.map((a) => a.name.toLowerCase());
+        const predictions = PREVIEW_LOCATION_SUGGESTIONS.filter((name) =>
+          name.toLowerCase().includes(search),
+        )
+          .filter((name) => !areaNames.includes(name.toLowerCase()))
+          .map((name) => ({
+            description: name,
+            place_id: `preview-${name.toLowerCase().replace(/\s+/g, '-')}`,
+          }));
+
+        setPlacePredictions(predictions);
+        setPlacesError(null);
+        return;
+      }
+
+      setIsLoadingPlaces(true);
+      setPlacesError(null);
+      try {
+        const { data, error } = await supabase.functions.invoke('google-places-autocomplete', {
+          body: { input: input.trim() },
+        });
+
+        if (error) {
+          console.error('Places API error:', error);
+          setPlacePredictions([]);
+          setPlacesError(
+            'Google location search is temporarily unavailable. You can still add the area manually.',
+          );
+          return;
+        }
+
+        // Filter out already selected areas
+        const areaNames = selectedAreas.map((a) => a.name);
+        const filtered = (data.predictions || []).filter(
+          (p: PlacePrediction) => !areaNames.includes(p.description),
+        );
+        setPlacePredictions(filtered);
+      } catch (err) {
+        console.error('Error fetching places:', err);
+        setPlacePredictions([]);
+        setPlacesError(
+          'Google location search is temporarily unavailable. You can still add the area manually.',
+        );
+      } finally {
+        setIsLoadingPlaces(false);
+      }
+    },
+    [isPreviewMode, selectedAreas],
+  );
 
   // Debounce the search
   useEffect(() => {
@@ -338,7 +410,7 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
   };
 
   const handleRemoveBusinessType = (typeLabel: string) => {
-    const newTypes = selectedBusinessTypes.filter(t => t !== typeLabel);
+    const newTypes = selectedBusinessTypes.filter((t) => t !== typeLabel);
     onChange({ ...value, businessType: newTypes.join(', ') });
   };
 
@@ -352,26 +424,34 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
   const handleSelectLocation = (location: string, radius?: number) => {
     // The edge function already strips country suffix, but clean up just in case
     let cleanLocation = location.trim();
-    const countryPattern = /, (UK|United Kingdom|USA|United States|Australia|Canada|Ireland|Germany|France|Italy|Spain|Netherlands|New Zealand|India|Poland|Czechia|South Korea|Malaysia|Belarus|England|Scotland|Wales|Northern Ireland)$/i;
+    const countryPattern =
+      /, (UK|United Kingdom|USA|United States|Australia|Canada|Ireland|Germany|France|Italy|Spain|Netherlands|New Zealand|India|Poland|Czechia|South Korea|Malaysia|Belarus|England|Scotland|Wales|Northern Ireland)$/i;
     cleanLocation = cleanLocation.replace(countryPattern, '');
-    
-    const areaNames = selectedAreas.map(a => a.name);
+
+    const areaNames = selectedAreas.map((a) => a.name);
     if (cleanLocation && !areaNames.includes(cleanLocation)) {
-      const newArea: ServiceArea = { name: cleanLocation, radius };
+      const resolvedRadius = radius ?? parseInt(newAreaRadius, 10);
+      const newArea: ServiceArea = {
+        name: cleanLocation,
+        radius: Number.isFinite(resolvedRadius) ? resolvedRadius : DEFAULT_SERVICE_RADIUS,
+      };
       const newAreas = [...selectedAreas, newArea];
       // Serialize with radius: "Luton (20 miles)" or just "Luton"
-      const serialized = newAreas.map(a => a.radius ? `${a.name} (${a.radius} miles)` : a.name).join(' | ');
+      const serialized = newAreas
+        .map((a) => (a.radius ? `${a.name} (${a.radius} miles)` : a.name))
+        .join(' | ');
       onChange({ ...value, serviceArea: serialized });
     }
     setServiceAreaSearch('');
     setPlacePredictions([]);
+    setPlacesError(null);
   };
 
   const handleUpdateRadius = (areaName: string, radius: number | undefined) => {
-    const newAreas = selectedAreas.map(a => 
-      a.name === areaName ? { ...a, radius } : a
-    );
-    const serialized = newAreas.map(a => a.radius ? `${a.name} (${a.radius} miles)` : a.name).join(' | ');
+    const newAreas = selectedAreas.map((a) => (a.name === areaName ? { ...a, radius } : a));
+    const serialized = newAreas
+      .map((a) => (a.radius ? `${a.name} (${a.radius} miles)` : a.name))
+      .join(' | ');
     onChange({ ...value, serviceArea: serialized });
   };
 
@@ -383,8 +463,10 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
   };
 
   const handleRemoveLocation = (areaName: string) => {
-    const newAreas = selectedAreas.filter(a => a.name !== areaName);
-    const serialized = newAreas.map(a => a.radius ? `${a.name} (${a.radius} miles)` : a.name).join(' | ');
+    const newAreas = selectedAreas.filter((a) => a.name !== areaName);
+    const serialized = newAreas
+      .map((a) => (a.radius ? `${a.name} (${a.radius} miles)` : a.name))
+      .join(' | ');
     onChange({ ...value, serviceArea: serialized });
   };
 
@@ -414,21 +496,22 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
       };
 
       if (existing) {
-        await supabase
-          .from('business_context')
-          .update(contextData)
-          .eq('id', existing.id);
+        await supabase.from('business_context').update(contextData).eq('id', existing.id);
       } else {
         await supabase.from('business_context').insert(contextData);
       }
 
-      await supabase
-        .from('workspaces')
-        .update({ name: value.companyName })
-        .eq('id', workspaceId);
+      await supabase.from('workspaces').update({ name: value.companyName }).eq('id', workspaceId);
 
       if (value.receivesInvoices) {
-        const invoiceSenders = ['xero.com', 'quickbooks.com', 'sage.com', 'freshbooks.com', 'stripe.com', 'paypal.com'];
+        const invoiceSenders = [
+          'xero.com',
+          'quickbooks.com',
+          'sage.com',
+          'freshbooks.com',
+          'stripe.com',
+          'paypal.com',
+        ];
         for (const domain of invoiceSenders) {
           const { data: existingRule } = await supabase
             .from('sender_rules')
@@ -450,7 +533,14 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
       }
 
       if (value.isHiring) {
-        const jobPortals = ['indeed.com', 'linkedin.com', 'reed.co.uk', 'totaljobs.com', 'cv-library.co.uk', 'glassdoor.com'];
+        const jobPortals = [
+          'indeed.com',
+          'linkedin.com',
+          'reed.co.uk',
+          'totaljobs.com',
+          'cv-library.co.uk',
+          'glassdoor.com',
+        ];
         for (const domain of jobPortals) {
           const { data: existingRule } = await supabase
             .from('sender_rules')
@@ -497,9 +587,7 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
             value={value.companyName}
             onChange={(e) => onChange({ ...value, companyName: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">
-            Used to identify your business in emails
-          </p>
+          <p className="text-xs text-muted-foreground">Used to identify your business in emails</p>
         </div>
 
         <div className="space-y-2">
@@ -529,35 +617,43 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
               onFocus={() => setBusinessTypeFocused(true)}
               onBlur={() => setTimeout(() => setBusinessTypeFocused(false), 150)}
             />
-            {businessTypeFocused && (filteredBusinessTypes.length > 0 || (businessTypeSearch.trim() && !filteredBusinessTypes.some(t => t.label.toLowerCase() === businessTypeSearch.toLowerCase()))) && (
-              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                {businessTypeSearch.trim() && !filteredBusinessTypes.some(t => t.label.toLowerCase() === businessTypeSearch.toLowerCase()) && (
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      handleAddBusinessType(businessTypeSearch);
-                    }}
-                  >
-                    Add "{businessTypeSearch.trim()}"
-                  </button>
-                )}
-                {filteredBusinessTypes.map((type) => (
-                  <button
-                    key={type.value}
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      handleSelectBusinessType(type);
-                    }}
-                  >
-                    {type.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {businessTypeFocused &&
+              (filteredBusinessTypes.length > 0 ||
+                (businessTypeSearch.trim() &&
+                  !filteredBusinessTypes.some(
+                    (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
+                  ))) && (
+                <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                  {businessTypeSearch.trim() &&
+                    !filteredBusinessTypes.some(
+                      (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
+                    ) && (
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleAddBusinessType(businessTypeSearch);
+                        }}
+                      >
+                        Add "{businessTypeSearch.trim()}"
+                      </button>
+                    )}
+                  {filteredBusinessTypes.map((type) => (
+                    <button
+                      key={type.value}
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectBusinessType(type);
+                      }}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              )}
           </div>
           <p className="text-xs text-muted-foreground">
             Type any business type and press Enter, or select from suggestions
@@ -577,11 +673,21 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
         </div>
 
         <div className="space-y-2">
-          <Label>Service areas (optional)</Label>
+          <div className="flex items-center justify-between gap-3">
+            <Label>Primary service location &amp; radius (optional)</Label>
+            {isPreviewMode && (
+              <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.08em]">
+                Preview mode
+              </Badge>
+            )}
+          </div>
           {selectedAreas.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2">
               {selectedAreas.map((area) => (
-                <div key={area.name} className="flex items-center gap-0 rounded-lg border border-border overflow-hidden bg-background">
+                <div
+                  key={area.name}
+                  className="flex items-center gap-0 rounded-lg border border-border overflow-hidden bg-background"
+                >
                   {/* Location name */}
                   <div className="flex items-center gap-1.5 px-2.5 py-1.5">
                     <MapPin className="h-3.5 w-3.5 text-primary" />
@@ -590,7 +696,9 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
                   {/* Radius selector - visually separated */}
                   <Select
                     value={area.radius?.toString() || 'exact'}
-                    onValueChange={(val) => handleUpdateRadius(area.name, val === 'exact' ? undefined : parseInt(val, 10))}
+                    onValueChange={(val) =>
+                      handleUpdateRadius(area.name, val === 'exact' ? undefined : parseInt(val, 10))
+                    }
                   >
                     <SelectTrigger className="h-auto min-w-[80px] text-xs font-medium border-0 border-l border-border rounded-none bg-muted/50 px-2.5 py-1.5 hover:bg-muted transition-colors">
                       <SelectValue />
@@ -617,57 +725,87 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
               ))}
             </div>
           )}
-          <div className="relative">
-            <Input
-              placeholder="Search for a location..."
-              value={serviceAreaSearch}
-              onChange={(e) => setServiceAreaSearch(e.target.value)}
-              onKeyDown={handleLocationKeyDown}
-              onFocus={() => setServiceAreaFocused(true)}
-              onBlur={() => setTimeout(() => setServiceAreaFocused(false), 200)}
-            />
-            {serviceAreaFocused && (isLoadingPlaces || placePredictions.length > 0 || (serviceAreaSearch.trim().length >= 2 && !placePredictions.some(p => p.description.toLowerCase() === serviceAreaSearch.toLowerCase()))) && (
-              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                {isLoadingPlaces ? (
-                  <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Searching...
-                  </div>
-                ) : (
-                  <>
-                    {serviceAreaSearch.trim().length >= 2 && !placePredictions.some(p => p.description.toLowerCase() === serviceAreaSearch.toLowerCase()) && (
-                      <button
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectLocation(serviceAreaSearch);
-                        }}
-                      >
-                        Add "{serviceAreaSearch.trim()}"
-                      </button>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                placeholder={
+                  isPreviewMode ? 'Search for a town or city...' : 'Search with Google Places...'
+                }
+                value={serviceAreaSearch}
+                onChange={(e) => setServiceAreaSearch(e.target.value)}
+                onKeyDown={handleLocationKeyDown}
+                onFocus={() => setServiceAreaFocused(true)}
+                onBlur={() => setTimeout(() => setServiceAreaFocused(false), 200)}
+              />
+              {serviceAreaFocused &&
+                (isLoadingPlaces ||
+                  placePredictions.length > 0 ||
+                  (serviceAreaSearch.trim().length >= 2 &&
+                    !placePredictions.some(
+                      (p) => p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
+                    ))) && (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
+                    {isLoadingPlaces ? (
+                      <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Searching...
+                      </div>
+                    ) : (
+                      <>
+                        {serviceAreaSearch.trim().length >= 2 &&
+                          !placePredictions.some(
+                            (p) => p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
+                          ) && (
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectLocation(serviceAreaSearch);
+                              }}
+                            >
+                              Add "{serviceAreaSearch.trim()}" with a {newAreaRadius}-mile radius
+                            </button>
+                          )}
+                        {placePredictions.map((prediction) => (
+                          <button
+                            key={prediction.place_id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectLocation(prediction.description);
+                            }}
+                          >
+                            {prediction.description}
+                          </button>
+                        ))}
+                      </>
                     )}
-                    {placePredictions.map((prediction) => (
-                      <button
-                        key={prediction.place_id}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectLocation(prediction.description);
-                        }}
-                      >
-                        {prediction.description}
-                      </button>
-                    ))}
-                  </>
+                  </div>
                 )}
-              </div>
-            )}
+            </div>
+            <Select value={newAreaRadius} onValueChange={setNewAreaRadius}>
+              <SelectTrigger className="w-[132px] shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5 miles</SelectItem>
+                <SelectItem value="10">10 miles</SelectItem>
+                <SelectItem value="15">15 miles</SelectItem>
+                <SelectItem value="20">20 miles</SelectItem>
+                <SelectItem value="30">30 miles</SelectItem>
+                <SelectItem value="40">40 miles</SelectItem>
+                <SelectItem value="50">50 miles</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <p className="text-xs text-muted-foreground">
-            Search for cities, regions, or countries you serve
+            {isPreviewMode
+              ? 'Preview mode uses local place suggestions. In the live app, this field searches Google Places.'
+              : 'Choose the main town or city customers associate with you, then set how many miles around it you cover.'}
           </p>
+          {placesError ? <p className="text-xs text-amber-600">{placesError}</p> : null}
         </div>
 
         <div className="space-y-2">
@@ -710,11 +848,7 @@ export function BusinessContextStep({ workspaceId, value, onChange, onNext, onBa
       </div>
 
       <div className="flex gap-3 pt-4">
-        <Button
-          variant="outline"
-          className="flex-1"
-          onClick={onBack}
-        >
+        <Button variant="outline" className="flex-1" onClick={onBack}>
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
