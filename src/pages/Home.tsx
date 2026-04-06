@@ -67,13 +67,9 @@ export const Home = () => {
         // Ignore localStorage cleanup failures and continue to onboarding.
       }
 
-      navigate(
-        getPreviewAwarePath(
-          !needsOnboarding || !workspace?.id ? '/onboarding?reset=true' : '/onboarding?repair=1',
-        ),
-      );
+      navigate(previewOnboardingPath);
     } catch {
-      navigate(getPreviewAwarePath('/onboarding?repair=1'));
+      navigate(previewOnboardingPath);
     }
   };
 
