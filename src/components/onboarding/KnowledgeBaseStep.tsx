@@ -277,6 +277,9 @@ export function KnowledgeBaseStep({
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (user) {
         const { error: syncError } = await supabase
@@ -293,18 +296,65 @@ export function KnowledgeBaseStep({
         }
       }
 
-      const { data, error: invokeError } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: {
-          workspace_id: workspaceId,
-          workflow_type: 'own_website_scrape',
-          websiteUrl: businessContext.websiteUrl,
-        },
+      const requestBody = {
+        workspace_id: workspaceId,
+        workflow_type: 'own_website_scrape',
+        websiteUrl: businessContext.websiteUrl,
+      };
+
+      let data: { success?: boolean; error?: string; jobId?: string; job_id?: string } | null =
+        null;
+      let invokeError: Error | null = null;
+
+      const invokeResult = await supabase.functions.invoke('trigger-n8n-workflow', {
+        body: requestBody,
       });
+
+      data = invokeResult.data;
+      invokeError = invokeResult.error;
+
+      // Safari has intermittently failed on invoke() even when the function itself is healthy.
+      // Fall back to a signed direct fetch to avoid blocking onboarding on the client helper.
+      if (
+        invokeError?.message?.includes('Failed to send a request to the Edge Function') &&
+        session?.access_token
+      ) {
+        logger.warn('invoke() failed, retrying trigger-n8n-workflow with direct fetch', {
+          workspaceId,
+        });
+
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-n8n-workflow`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify(requestBody),
+          },
+        );
+
+        const responseBody = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+          jobId?: string;
+          job_id?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(responseBody.error || 'Failed to start scraping');
+        }
+
+        data = responseBody;
+        invokeError = null;
+      }
 
       if (invokeError) throw new Error(invokeError.message || 'Failed to start scraping');
       if (!data?.success) throw new Error(data?.error || 'Failed to start scraping');
 
-      setJobDbId(data.jobId || null);
+      setJobDbId(data.jobId || data.job_id || null);
       setStatus('polling');
     } catch (err: any) {
       logger.error('Start scraping error', err);
