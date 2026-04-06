@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
+import { isOnboardingComplete } from '@/lib/onboardingStatus';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { WorkspaceContext } from './workspace-context';
 
@@ -18,6 +19,8 @@ const PREVIEW_WORKSPACE: Workspace = {
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingStep, setOnboardingStep] = useState<string | null>(null);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   const fetchWorkspace = useCallback(async (cancelled?: () => boolean) => {
     const isCancelled = cancelled ?? (() => false);
@@ -26,6 +29,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (!isCancelled()) {
         setWorkspace(PREVIEW_WORKSPACE);
         setLoading(false);
+        setOnboardingStep('complete');
+        setOnboardingComplete(true);
       }
       return;
     }
@@ -44,22 +49,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (!user) {
         setWorkspace(null);
         setLoading(false);
+        setOnboardingStep(null);
+        setOnboardingComplete(false);
         return;
       }
 
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('workspace_id')
+        .select('workspace_id, onboarding_completed, onboarding_step')
         .eq('id', user.id)
         .maybeSingle();
 
       if (userError) {
         console.error('Error loading user workspace link:', userError);
         setWorkspace(null);
+        setOnboardingStep(null);
+        setOnboardingComplete(false);
         return;
       }
 
       if (isCancelled()) return;
+
+      const nextOnboardingStep = userData?.onboarding_step ?? null;
+      const nextOnboardingComplete = isOnboardingComplete(userData);
+      setOnboardingStep(nextOnboardingStep);
+      setOnboardingComplete(nextOnboardingComplete);
 
       if (!userData?.workspace_id) {
         setWorkspace(null);
@@ -108,7 +122,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WorkspaceContext.Provider
-      value={{ workspace, loading, refreshWorkspace: () => fetchWorkspace() }}
+      value={{
+        workspace,
+        loading,
+        refreshWorkspace: () => fetchWorkspace(),
+        onboardingStep,
+        onboardingComplete,
+        needsOnboarding: !onboardingComplete,
+      }}
     >
       {children}
     </WorkspaceContext.Provider>
