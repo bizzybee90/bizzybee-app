@@ -25,6 +25,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
+    const isPlaceholderWorkspace = (nextWorkspace: Workspace | null) => {
+      if (!nextWorkspace) return true;
+      const normalizedName = nextWorkspace.name.trim().toLowerCase();
+      const normalizedSlug = nextWorkspace.slug.trim().toLowerCase();
+
+      return (
+        normalizedName === 'my workspace' ||
+        normalizedName === 'bizzybee test' ||
+        normalizedSlug.startsWith('workspace-')
+      );
+    };
+
     const fetchWorkspace = async () => {
       if (isPreviewModeEnabled()) {
         if (!cancelled) {
@@ -62,11 +74,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
 
       const nextOnboardingStep = userData?.onboarding_step ?? null;
-      const nextOnboardingComplete = isOnboardingComplete(userData);
       setOnboardingStep(nextOnboardingStep);
-      setOnboardingComplete(nextOnboardingComplete);
 
       if (!userData?.workspace_id) {
+        setOnboardingComplete(false);
         setWorkspace(null);
         setLoading(false);
         return;
@@ -78,8 +89,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userData.workspace_id)
         .single();
 
+      const { data: businessContextData } = await supabase
+        .from('business_context')
+        .select('company_name')
+        .eq('workspace_id', userData.workspace_id)
+        .maybeSingle();
+
+      const nextWorkspace = workspaceData ?? null;
+      const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
+      const nextOnboardingComplete =
+        isOnboardingComplete(userData) &&
+        hasBusinessIdentity &&
+        !isPlaceholderWorkspace(nextWorkspace);
+
+      setOnboardingComplete(nextOnboardingComplete);
+
       if (!cancelled) {
-        setWorkspace(workspaceData ?? null);
+        setWorkspace(nextWorkspace);
       }
 
       if (!cancelled) {

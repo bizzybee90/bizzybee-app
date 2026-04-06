@@ -24,6 +24,7 @@ import { EmailImportIndicator } from './EmailImportIndicator';
 import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 import { cn } from '@/lib/utils';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
@@ -48,6 +49,7 @@ export const Sidebar = ({
 }: SidebarProps = {}) => {
   const isCollapsed = !isMobileDrawer && forceCollapsed;
   const isPreviewMode = isPreviewModeEnabled();
+  const { workspace, needsOnboarding, loading: workspaceLoading } = useWorkspace();
 
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
@@ -165,6 +167,14 @@ export const Sidebar = ({
         workspaceName: 'Preview workspace',
       }
     : viewData;
+
+  const workspaceLabel = isPreviewMode
+    ? 'Preview workspace'
+    : workspaceLoading
+      ? 'Loading workspace…'
+      : !workspace?.id || needsOnboarding
+        ? 'Workspace setup incomplete'
+        : workspace.name;
   const primaryItems: NavItem[] = [
     { to: '/', icon: Home, label: 'Home', end: true },
     { to: '/inbox', icon: Inbox, label: 'Inbox' },
@@ -246,7 +256,7 @@ export const Sidebar = ({
       <TooltipProvider>
         <div
           className={cn(
-            'flex h-full min-h-[100dvh] w-[240px] self-stretch flex-col px-4 py-5 text-[#FDF8EC]',
+            'flex h-full min-h-[100dvh] w-[240px] self-stretch flex-col overflow-y-auto px-4 py-5 text-[#FDF8EC]',
             isMobileDrawer && 'w-full px-0 py-0',
           )}
           style={{ backgroundColor: 'var(--bb-espresso)' }}
@@ -265,9 +275,7 @@ export const Sidebar = ({
               <p className="truncate text-[11px] uppercase tracking-[0.18em] text-bb-gold/90">
                 Workspace
               </p>
-              <p className="truncate text-[11px] text-[rgba(253,248,236,0.62)]">
-                {viewCounts?.workspaceName || 'AI customer operations'}
-              </p>
+              <p className="truncate text-[11px] text-[rgba(253,248,236,0.62)]">{workspaceLabel}</p>
             </div>
           </div>
 
