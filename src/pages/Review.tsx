@@ -622,15 +622,11 @@ export default function Review() {
 
   // All caught up state
   const allCaughtUp = !isLoading && unreviewedQueue.length === 0;
-  const hasReviewError = Boolean(queueError || confirmedError || weeklyStatsError);
+  const hasReviewError = Boolean(queueError);
   const reviewErrorMessage =
     queueError instanceof Error
       ? queueError.message
-      : confirmedError instanceof Error
-        ? confirmedError.message
-        : weeklyStatsError instanceof Error
-          ? weeklyStatsError.message
-          : 'BizzyBee could not load the review queue right now.';
+      : 'BizzyBee could not load the review queue right now.';
 
   if (workspaceLoading) {
     return (
