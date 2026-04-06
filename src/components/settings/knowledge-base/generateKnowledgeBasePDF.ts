@@ -8,7 +8,6 @@ interface FAQItem {
   category: string | null;
   priority: number | null;
   is_own_content: boolean | null;
-  source_type: string | null;
 }
 
 interface BusinessFact {
@@ -134,11 +133,8 @@ export async function generateKnowledgeBasePDF(
 
   // ── fetch data ──
   const [faqs, facts, scrapingJob] = await Promise.all([
-    fetchAll<FAQItem>(
-      'faq_database',
-      'question, answer, category, priority, is_own_content, source_type',
-      (q) =>
-        q.eq('is_active', true).eq('is_own_content', true).order('priority', { ascending: false }),
+    fetchAll<FAQItem>('faq_database', 'question, answer, category, priority, is_own_content', (q) =>
+      q.eq('is_active', true).eq('is_own_content', true).order('priority', { ascending: false }),
     ),
     fetchAll<BusinessFact>('business_facts', 'fact_key, fact_value, category'),
     supabase
