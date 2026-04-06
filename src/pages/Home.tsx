@@ -27,7 +27,7 @@ import { LearningInsightsWidget } from '@/components/dashboard/LearningInsightsW
 import { InsightsWidget } from '@/components/dashboard/InsightsWidget';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { isPreviewModeEnabled } from '@/lib/previewMode';
+import { getPreviewAwarePath } from '@/lib/previewMode';
 
 interface HomeStats {
   clearedToday: number;
@@ -39,10 +39,10 @@ interface HomeStats {
 }
 
 export const Home = () => {
-  const { workspace, needsOnboarding } = useWorkspace();
+  const { workspace, needsOnboarding, loading: workspaceLoading } = useWorkspace();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const previewOnboardingPath = isPreviewModeEnabled() ? '/onboarding?preview=1' : '/onboarding';
+  const previewOnboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [stats, setStats] = useState<HomeStats>({
     clearedToday: 0,
     toReplyCount: 0,
@@ -55,6 +55,10 @@ export const Home = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (workspaceLoading) {
+        return;
+      }
+
       if (!workspace?.id || workspace.id === 'preview-workspace' || needsOnboarding) {
         setLoading(false);
         setStats({
@@ -162,7 +166,7 @@ export const Home = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [needsOnboarding, workspace?.id]);
+  }, [needsOnboarding, workspace?.id, workspaceLoading]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -210,7 +214,7 @@ export const Home = () => {
   const mainContent = (
     <ScrollArea className="h-[calc(100vh-4rem)]">
       <div className="mx-auto min-h-full max-w-[1120px] space-y-6 bg-bb-linen p-4 md:p-6">
-        {loading ? (
+        {loading || workspaceLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-28 rounded-2xl" />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -222,7 +226,7 @@ export const Home = () => {
           </div>
         ) : (
           <>
-            {(!workspace?.id || needsOnboarding) && (
+            {!workspaceLoading && (!workspace?.id || needsOnboarding) && (
               <div className="rounded-[24px] border border-bb-border bg-bb-cream p-6 shadow-[0_10px_24px_rgba(28,21,16,0.04)]">
                 <p className="text-[18px] font-medium text-bb-text">
                   Finish onboarding to unlock BizzyBee
