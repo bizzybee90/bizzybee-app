@@ -77,9 +77,9 @@ export default function Onboarding() {
           onboardingCompleted: userData?.onboarding_completed,
         });
 
-        if (isRepair && userData?.workspace_id && !isOnboardingComplete(userData)) {
+        if (isRepair) {
           logger.debug('Repairing broken onboarding workspace link', {
-            workspaceId: userData.workspace_id,
+            workspaceId: userData?.workspace_id ?? null,
           });
 
           const { error: repairError } = await supabase
