@@ -477,7 +477,17 @@ export function KnowledgeBaseStep({
             try {
               const { generateKnowledgeBasePDF } =
                 await import('@/components/settings/knowledge-base/generateKnowledgeBasePDF');
-              await generateKnowledgeBasePDF(workspaceId, businessContext.companyName);
+              // Fetch company logo URL for the PDF cover page
+              const { data: bc } = await supabase
+                .from('business_context')
+                .select('company_logo_url')
+                .eq('workspace_id', workspaceId)
+                .maybeSingle();
+              await generateKnowledgeBasePDF(
+                workspaceId,
+                businessContext.companyName,
+                bc?.company_logo_url ?? undefined,
+              );
               toast.success('Knowledge Base PDF downloaded!');
             } catch (err) {
               logger.error('PDF generation error', err);

@@ -17,36 +17,36 @@ interface BusinessFact {
   category: string;
 }
 
-// ── BizzyBee Brand — warm amber/honey + clean whites ──
+// ── BizzyBee Brand — matches app design tokens from tokens.css ──
 const C = {
-  // Brand amber (from logo & app banners)
-  amber: [245, 158, 11] as [number, number, number], // #F59E0B
-  amberDark: [217, 119, 6] as [number, number, number], // #D97706
-  amberLight: [252, 211, 77] as [number, number, number], // #FCD34D
-  amberPale: [255, 251, 235] as [number, number, number], // #FFFBEB - warm banner bg
-  amberSoft: [254, 243, 199] as [number, number, number], // #FEF3C7
+  // Brand gold (--bb-gold / --accent-primary)
+  amber: [201, 168, 76] as [number, number, number], // #C9A84C
+  amberDark: [179, 146, 58] as [number, number, number], // #B3923A
+  amberLight: [232, 210, 138] as [number, number, number], // #E8D28A
+  amberPale: [253, 248, 236] as [number, number, number], // #FDF8EC
+  amberSoft: [250, 248, 244] as [number, number, number], // #FAF8F4
 
-  // Clean whites & backgrounds (from app cards)
+  // Clean whites & backgrounds
   white: [255, 255, 255] as [number, number, number],
-  background: [249, 250, 251] as [number, number, number], // #F9FAFB
+  background: [249, 248, 246] as [number, number, number], // #F9F8F6 --bb-linen
 
   // Text
-  foreground: [26, 28, 34] as [number, number, number],
-  slate: [71, 85, 105] as [number, number, number], // #475569
-  muted: [107, 114, 128] as [number, number, number],
-  subtle: [156, 163, 175] as [number, number, number],
+  foreground: [28, 21, 16] as [number, number, number], // #1C1510 --bb-text
+  slate: [92, 82, 72] as [number, number, number], // #5C5248 --bb-text-secondary
+  muted: [138, 128, 120] as [number, number, number], // #8A8078 --bb-warm-gray
+  subtle: [176, 168, 152] as [number, number, number], // #B0A898 --bb-muted
 
   // Borders
-  border: [229, 231, 235] as [number, number, number],
+  border: [224, 221, 214] as [number, number, number], // #E0DDD6 --bb-border
 
-  // Accent colours (from sidebar icons)
-  green: [22, 163, 74] as [number, number, number], // success green
-  greenPale: [220, 252, 231] as [number, number, number], // #DCFCE7
-  orange: [234, 88, 12] as [number, number, number], // warm orange
-  violet: [139, 92, 246] as [number, number, number],
-  rose: [225, 29, 72] as [number, number, number],
-  sky: [14, 165, 233] as [number, number, number],
-  teal: [20, 184, 166] as [number, number, number],
+  // Semantic colours
+  green: [42, 122, 72] as [number, number, number], // #2A7A48 --bb-success
+  greenPale: [232, 245, 236] as [number, number, number], // #E8F5EC --bb-success-bg
+  orange: [154, 107, 26] as [number, number, number], // #9A6B1A --bb-warning
+  violet: [124, 104, 151] as [number, number, number], // #7C6897 --system-purple
+  rose: [163, 45, 45] as [number, number, number], // #A32D2D --bb-danger
+  sky: [74, 106, 148] as [number, number, number], // #4A6A94 --system-blue
+  teal: [42, 122, 72] as [number, number, number], // reuse success green
 };
 
 const CAT_COLOURS: Record<string, [number, number, number]> = {
@@ -72,6 +72,7 @@ function catColour(cat: string): [number, number, number] {
 export async function generateKnowledgeBasePDF(
   workspaceId: string,
   companyName?: string,
+  companyLogoUrl?: string,
 ): Promise<void> {
   const doc = new jsPDF();
   const pw = doc.internal.pageSize.getWidth();
@@ -140,11 +141,11 @@ export async function generateKnowledgeBasePDF(
         q.eq('is_active', true).eq('is_own_content', true).order('priority', { ascending: false }),
     ),
     fetchAll<BusinessFact>('business_facts', 'fact_key, fact_value, category'),
-    sb
+    supabase
       .from('scraping_jobs')
       .select('website_url, total_pages_found, pages_processed, faqs_found, completed_at')
       .eq('workspace_id', workspaceId)
-      .eq('status', 'completed')
+      .in('status', ['complete', 'completed'])
       .order('completed_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -178,23 +179,55 @@ export async function generateKnowledgeBasePDF(
   doc.setFillColor(...C.amberDark);
   doc.rect(0, 5, pw, 1, 'F');
 
-  // Subtle warm glow behind logo
-  rRect(pw / 2 - 28, 44, 56, 56, 28, C.amberPale);
-
-  // Logo
-  try {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve) => {
-      img.onload = () => {
-        doc.addImage(img, 'PNG', pw / 2 - 20, 52, 40, 40);
-        resolve();
-      };
-      img.onerror = () => resolve();
-      img.src = bizzybeeLogoSrc;
+  // Helper to load an image with timeout
+  const loadImg = (src: string): Promise<HTMLImageElement | null> =>
+    new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const timer = setTimeout(() => resolve(null), 5000);
+        img.onload = () => {
+          clearTimeout(timer);
+          resolve(img);
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          resolve(null);
+        };
+        img.src = src;
+      } catch {
+        resolve(null);
+      }
     });
-  } catch {
-    /* skip */
+
+  const bbLogo = await loadImg(bizzybeeLogoSrc);
+  const companyLogo = companyLogoUrl ? await loadImg(companyLogoUrl) : null;
+
+  if (bbLogo && companyLogo) {
+    // Two logos with arrow — matches onboarding "Knowledge Base Ready" layout
+    const logoSize = 40;
+    const arrowGap = 16;
+    const totalLogoW = logoSize + arrowGap + logoSize;
+    const logoStartX = (pw - totalLogoW) / 2;
+
+    // BizzyBee logo with glow
+    rRect(logoStartX - 4, 48, logoSize + 8, logoSize + 8, 24, C.amberPale);
+    doc.addImage(bbLogo, 'PNG', logoStartX, 52, logoSize, logoSize);
+
+    // Arrow
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(16);
+    doc.setTextColor(...C.subtle);
+    doc.text('\u2192', logoStartX + logoSize + arrowGap / 2, 74, { align: 'center' });
+
+    // Company logo with glow
+    const compX = logoStartX + logoSize + arrowGap;
+    rRect(compX - 4, 48, logoSize + 8, logoSize + 8, 24, C.amberPale);
+    doc.addImage(companyLogo, 'PNG', compX, 52, logoSize, logoSize);
+  } else if (bbLogo) {
+    // BizzyBee logo only, centred
+    rRect(pw / 2 - 28, 44, 56, 56, 28, C.amberPale);
+    doc.addImage(bbLogo, 'PNG', pw / 2 - 20, 52, 40, 40);
   }
 
   // Title
