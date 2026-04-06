@@ -11,6 +11,7 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isReset = searchParams.get('reset') === 'true';
+  const isRepair = searchParams.get('repair') === 'true' || searchParams.get('repair') === '1';
   const { workspace, loading: workspaceLoading } = useWorkspace();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ export default function Onboarding() {
           return;
         }
 
-        if (workspace?.id) {
+        if (workspace?.id && !isRepair) {
           logger.debug('Using workspace from shared context', { workspaceId: workspace.id });
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
@@ -75,6 +76,39 @@ export default function Onboarding() {
           workspaceId: userData?.workspace_id,
           onboardingCompleted: userData?.onboarding_completed,
         });
+
+        if (isRepair && userData?.workspace_id && !isOnboardingComplete(userData)) {
+          logger.debug('Repairing broken onboarding workspace link', {
+            workspaceId: userData.workspace_id,
+          });
+
+          const { error: repairError } = await supabase
+            .from('users')
+            .update({
+              workspace_id: null,
+              onboarding_completed: false,
+              onboarding_step: 'welcome',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', authUser.id);
+
+          if (repairError) {
+            logger.error('Error repairing onboarding state', repairError);
+            if (isMounted) {
+              clearSafetyTimeout(loadingSafetyTimeout);
+              setError('Failed to reset the broken workspace setup. Please refresh the page.');
+              setLoading(false);
+            }
+            return;
+          }
+
+          userData = {
+            ...userData,
+            workspace_id: null,
+            onboarding_completed: false,
+            onboarding_step: 'welcome',
+          };
+        }
 
         // If already onboarded and NOT a reset, go to home
         if (!isReset && isOnboardingComplete(userData)) {
@@ -202,7 +236,7 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [isReset, navigate, workspace?.id, workspaceLoading]);
+  }, [isRepair, isReset, navigate, workspace?.id, workspaceLoading]);
 
   const handleComplete = async () => {
     if (isPreviewModeEnabled()) {
