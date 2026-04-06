@@ -235,7 +235,7 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
                     })
                     .eq('id', user.id);
                 }
-                window.location.href = '/settings';
+                window.location.href = '/';
               }}
               className="text-muted-foreground hover:text-foreground text-xs"
             >
