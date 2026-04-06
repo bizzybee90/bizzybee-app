@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
@@ -19,26 +19,27 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchWorkspace = useCallback(async (cancelled?: () => boolean) => {
+    const isCancelled = cancelled ?? (() => false);
 
-    const fetchWorkspace = async () => {
-      if (isPreviewModeEnabled()) {
-        if (!cancelled) {
-          setWorkspace(PREVIEW_WORKSPACE);
-          setLoading(false);
-        }
-        return;
+    if (isPreviewModeEnabled()) {
+      if (!isCancelled()) {
+        setWorkspace(PREVIEW_WORKSPACE);
+        setLoading(false);
       }
+      return;
+    }
 
-      if (!cancelled) {
-        setLoading(true);
-      }
+    if (!isCancelled()) {
+      setLoading(true);
+    }
 
+    try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (cancelled) return;
+
+      if (isCancelled()) return;
 
       if (!user) {
         setWorkspace(null);
@@ -46,43 +47,56 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('workspace_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (cancelled) return;
-
-      if (!userData?.workspace_id) {
+      if (userError) {
+        console.error('Error loading user workspace link:', userError);
         setWorkspace(null);
-        setLoading(false);
         return;
       }
 
-      const { data: workspaceData } = await supabase
+      if (isCancelled()) return;
+
+      if (!userData?.workspace_id) {
+        setWorkspace(null);
+        return;
+      }
+
+      const { data: workspaceData, error: workspaceError } = await supabase
         .from('workspaces')
         .select('*')
         .eq('id', userData.workspace_id)
-        .single();
+        .maybeSingle();
 
-      if (!cancelled) {
+      if (workspaceError) {
+        console.error('Error loading workspace:', workspaceError);
+      }
+
+      if (!isCancelled()) {
         setWorkspace(workspaceData ?? null);
       }
-
-      if (!cancelled) {
+    } finally {
+      if (!isCancelled()) {
         setLoading(false);
       }
-    };
+    }
+  }, []);
 
-    fetchWorkspace();
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetchWorkspace(() => cancelled);
 
     // Re-fetch if auth state changes (sign in/out)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-        fetchWorkspace();
+        void fetchWorkspace(() => cancelled);
       }
     });
 
@@ -90,9 +104,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchWorkspace]);
 
   return (
-    <WorkspaceContext.Provider value={{ workspace, loading }}>{children}</WorkspaceContext.Provider>
+    <WorkspaceContext.Provider
+      value={{ workspace, loading, refreshWorkspace: () => fetchWorkspace() }}
+    >
+      {children}
+    </WorkspaceContext.Provider>
   );
 }
