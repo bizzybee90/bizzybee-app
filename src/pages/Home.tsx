@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
@@ -28,7 +27,6 @@ import { InsightsWidget } from '@/components/dashboard/InsightsWidget';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { getPreviewAwarePath } from '@/lib/previewMode';
-import { toast } from 'sonner';
 
 interface HomeStats {
   clearedToday: number;
@@ -57,35 +55,7 @@ export const Home = () => {
   const handleContinueOnboarding = async () => {
     if (workspaceLoading) return;
 
-    if (!needsOnboarding || !workspace?.id) {
-      navigate(previewOnboardingPath);
-      return;
-    }
-
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        navigate(previewOnboardingPath);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('users')
-        .update({
-          workspace_id: null,
-          onboarding_completed: false,
-          onboarding_step: 'welcome',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-
-      if (error) {
-        throw error;
-      }
-
       try {
         Object.keys(localStorage).forEach((key) => {
           if (key.startsWith('bizzybee:onboarding:')) {
@@ -96,10 +66,12 @@ export const Home = () => {
         // Ignore localStorage cleanup failures and continue to onboarding.
       }
 
-      navigate(getPreviewAwarePath('/onboarding?repair=1'));
-    } catch (error) {
-      console.error('Error preparing onboarding restart:', error);
-      toast.error('BizzyBee could not reset setup automatically. Opening onboarding anyway.');
+      navigate(
+        getPreviewAwarePath(
+          !needsOnboarding || !workspace?.id ? '/onboarding?reset=true' : '/onboarding?repair=1',
+        ),
+      );
+    } catch {
       navigate(getPreviewAwarePath('/onboarding?repair=1'));
     }
   };
