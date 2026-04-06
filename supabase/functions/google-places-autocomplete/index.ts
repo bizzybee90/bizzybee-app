@@ -1,5 +1,3 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -11,33 +9,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized', predictions: [] }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized', predictions: [] }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const { input, query } = await req.json().catch(() => ({ input: '', query: '' }));
+    const searchInput = typeof input === 'string' && input.trim().length > 0 ? input : query;
 
-    const { input } = await req.json();
-
-    if (!input || input.trim().length < 2) {
+    if (!searchInput || searchInput.trim().length < 2) {
       return new Response(JSON.stringify({ predictions: [] }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -53,11 +28,11 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
-    url.searchParams.set('input', input);
+    url.searchParams.set('input', searchInput.trim());
     url.searchParams.set('types', 'geocode');
     url.searchParams.set('key', apiKey);
 
-    console.log(`Fetching places for input: "${input}"`);
+    console.log(`Fetching places for input: "${searchInput}"`);
 
     const response = await fetch(url.toString());
     const data = await response.json();
