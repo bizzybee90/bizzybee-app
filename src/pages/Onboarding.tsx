@@ -16,6 +16,7 @@ export default function Onboarding() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const shouldForceFreshOnboarding = isReset || isRepair;
 
   useEffect(() => {
     let isMounted = true;
@@ -39,11 +40,11 @@ export default function Onboarding() {
       try {
         logger.debug('Initializing for user', { userId: authUser.id });
 
-        if (workspaceLoading) {
+        if (workspaceLoading && !shouldForceFreshOnboarding) {
           return;
         }
 
-        if (workspace?.id && !isRepair) {
+        if (workspace?.id && !shouldForceFreshOnboarding) {
           logger.debug('Using workspace from shared context', { workspaceId: workspace.id });
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
@@ -78,7 +79,7 @@ export default function Onboarding() {
         });
 
         // If already onboarded and NOT a reset, go to home
-        if (!isReset && isOnboardingComplete(userData)) {
+        if (!shouldForceFreshOnboarding && isOnboardingComplete(userData)) {
           logger.debug('Already completed, going home');
           clearSafetyTimeout(loadingSafetyTimeout);
           navigate('/');
@@ -86,7 +87,7 @@ export default function Onboarding() {
         }
 
         // If workspace exists, use it
-        if (userData?.workspace_id) {
+        if (userData?.workspace_id && !shouldForceFreshOnboarding) {
           logger.debug('Using existing workspace', { workspaceId: userData.workspace_id });
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
@@ -100,7 +101,7 @@ export default function Onboarding() {
         const { data: bootstrapData, error: bootstrapError } = await supabase.functions.invoke(
           'bootstrap-workspace',
           {
-            body: { force_reset: isRepair },
+            body: { force_reset: shouldForceFreshOnboarding },
           },
         );
 
@@ -180,7 +181,7 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [isRepair, isReset, navigate, workspace?.id, workspaceLoading]);
+  }, [navigate, shouldForceFreshOnboarding, workspace?.id, workspaceLoading]);
 
   const handleComplete = async () => {
     if (isPreviewModeEnabled()) {
