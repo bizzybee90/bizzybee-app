@@ -59,7 +59,7 @@ export const JaceStyleInbox = ({
   filter = 'needs-me',
   hideHeader = false,
 }: JaceStyleInboxProps) => {
-  const { workspace } = useWorkspace();
+  const { workspace, needsOnboarding } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [searchParams] = useSearchParams();
@@ -84,7 +84,7 @@ export const JaceStyleInbox = ({
   }, [searchQuery]);
 
   const fetchConversations = async () => {
-    if (!workspace?.id) return [];
+    if (!workspace?.id || needsOnboarding) return [];
 
     let query = supabase
       .from('conversations')
@@ -171,7 +171,7 @@ export const JaceStyleInbox = ({
 
   const { data: autoHandledCount = 0 } = useQuery({
     queryKey: ['auto-handled-count', workspace?.id],
-    enabled: !!workspace?.id && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode && !needsOnboarding,
     queryFn: async () => {
       if (!workspace?.id) return 0;
 
@@ -197,7 +197,7 @@ export const JaceStyleInbox = ({
     refetch,
   } = useQuery({
     queryKey: ['jace-inbox', workspace?.id, filter, subFilter, debouncedSearch],
-    enabled: !!workspace?.id && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode && !needsOnboarding,
     queryFn: async () => {
       const result = await fetchConversations();
       setLastUpdated(new Date());
@@ -429,15 +429,15 @@ export const JaceStyleInbox = ({
     );
   }
 
-  if (!workspace?.id) {
+  if (!workspace?.id || needsOnboarding) {
     return (
       <div className="flex h-full items-center justify-center bg-bb-white p-6">
         <div className="w-full max-w-lg">
           <PanelNotice
             title="Finish setup before using the inbox"
-            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
+            description="BizzyBee needs onboarding to be completed before customer conversations can appear here."
             actionLabel="Open onboarding"
-            actionTo="/onboarding?reset=true"
+            actionTo={onboardingPath}
           />
         </div>
       </div>

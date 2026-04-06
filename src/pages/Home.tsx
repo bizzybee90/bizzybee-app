@@ -39,7 +39,7 @@ interface HomeStats {
 }
 
 export const Home = () => {
-  const { workspace } = useWorkspace();
+  const { workspace, needsOnboarding } = useWorkspace();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const previewOnboardingPath = isPreviewModeEnabled() ? '/onboarding?preview=1' : '/onboarding';
@@ -55,7 +55,7 @@ export const Home = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!workspace?.id || workspace.id === 'preview-workspace') {
+      if (!workspace?.id || workspace.id === 'preview-workspace' || needsOnboarding) {
         setLoading(false);
         setStats({
           clearedToday: 0,
@@ -162,7 +162,7 @@ export const Home = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workspace?.id]);
+  }, [needsOnboarding, workspace?.id]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -222,12 +222,14 @@ export const Home = () => {
           </div>
         ) : (
           <>
-            {!workspace?.id && (
+            {(!workspace?.id || needsOnboarding) && (
               <div className="rounded-[24px] border border-bb-border bg-bb-cream p-6 shadow-[0_10px_24px_rgba(28,21,16,0.04)]">
-                <p className="text-[18px] font-medium text-bb-text">Workspace setup incomplete</p>
+                <p className="text-[18px] font-medium text-bb-text">
+                  Finish onboarding to unlock BizzyBee
+                </p>
                 <p className="mt-2 max-w-xl text-[13px] text-bb-text-secondary">
-                  BizzyBee is live, but this account is not linked to a workspace yet. Finish
-                  onboarding or reconnect your workspace to load inbox data.
+                  BizzyBee is live, but this account still needs onboarding before inbox data,
+                  training, and channels can load correctly.
                 </p>
                 <div className="mt-4">
                   <Button onClick={() => navigate(previewOnboardingPath)}>
@@ -274,15 +276,18 @@ export const Home = () => {
             </div>
 
             {/* ── All caught up ── */}
-            {stats.toReplyCount === 0 && stats.reviewCount === 0 && stats.atRiskCount === 0 && (
-              <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                <Sparkles className="w-8 h-8 mb-4 text-bb-muted" />
-                <h3 className="text-[15px] font-medium text-bb-text">You're all caught up</h3>
-                <p className="text-[13px] mt-1 max-w-sm mx-auto text-bb-text-secondary">
-                  BizzyBee is actively monitoring your inbox.
-                </p>
-              </div>
-            )}
+            {!needsOnboarding &&
+              stats.toReplyCount === 0 &&
+              stats.reviewCount === 0 &&
+              stats.atRiskCount === 0 && (
+                <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+                  <Sparkles className="w-8 h-8 mb-4 text-bb-muted" />
+                  <h3 className="text-[15px] font-medium text-bb-text">You're all caught up</h3>
+                  <p className="text-[13px] mt-1 max-w-sm mx-auto text-bb-text-secondary">
+                    BizzyBee is actively monitoring your inbox.
+                  </p>
+                </div>
+              )}
 
             {/* ── Widget Grid ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

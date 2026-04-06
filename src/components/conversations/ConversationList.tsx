@@ -138,7 +138,7 @@ export const ConversationList = ({
   onConversationsChange,
   channelFilter: initialChannelFilter,
 }: ConversationListProps) => {
-  const { workspace } = useWorkspace();
+  const { workspace, needsOnboarding } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [page, setPage] = useState(0);
@@ -173,7 +173,7 @@ export const ConversationList = ({
   }, [sortBy]);
 
   const fetchConversations = async (pageNum: number = 0) => {
-    if (!workspace?.id) {
+    if (!workspace?.id || needsOnboarding) {
       return { data: [], count: 0 };
     }
 
@@ -396,7 +396,7 @@ export const ConversationList = ({
   // Fetch auto-handled count for "BizzyBee handled X today" metric
   const { data: autoHandledCount = 0 } = useQuery({
     queryKey: ['auto-handled-count', workspace?.id],
-    enabled: !!workspace?.id,
+    enabled: !!workspace?.id && !needsOnboarding,
     queryFn: async () => {
       if (!workspace?.id) return 0;
 
@@ -440,7 +440,7 @@ export const ConversationList = ({
     error,
   } = useQuery({
     queryKey,
-    enabled: !!workspace?.id,
+    enabled: !!workspace?.id && !needsOnboarding,
     queryFn: async () => {
       const result = await fetchConversations(page);
       setLastUpdated(new Date());
@@ -466,7 +466,7 @@ export const ConversationList = ({
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     const setupRealtimeSubscription = async () => {
-      if (!workspace?.id) return;
+      if (!workspace?.id || needsOnboarding) return;
 
       logger.debug('Setting up realtime subscription', {
         filter,
@@ -506,6 +506,10 @@ export const ConversationList = ({
         });
     };
 
+    if (needsOnboarding) {
+      return;
+    }
+
     setupRealtimeSubscription();
 
     return () => {
@@ -514,7 +518,7 @@ export const ConversationList = ({
         supabase.removeChannel(channel);
       }
     };
-  }, [filter, queryClient, workspace?.id]);
+  }, [filter, needsOnboarding, queryClient, workspace?.id]);
 
   // Reset page when filters change
   useEffect(() => {
@@ -572,7 +576,7 @@ export const ConversationList = ({
     );
   }
 
-  if (!workspace?.id) {
+  if (!workspace?.id || needsOnboarding) {
     return (
       <div
         className={cn(
@@ -583,7 +587,7 @@ export const ConversationList = ({
         <div className="w-full max-w-lg">
           <PanelNotice
             title="Finish setup before using the inbox"
-            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
+            description="BizzyBee needs onboarding to be completed before customer conversations can appear here."
             actionLabel="Open onboarding"
             actionTo={onboardingPath}
           />

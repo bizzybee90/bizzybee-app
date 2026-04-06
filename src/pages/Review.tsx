@@ -140,7 +140,7 @@ function readReviewPreferences() {
 export default function Review() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const { workspace, loading: workspaceLoading, needsOnboarding } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -186,7 +186,7 @@ export default function Review() {
     refetch: refetchQueue,
   } = useQuery({
     queryKey: ['reconciliation-queue', workspace?.id],
-    enabled: !!workspace?.id && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode && !needsOnboarding,
     queryFn: async () => {
       if (!workspace?.id) return [];
 
@@ -221,7 +221,7 @@ export default function Review() {
   // Fetch recently confirmed today
   const { data: recentlyConfirmed = [], error: confirmedError } = useQuery({
     queryKey: ['reconciliation-confirmed-today', workspace?.id],
-    enabled: !!workspace?.id && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode && !needsOnboarding,
     queryFn: async () => {
       if (!workspace?.id) return [];
 
@@ -259,7 +259,7 @@ export default function Review() {
   // Weekly stats
   const { data: weeklyStats, error: weeklyStatsError } = useQuery({
     queryKey: ['reconciliation-weekly-stats', workspace?.id],
-    enabled: !!workspace?.id && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode && !needsOnboarding,
     queryFn: async () => {
       if (!workspace?.id) return null;
 
@@ -643,7 +643,7 @@ export default function Review() {
     );
   }
 
-  if (!workspace?.id) {
+  if (!workspace?.id || needsOnboarding) {
     return (
       <div className="flex h-screen bg-background">
         {!isMobile && <Sidebar />}
@@ -651,7 +651,7 @@ export default function Review() {
           <div className="w-full max-w-xl">
             <PanelNotice
               title="Finish setup before reviewing training"
-              description="BizzyBee needs a workspace and onboarding context before the training queue can load. Finish setup first, then come back here to teach the AI."
+              description="BizzyBee needs onboarding to be completed before the training queue can load. Finish setup first, then come back here to teach the AI."
               actionLabel="Open onboarding"
               actionTo={onboardingPath}
             />
