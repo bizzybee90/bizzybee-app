@@ -77,39 +77,6 @@ export default function Onboarding() {
           onboardingCompleted: userData?.onboarding_completed,
         });
 
-        if (isRepair) {
-          logger.debug('Repairing broken onboarding workspace link', {
-            workspaceId: userData?.workspace_id ?? null,
-          });
-
-          const { error: repairError } = await supabase
-            .from('users')
-            .update({
-              workspace_id: null,
-              onboarding_completed: false,
-              onboarding_step: 'welcome',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', authUser.id);
-
-          if (repairError) {
-            logger.error('Error repairing onboarding state', repairError);
-            if (isMounted) {
-              clearSafetyTimeout(loadingSafetyTimeout);
-              setError('Failed to reset the broken workspace setup. Please refresh the page.');
-              setLoading(false);
-            }
-            return;
-          }
-
-          userData = {
-            ...userData,
-            workspace_id: null,
-            onboarding_completed: false,
-            onboarding_step: 'welcome',
-          };
-        }
-
         // If already onboarded and NOT a reset, go to home
         if (!isReset && isOnboardingComplete(userData)) {
           logger.debug('Already completed, going home');
@@ -129,51 +96,28 @@ export default function Onboarding() {
           return;
         }
 
-        // Create a new workspace
-        logger.debug('Creating workspace');
-        const { data: workspace, error: wsError } = await supabase
-          .from('workspaces')
-          .insert({
-            name: 'My Workspace',
-            slug: `workspace-${authUser.id.slice(0, 8)}`,
-          })
-          .select()
-          .single();
+        logger.debug('Bootstrapping workspace via edge function', { isRepair });
+        const { data: bootstrapData, error: bootstrapError } = await supabase.functions.invoke(
+          'bootstrap-workspace',
+          {
+            body: { force_reset: isRepair },
+          },
+        );
 
-        if (wsError) {
-          logger.error('Error creating workspace', wsError);
+        if (bootstrapError || !bootstrapData?.workspace_id) {
+          logger.error('Error bootstrapping workspace', bootstrapError ?? bootstrapData);
           if (isMounted) {
             clearSafetyTimeout(loadingSafetyTimeout);
-            setError('Failed to create workspace. Please refresh the page.');
+            setError('Failed to start onboarding. Please try again.');
             setLoading(false);
           }
           return;
         }
 
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({
-            workspace_id: workspace.id,
-            onboarding_completed: false,
-            onboarding_step: 'welcome',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', authUser.id);
-
-        if (updateError) {
-          logger.error('Error updating user', updateError);
-          if (isMounted) {
-            clearSafetyTimeout(loadingSafetyTimeout);
-            setError('Failed to attach the workspace to your account. Please refresh the page.');
-            setLoading(false);
-          }
-          return;
-        }
-
-        logger.debug('Workspace created', { workspaceId: workspace.id });
+        logger.debug('Workspace bootstrapped', { workspaceId: bootstrapData.workspace_id });
         if (isMounted) {
           clearSafetyTimeout(loadingSafetyTimeout);
-          setWorkspaceId(workspace.id);
+          setWorkspaceId(bootstrapData.workspace_id);
           setLoading(false);
         }
       } catch (err) {
@@ -317,10 +261,12 @@ export default function Onboarding() {
           <h2 className="text-lg font-semibold mb-2">Something went wrong</h2>
           <p className="text-muted-foreground mb-4">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() =>
+              window.location.assign(isRepair ? '/onboarding?repair=1' : '/onboarding')
+            }
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
           >
-            Refresh Page
+            Try again
           </button>
         </div>
       </div>

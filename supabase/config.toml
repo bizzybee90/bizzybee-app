@@ -165,3 +165,6 @@ verify_jwt = false
 
 [functions.nuclear-reset]
 verify_jwt = false
+
+[functions.bootstrap-workspace]
+verify_jwt = false
