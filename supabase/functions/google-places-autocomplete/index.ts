@@ -3,6 +3,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const fallbackLocationSearch = async (searchInput: string) => {
+  const fallbackUrl = new URL('https://nominatim.openstreetmap.org/search');
+  fallbackUrl.searchParams.set('q', searchInput.trim());
+  fallbackUrl.searchParams.set('format', 'jsonv2');
+  fallbackUrl.searchParams.set('limit', '6');
+  fallbackUrl.searchParams.set('addressdetails', '1');
+  fallbackUrl.searchParams.set('countrycodes', 'gb');
+
+  const fallbackResponse = await fetch(fallbackUrl.toString(), {
+    headers: {
+      'User-Agent': 'BizzyBee/1.0 location-search',
+      Accept: 'application/json',
+    },
+  });
+
+  if (!fallbackResponse.ok) {
+    throw new Error(`Fallback location search failed with ${fallbackResponse.status}`);
+  }
+
+  const fallbackData = await fallbackResponse.json();
+  const predictions = (fallbackData || []).map((item: any) => ({
+    description: item.display_name,
+    place_id: item.place_id?.toString?.() ?? item.osm_id?.toString?.() ?? item.display_name,
+    original: item.display_name,
+  }));
+
+  return new Response(JSON.stringify({ predictions, provider: 'fallback' }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -21,10 +52,7 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     if (!apiKey) {
       console.error('GOOGLE_MAPS_API_KEY not configured');
-      return new Response(JSON.stringify({ error: 'API key not configured', predictions: [] }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return await fallbackLocationSearch(searchInput);
     }
 
     const url = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
@@ -39,13 +67,7 @@ Deno.serve(async (req) => {
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       console.error('Google Places API error:', data.status, data.error_message);
-      return new Response(
-        JSON.stringify({
-          error: data.error_message || 'Failed to fetch places',
-          predictions: [],
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      return await fallbackLocationSearch(searchInput);
     }
 
     const countryPattern =
@@ -67,6 +89,16 @@ Deno.serve(async (req) => {
     });
   } catch (error: unknown) {
     console.error('Error in google-places-autocomplete:', error);
+    try {
+      const { input, query } = await req.json().catch(() => ({ input: '', query: '' }));
+      const searchInput = typeof input === 'string' && input.trim().length > 0 ? input : query;
+      if (searchInput && searchInput.trim().length >= 2) {
+        return await fallbackLocationSearch(searchInput);
+      }
+    } catch {
+      // fall through to generic error response
+    }
+
     return new Response(JSON.stringify({ error: 'Internal server error', predictions: [] }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
