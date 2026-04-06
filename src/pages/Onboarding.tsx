@@ -97,7 +97,9 @@ export default function Onboarding() {
           return;
         }
 
-        logger.debug('Bootstrapping workspace via edge function', { isRepair });
+        logger.debug('Bootstrapping workspace via edge function', {
+          forceFreshOnboarding: shouldForceFreshOnboarding,
+        });
         const { data: bootstrapData, error: bootstrapError } = await supabase.functions.invoke(
           'bootstrap-workspace',
           {
