@@ -1,15 +1,6 @@
 project_id = "atukvssploxwyqpwjmrc"
 
 # =============================================================================
-# AUTH — Redirect URLs for production and local development
-# =============================================================================
-
-[auth]
-enabled = true
-site_url = "https://bizzybee-app.pages.dev"
-additional_redirect_urls = ["http://localhost:8080", "http://localhost:8080/**", "https://bizzybee-app.pages.dev", "https://bizzybee-app.pages.dev/**"]
-
-# =============================================================================
 # PIPELINE — Core email processing pipeline (new unified pipeline)
 # =============================================================================
 

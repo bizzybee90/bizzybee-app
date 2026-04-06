@@ -138,7 +138,7 @@ export const ConversationList = ({
   onConversationsChange,
   channelFilter: initialChannelFilter,
 }: ConversationListProps) => {
-  const { workspace, needsOnboarding } = useWorkspace();
+  const { workspace } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [page, setPage] = useState(0);
@@ -396,7 +396,7 @@ export const ConversationList = ({
   // Fetch auto-handled count for "BizzyBee handled X today" metric
   const { data: autoHandledCount = 0 } = useQuery({
     queryKey: ['auto-handled-count', workspace?.id],
-    enabled: !!workspace?.id && !needsOnboarding,
+    enabled: !!workspace?.id,
     queryFn: async () => {
       if (!workspace?.id) return 0;
 
@@ -440,7 +440,7 @@ export const ConversationList = ({
     error,
   } = useQuery({
     queryKey,
-    enabled: !!workspace?.id && !needsOnboarding,
+    enabled: !!workspace?.id,
     queryFn: async () => {
       const result = await fetchConversations(page);
       setLastUpdated(new Date());
@@ -572,7 +572,7 @@ export const ConversationList = ({
     );
   }
 
-  if (!workspace?.id || needsOnboarding) {
+  if (!workspace?.id) {
     return (
       <div
         className={cn(
@@ -583,11 +583,7 @@ export const ConversationList = ({
         <div className="w-full max-w-lg">
           <PanelNotice
             title="Finish setup before using the inbox"
-            description={
-              !workspace?.id
-                ? 'BizzyBee needs a workspace and onboarding context before customer conversations can appear here.'
-                : 'BizzyBee still needs your onboarding details before customer conversations can appear here.'
-            }
+            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
             actionLabel="Open onboarding"
             actionTo={onboardingPath}
           />

@@ -140,7 +140,7 @@ function readReviewPreferences() {
 export default function Review() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { workspace, loading: workspaceLoading, needsOnboarding } = useWorkspace();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -186,7 +186,7 @@ export default function Review() {
     refetch: refetchQueue,
   } = useQuery({
     queryKey: ['reconciliation-queue', workspace?.id],
-    enabled: !!workspace?.id && !needsOnboarding && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       if (!workspace?.id) return [];
 
@@ -221,7 +221,7 @@ export default function Review() {
   // Fetch recently confirmed today
   const { data: recentlyConfirmed = [], error: confirmedError } = useQuery({
     queryKey: ['reconciliation-confirmed-today', workspace?.id],
-    enabled: !!workspace?.id && !needsOnboarding && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       if (!workspace?.id) return [];
 
@@ -259,7 +259,7 @@ export default function Review() {
   // Weekly stats
   const { data: weeklyStats, error: weeklyStatsError } = useQuery({
     queryKey: ['reconciliation-weekly-stats', workspace?.id],
-    enabled: !!workspace?.id && !needsOnboarding && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       if (!workspace?.id) return null;
 
@@ -622,11 +622,15 @@ export default function Review() {
 
   // All caught up state
   const allCaughtUp = !isLoading && unreviewedQueue.length === 0;
-  const hasReviewError = Boolean(queueError);
+  const hasReviewError = Boolean(queueError || confirmedError || weeklyStatsError);
   const reviewErrorMessage =
     queueError instanceof Error
       ? queueError.message
-      : 'BizzyBee could not load the review queue right now.';
+      : confirmedError instanceof Error
+        ? confirmedError.message
+        : weeklyStatsError instanceof Error
+          ? weeklyStatsError.message
+          : 'BizzyBee could not load the review queue right now.';
 
   if (workspaceLoading) {
     return (
@@ -639,7 +643,7 @@ export default function Review() {
     );
   }
 
-  if (!workspace?.id || needsOnboarding) {
+  if (!workspace?.id) {
     return (
       <div className="flex h-screen bg-background">
         {!isMobile && <Sidebar />}
@@ -647,11 +651,7 @@ export default function Review() {
           <div className="w-full max-w-xl">
             <PanelNotice
               title="Finish setup before reviewing training"
-              description={
-                !workspace?.id
-                  ? 'BizzyBee needs a workspace and onboarding context before the training queue can load. Finish setup first, then come back here to teach the AI.'
-                  : 'BizzyBee still needs your onboarding details before the training queue can load. Continue onboarding, then come back here to teach the AI.'
-              }
+              description="BizzyBee needs a workspace and onboarding context before the training queue can load. Finish setup first, then come back here to teach the AI."
               actionLabel="Open onboarding"
               actionTo={onboardingPath}
             />

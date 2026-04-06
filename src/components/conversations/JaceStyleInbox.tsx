@@ -59,7 +59,7 @@ export const JaceStyleInbox = ({
   filter = 'needs-me',
   hideHeader = false,
 }: JaceStyleInboxProps) => {
-  const { workspace, needsOnboarding } = useWorkspace();
+  const { workspace } = useWorkspace();
   const isPreviewMode = isPreviewModeEnabled();
   const onboardingPath = getPreviewAwarePath('/onboarding?reset=true');
   const [searchParams] = useSearchParams();
@@ -171,7 +171,7 @@ export const JaceStyleInbox = ({
 
   const { data: autoHandledCount = 0 } = useQuery({
     queryKey: ['auto-handled-count', workspace?.id],
-    enabled: !!workspace?.id && !needsOnboarding && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       if (!workspace?.id) return 0;
 
@@ -197,7 +197,7 @@ export const JaceStyleInbox = ({
     refetch,
   } = useQuery({
     queryKey: ['jace-inbox', workspace?.id, filter, subFilter, debouncedSearch],
-    enabled: !!workspace?.id && !needsOnboarding && !isPreviewMode,
+    enabled: !!workspace?.id && !isPreviewMode,
     queryFn: async () => {
       const result = await fetchConversations();
       setLastUpdated(new Date());
@@ -429,19 +429,15 @@ export const JaceStyleInbox = ({
     );
   }
 
-  if (!workspace?.id || needsOnboarding) {
+  if (!workspace?.id) {
     return (
       <div className="flex h-full items-center justify-center bg-bb-white p-6">
         <div className="w-full max-w-lg">
           <PanelNotice
             title="Finish setup before using the inbox"
-            description={
-              !workspace?.id
-                ? 'BizzyBee needs a workspace and onboarding context before customer conversations can appear here.'
-                : 'BizzyBee still needs your onboarding details before customer conversations can appear here.'
-            }
+            description="BizzyBee needs a workspace and onboarding context before customer conversations can appear here."
             actionLabel="Open onboarding"
-            actionTo={onboardingPath}
+            actionTo="/onboarding?reset=true"
           />
         </div>
       </div>
