@@ -132,7 +132,14 @@ export function OnboardingWizard({ workspaceId, onComplete }: OnboardingWizardPr
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('users').update({ onboarding_step: step }).eq('id', user.id);
+        await supabase
+          .from('users')
+          .update({
+            workspace_id: workspaceId,
+            onboarding_step: step,
+            onboarding_completed: false,
+          })
+          .eq('id', user.id);
       }
     } catch (error) {
       console.error('Error saving progress:', error);

@@ -274,6 +274,25 @@ export function KnowledgeBaseStep({
     setPollingFaqCount(0);
 
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { error: syncError } = await supabase
+          .from('users')
+          .update({
+            workspace_id: workspaceId,
+            onboarding_step: 'knowledge',
+            onboarding_completed: false,
+          })
+          .eq('id', user.id);
+
+        if (syncError) {
+          throw new Error(syncError.message || 'Failed to sync onboarding workspace');
+        }
+      }
+
       const { data, error: invokeError } = await supabase.functions.invoke('trigger-n8n-workflow', {
         body: {
           workspace_id: workspaceId,
