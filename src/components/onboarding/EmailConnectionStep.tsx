@@ -8,6 +8,7 @@ import { Mail, CheckCircle2, Loader2 } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { EmailPipelineProgress } from './EmailPipelineProgress';
+import { ImapConnectionModal } from './ImapConnectionModal';
 
 interface EmailConnectionStepProps {
   workspaceId: string;
@@ -16,7 +17,7 @@ interface EmailConnectionStepProps {
   onEmailConnected: (email: string) => void;
 }
 
-type Provider = 'gmail' | 'outlook' | 'icloud' | 'yahoo' | 'imap';
+type Provider = 'gmail' | 'outlook' | 'icloud' | 'imap';
 type ImportMode = 'new_only' | 'last_1000' | 'last_10000' | 'last_30000' | 'all_history';
 
 interface MakeProgress {
@@ -84,19 +85,11 @@ const emailProviders = [
   },
   {
     id: 'imap' as Provider,
-    name: 'Other (IMAP)',
+    name: 'Other',
     icon: null,
     iconColor: 'text-bb-warm-gray',
     available: true,
-    subtitle: 'Fastmail, ProtonMail, Zoho, or any IMAP provider',
-  },
-  {
-    id: 'yahoo' as Provider,
-    name: 'Yahoo Mail',
-    icon: null,
-    iconColor: 'text-purple-600',
-    available: false,
-    comingSoon: true,
+    subtitle: 'Fastmail, Yahoo, ProtonMail, Zoho, or any IMAP provider',
   },
 ];
 
@@ -148,6 +141,7 @@ export function EmailConnectionStep({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [imapModalOpen, setImapModalOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('last_1000');
   const [initialLoading, setInitialLoading] = useState(true);
   const [importStarted, setImportStarted] = useState(false);
@@ -287,11 +281,18 @@ export function EmailConnectionStep({
       return;
     }
 
+    // Password-based providers → open BizzyBee modal
+    if (provider === 'icloud' || provider === 'imap') {
+      setSelectedProvider(provider);
+      setImapModalOpen(true);
+      return;
+    }
+
+    // OAuth providers (Gmail, Outlook) → existing Aurinko redirect flow (UNCHANGED)
     setIsConnecting(true);
     setSelectedProvider(provider);
 
     try {
-      // Use edge function for OAuth - keeps secrets server-side
       const { data, error } = await supabase.functions.invoke('aurinko-auth-start', {
         body: {
           workspaceId,
@@ -563,6 +564,27 @@ export function EmailConnectionStep({
           </Button>
         </div>
       )}
+
+      {imapModalOpen &&
+        selectedProvider &&
+        (selectedProvider === 'icloud' || selectedProvider === 'imap') && (
+          <ImapConnectionModal
+            open={imapModalOpen}
+            workspaceId={workspaceId}
+            provider={selectedProvider}
+            importMode={importMode}
+            onClose={() => {
+              setImapModalOpen(false);
+              setSelectedProvider(null);
+            }}
+            onConnected={(email) => {
+              setImapModalOpen(false);
+              setConnectedEmail(email);
+              onEmailConnected(email);
+              void checkEmailConnection();
+            }}
+          />
+        )}
     </div>
   );
 }
