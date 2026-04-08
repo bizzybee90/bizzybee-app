@@ -168,13 +168,20 @@ export const ChannelManagementPanel = ({
   // Handle focus requests from parent (e.g. clicking a badge in
   // ChannelsSetupStep). Scroll to the matching card and expand it.
   //
-  // We query the DOM directly rather than reading channelCardRefs because
-  // the callback ref on the <Card> has proved unreliable here — by the time
-  // RAF fires, the entry for the focused channel is sometimes null or stale,
-  // which is why the badges appeared "clickable but did nothing" in prod.
-  // `data-channel-key` on the Card gives us a stable selector regardless of
-  // re-renders, StrictMode double-mounts, or key changes when a channel is
-  // first persisted.
+  // - Query the DOM via `data-channel-key` instead of the callback ref on
+  //   the <Card>, which has proved unreliable here: by the time the deferred
+  //   callback fires the ref entry is sometimes null or stale, which is why
+  //   the badges first appeared "clickable but did nothing".
+  //
+  // - Defer via `setTimeout(0)` rather than `requestAnimationFrame`. RAF
+  //   callbacks are paused in backgrounded tabs and can be throttled by
+  //   Chrome in various concurrent-render scenarios — we want the scroll
+  //   to land whenever the user gets back to the tab, not "maybe later".
+  //   A zero-delay timer runs after React commits the state update below.
+  //
+  // - Omit `behavior: 'smooth'`. It's silently swallowed on this onboarding
+  //   surface (instant scrolls 0→435 in prod, smooth stays at 0 even after
+  //   2s) — not worth root-causing for this use case.
   useEffect(() => {
     if (!focusChannelKey) {
       return;
@@ -187,16 +194,12 @@ export const ChannelManagementPanel = ({
       next.delete(focusChannelKey);
       return next;
     });
-    window.requestAnimationFrame(() => {
+    const timer = window.setTimeout(() => {
       const target = document.querySelector<HTMLElement>(`[data-channel-key="${focusChannelKey}"]`);
-      // `behavior: 'smooth'` is silently ignored in this onboarding surface
-      // (confirmed in prod: instant scrolls 0→435 but smooth stays at 0
-      // even after 2s). Using the default ('auto') so the click at least
-      // lands the user on the right card. Root cause of the smooth-scroll
-      // swallow is not worth chasing for this use case.
       target?.scrollIntoView({ block: 'center' });
       onFocusHandled?.();
-    });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [focusChannelKey, onFocusHandled]);
 
   const importModeLabels: Record<string, string> = {
