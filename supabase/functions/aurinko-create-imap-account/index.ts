@@ -49,6 +49,30 @@ function inferSmtp(imapHost: string): { host: string; port: number } {
   };
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 30000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function inferProviderName(host: string): string {
+  const lowerHost = host.toLowerCase();
+  if (lowerHost === 'imap.mail.me.com') return 'icloud';
+  if (lowerHost === 'imap.fastmail.com') return 'fastmail';
+  if (lowerHost === 'imap.zoho.com') return 'zoho';
+  if (lowerHost === 'imap.mail.yahoo.com') return 'yahoo';
+  if (lowerHost === 'imap.aol.com') return 'aol';
+  return 'generic';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -88,27 +112,62 @@ Deno.serve(async (req) => {
       return errorResponse('INTERNAL_ERROR', 'Server configuration missing', {}, 500);
     }
 
+    // Idempotency: bail if a recent import is already in progress for this workspace
+    {
+      const supabaseEarly = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: existingProgress } = await supabaseEarly
+        .from('email_import_progress')
+        .select('current_phase, updated_at')
+        .eq('workspace_id', workspaceId)
+        .maybeSingle();
+
+      const isAlreadyRunning =
+        existingProgress &&
+        ['importing', 'classifying', 'learning'].includes(existingProgress.current_phase) &&
+        new Date(existingProgress.updated_at).getTime() > Date.now() - 2 * 60 * 1000;
+
+      if (isAlreadyRunning) {
+        console.log('[aurinko-create-imap-account] Import already running, skipping trigger');
+        return new Response(JSON.stringify({ success: true, email, alreadyRunning: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const smtp = inferSmtp(host);
 
     // Call Aurinko's native IMAP account create endpoint
-    const aurinkoResponse = await fetch('https://api.aurinko.io/v1/am/accounts', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Basic ' + btoa(`${AURINKO_CLIENT_ID}:${AURINKO_CLIENT_SECRET}`),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        serviceType: 'IMAP',
-        username: email,
-        password: password,
-        imap: { host, port, useSSL: secure },
-        smtp: { host: smtp.host, port: smtp.port, useTLS: true },
-      }),
-    });
+    let aurinkoResponse: Response;
+    try {
+      aurinkoResponse = await fetchWithTimeout('https://api.aurinko.io/v1/am/accounts', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic ' + btoa(`${AURINKO_CLIENT_ID}:${AURINKO_CLIENT_SECRET}`),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          serviceType: 'IMAP',
+          username: email,
+          password: password,
+          imap: { host, port, useSSL: secure },
+          smtp: { host: smtp.host, port: smtp.port, useTLS: true },
+        }),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return errorResponse(
+          'SERVICE_UNAVAILABLE',
+          'Email service timed out. Please try again.',
+          { retryable: true },
+          503,
+        );
+      }
+      throw err;
+    }
 
     if (aurinkoResponse.status === 401 || aurinkoResponse.status === 403) {
       return errorResponse('AUTHENTICATION_FAILED', 'Email or password is incorrect', {
-        providerHint: host,
+        providerHint: inferProviderName(host),
       });
     }
 
@@ -127,6 +186,10 @@ Deno.serve(async (req) => {
       return errorResponse(
         'IMAP_UNREACHABLE',
         `Couldn't reach ${host}. Check your server settings.`,
+        {
+          aurinkoStatus: aurinkoResponse.status,
+          aurinkoHint: errorText.slice(0, 200),
+        },
       );
     }
 
@@ -146,7 +209,7 @@ Deno.serve(async (req) => {
     // Create webhook subscription for incoming mail
     let subscriptionId: string | null = null;
     try {
-      const subResponse = await fetch('https://api.aurinko.io/v1/subscriptions', {
+      const subResponse = await fetchWithTimeout('https://api.aurinko.io/v1/subscriptions', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -189,7 +252,14 @@ Deno.serve(async (req) => {
       .single();
 
     if (dbError || !configData) {
-      console.error('[aurinko-create-imap-account] DB insert failed:', dbError);
+      console.error(
+        '[aurinko-create-imap-account] DB insert failed — ORPHANED Aurinko accountId:',
+        accountId,
+        'workspace:',
+        workspaceId,
+        'error:',
+        dbError,
+      );
       return errorResponse('INTERNAL_ERROR', 'Failed to save email configuration', {}, 500);
     }
 
