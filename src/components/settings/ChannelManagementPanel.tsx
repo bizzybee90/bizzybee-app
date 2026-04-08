@@ -189,7 +189,12 @@ export const ChannelManagementPanel = ({
     });
     window.requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>(`[data-channel-key="${focusChannelKey}"]`);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // `behavior: 'smooth'` is silently ignored in this onboarding surface
+      // (confirmed in prod: instant scrolls 0→435 but smooth stays at 0
+      // even after 2s). Using the default ('auto') so the click at least
+      // lands the user on the right card. Root cause of the smooth-scroll
+      // swallow is not worth chasing for this use case.
+      target?.scrollIntoView({ block: 'center' });
       onFocusHandled?.();
     });
   }, [focusChannelKey, onFocusHandled]);
