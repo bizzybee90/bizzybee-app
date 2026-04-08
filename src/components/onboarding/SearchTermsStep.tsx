@@ -161,6 +161,16 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
 
       if (error) throw error;
 
+      // Fire-and-forget: kick off competitor discovery in the background
+      // so it runs in parallel with the user's email + channels setup.
+      // Errors are silently logged; ProgressScreen has a safety-net retry.
+      // See: docs/plans/2026-04-08-early-competitor-discovery-trigger-design.md
+      supabase.functions
+        .invoke('trigger-n8n-workflow', {
+          body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
+        })
+        .catch((err) => console.error('competitor_discovery trigger failed:', err));
+
       toast.success('Search terms saved');
       onNext();
     } catch (error) {
