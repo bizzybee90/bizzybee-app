@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -46,8 +47,6 @@ export function ImapConnectionModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const detectTimeoutRef = useRef<number | undefined>(undefined);
-
   async function runDetection(emailValue: string) {
     if (!emailValue.includes('@')) return;
     setDetecting(true);
@@ -69,7 +68,6 @@ export function ImapConnectionModal({
   }
 
   function handleEmailBlur() {
-    if (detectTimeoutRef.current) window.clearTimeout(detectTimeoutRef.current);
     void runDetection(email);
   }
 
@@ -154,6 +152,10 @@ export function ImapConnectionModal({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Enter your credentials to connect this inbox to BizzyBee. Your password is sent directly
+            to your mail provider.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -163,6 +165,7 @@ export function ImapConnectionModal({
             <Input
               id="imap-email"
               type="email"
+              autoComplete="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -232,16 +235,23 @@ export function ImapConnectionModal({
               <Input
                 id="imap-password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={needsAppPassword ? 'font-mono' : undefined}
               />
               <button
                 type="button"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
                 onClick={() => setShowPassword(!showPassword)}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
               </button>
             </div>
             {preset?.passwordFormatHint && (

@@ -60,7 +60,7 @@ describe('ImapConnectionModal', () => {
       />,
     );
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i, { selector: 'input' })).toBeInTheDocument();
   });
 
   it('auto-detects iCloud when email has @icloud.com', async () => {
@@ -138,7 +138,10 @@ describe('ImapConnectionModal', () => {
       expect(screen.getByText(/detected: icloud mail/i)).toBeInTheDocument();
     });
 
-    await user.type(screen.getByLabelText(/password/i), 'xxxx-xxxx-xxxx-xxxx');
+    await user.type(
+      screen.getByLabelText(/password/i, { selector: 'input' }),
+      'xxxx-xxxx-xxxx-xxxx',
+    );
     await user.click(screen.getByRole('button', { name: /connect/i }));
 
     await waitFor(() => {
@@ -188,7 +191,7 @@ describe('ImapConnectionModal', () => {
 
     await user.type(screen.getByLabelText(/email address/i), 'sarah@icloud.com');
     await user.tab();
-    await user.type(screen.getByLabelText(/password/i), 'wrong');
+    await user.type(screen.getByLabelText(/password/i, { selector: 'input' }), 'wrong');
     await user.click(screen.getByRole('button', { name: /connect/i }));
 
     await waitFor(() => {
