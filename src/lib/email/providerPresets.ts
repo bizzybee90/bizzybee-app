@@ -20,80 +20,45 @@ export interface ProviderPreset {
   instructions?: string[];
 }
 
+// Shared base for iCloud domains — keeps icloud.com, me.com, mac.com in sync
+const ICLOUD_BASE: ProviderPreset = Object.freeze({
+  name: 'iCloud Mail',
+  host: 'imap.mail.me.com',
+  port: 993,
+  secure: true,
+  requiresAppPassword: 'always',
+  appPasswordHelpUrl: 'https://appleid.apple.com/account/manage/section/security',
+  passwordFormatHint: 'Apple app passwords are 16 characters with dashes: xxxx-xxxx-xxxx-xxxx',
+  instructions: [
+    'Visit appleid.apple.com and sign in',
+    'Go to Sign-In and Security → App-Specific Passwords',
+    'Click + and label it "BizzyBee"',
+    'Copy the generated password and paste it below',
+  ],
+}) as ProviderPreset;
+
+// Shared base for Fastmail domains
+const FASTMAIL_BASE: ProviderPreset = Object.freeze({
+  name: 'Fastmail',
+  host: 'imap.fastmail.com',
+  port: 993,
+  secure: true,
+  requiresAppPassword: 'always',
+  appPasswordHelpUrl: 'https://app.fastmail.com/settings/security/apppasswords',
+  instructions: [
+    'Sign in to Fastmail at app.fastmail.com',
+    'Go to Settings → Privacy & Security → App Passwords',
+    'Click "New App Password", select "Mail (IMAP/SMTP)", label it "BizzyBee"',
+    'Copy the generated password and paste it below',
+  ],
+}) as ProviderPreset;
+
 const HARDCODED_PRESETS: Record<string, ProviderPreset> = {
-  'icloud.com': {
-    name: 'iCloud Mail',
-    host: 'imap.mail.me.com',
-    port: 993,
-    secure: true,
-    requiresAppPassword: 'always',
-    appPasswordHelpUrl: 'https://appleid.apple.com/account/manage/section/security',
-    passwordFormatHint: 'Apple app passwords are 16 characters with dashes: xxxx-xxxx-xxxx-xxxx',
-    instructions: [
-      'Visit appleid.apple.com and sign in',
-      'Go to Sign-In and Security → App-Specific Passwords',
-      'Click + and label it "BizzyBee"',
-      'Copy the generated password and paste it below',
-    ],
-  },
-  'me.com': {
-    name: 'iCloud Mail',
-    host: 'imap.mail.me.com',
-    port: 993,
-    secure: true,
-    requiresAppPassword: 'always',
-    appPasswordHelpUrl: 'https://appleid.apple.com/account/manage/section/security',
-    passwordFormatHint: 'Apple app passwords are 16 characters with dashes',
-    instructions: [
-      'Visit appleid.apple.com and sign in',
-      'Go to Sign-In and Security → App-Specific Passwords',
-      'Click + and label it "BizzyBee"',
-      'Copy the generated password and paste it below',
-    ],
-  },
-  'mac.com': {
-    name: 'iCloud Mail',
-    host: 'imap.mail.me.com',
-    port: 993,
-    secure: true,
-    requiresAppPassword: 'always',
-    appPasswordHelpUrl: 'https://appleid.apple.com/account/manage/section/security',
-    passwordFormatHint: 'Apple app passwords are 16 characters with dashes',
-    instructions: [
-      'Visit appleid.apple.com and sign in',
-      'Go to Sign-In and Security → App-Specific Passwords',
-      'Click + and label it "BizzyBee"',
-      'Copy the generated password and paste it below',
-    ],
-  },
-  'fastmail.com': {
-    name: 'Fastmail',
-    host: 'imap.fastmail.com',
-    port: 993,
-    secure: true,
-    requiresAppPassword: 'always',
-    appPasswordHelpUrl: 'https://app.fastmail.com/settings/security/apppasswords',
-    instructions: [
-      'Sign in to Fastmail at app.fastmail.com',
-      'Go to Settings → Privacy & Security → App Passwords',
-      'Click "New App Password", select "Mail (IMAP/SMTP)", label it "BizzyBee"',
-      'Copy the generated password and paste it below',
-    ],
-  },
-  'fastmail.fm': {
-    name: 'Fastmail',
-    host: 'imap.fastmail.com',
-    port: 993,
-    secure: true,
-    requiresAppPassword: 'always',
-    appPasswordHelpUrl: 'https://app.fastmail.com/settings/security/apppasswords',
-    instructions: [
-      'Sign in to Fastmail at app.fastmail.com',
-      'Go to Settings → Privacy & Security → App Passwords',
-      'Click "New App Password", select "Mail (IMAP/SMTP)", label it "BizzyBee"',
-      'Copy the generated password and paste it below',
-    ],
-  },
+  'icloud.com': ICLOUD_BASE,
+  'me.com': ICLOUD_BASE,
+  'mac.com': ICLOUD_BASE,
+  'fastmail.com': FASTMAIL_BASE,
+  'fastmail.fm': FASTMAIL_BASE,
   'zoho.com': {
     name: 'Zoho Mail',
     host: 'imap.zoho.com',
@@ -143,7 +108,13 @@ function extractDomain(email: string): string | null {
     .trim()
     .toLowerCase()
     .match(/@([^@\s]+)$/);
-  return match ? match[1] : null;
+  if (!match) return null;
+  const domain = match[1];
+  // RFC-1035-ish: labels of [a-z0-9-] separated by dots, no leading/trailing dot or hyphen
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
+    return null;
+  }
+  return domain;
 }
 
 /**
@@ -161,10 +132,14 @@ async function lookupIspdb(domain: string): Promise<ProviderPreset | null> {
     clearTimeout(timeout);
 
     if (!response.ok) return null;
-    const xml = await response.text();
+    const rawXml = await response.text();
+    // Strip XML comments so commented-out elements don't leak into matches
+    const xml = rawXml.replace(/<!--[\s\S]*?-->/g, '');
 
-    // Find the first <incomingServer type="imap"> block
-    const imapBlock = xml.match(/<incomingServer\s+type="imap"[^>]*>([\s\S]*?)<\/incomingServer>/);
+    // Match <incomingServer ...type=["']imap["']...> regardless of attribute order or quote style
+    const imapBlock = xml.match(
+      /<incomingServer\b[^>]*\btype=["']imap["'][^>]*>([\s\S]*?)<\/incomingServer>/i,
+    );
     if (!imapBlock) return null;
 
     const hostname = imapBlock[1].match(/<hostname>([^<]+)<\/hostname>/)?.[1];

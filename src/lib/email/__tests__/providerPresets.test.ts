@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { lookupProvider, type ProviderPreset } from '../providerPresets';
+import { lookupProvider } from '../providerPresets';
 
 describe('lookupProvider — hardcoded presets', () => {
   it('returns iCloud preset for icloud.com', async () => {
@@ -133,5 +133,33 @@ describe('lookupProvider — Mozilla ISPDB fallback', () => {
   it('prefers hardcoded preset over ISPDB (does not fetch)', async () => {
     await lookupProvider('user@fastmail.com');
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('lookupProvider — edge cases', () => {
+  it('returns null for empty string', async () => {
+    expect(await lookupProvider('')).toBeNull();
+  });
+
+  it('returns null for a string with no @', async () => {
+    expect(await lookupProvider('not-an-email')).toBeNull();
+  });
+
+  it('handles trailing whitespace in email', async () => {
+    expect(await lookupProvider('user@icloud.com ')).toMatchObject({
+      name: 'iCloud Mail',
+    });
+  });
+
+  it('rejects path injection attempts in the domain', async () => {
+    expect(await lookupProvider('user@evil.com/../x')).toBeNull();
+    expect(await lookupProvider('user@evil.com?q=1')).toBeNull();
+    expect(await lookupProvider('user@evil.com#frag')).toBeNull();
+  });
+
+  it('rejects malformed domains with leading/trailing dots', async () => {
+    expect(await lookupProvider('user@.evil.com')).toBeNull();
+    expect(await lookupProvider('user@evil.com.')).toBeNull();
+    expect(await lookupProvider('user@..evil.com')).toBeNull();
   });
 });
