@@ -83,10 +83,10 @@ describe('lookupProvider — Mozilla ISPDB fallback', () => {
   </emailProvider>
 </clientConfig>`;
 
-    (globalThis.fetch as any).mockResolvedValue({
+    vi.mocked(globalThis.fetch).mockResolvedValue({
       ok: true,
       text: async () => mockXml,
-    });
+    } as Response);
 
     const result = await lookupProvider('user@mycompany.co.uk');
 
@@ -104,13 +104,13 @@ describe('lookupProvider — Mozilla ISPDB fallback', () => {
   });
 
   it('returns null when ISPDB returns 404', async () => {
-    (globalThis.fetch as any).mockResolvedValue({ ok: false, status: 404 });
+    vi.mocked(globalThis.fetch).mockResolvedValue({ ok: false, status: 404 } as Response);
     const result = await lookupProvider('user@nowhere.invalid');
     expect(result).toBeNull();
   });
 
   it('returns null when fetch throws', async () => {
-    (globalThis.fetch as any).mockRejectedValue(new Error('network'));
+    vi.mocked(globalThis.fetch).mockRejectedValue(new Error('network'));
     const result = await lookupProvider('user@nowhere.invalid');
     expect(result).toBeNull();
   });
@@ -122,10 +122,10 @@ describe('lookupProvider — Mozilla ISPDB fallback', () => {
   <displayName>POP3 Only</displayName>
   <incomingServer type="pop3"><hostname>pop.x.com</hostname><port>995</port></incomingServer>
 </emailProvider></clientConfig>`;
-    (globalThis.fetch as any).mockResolvedValue({
+    vi.mocked(globalThis.fetch).mockResolvedValue({
       ok: true,
       text: async () => pop3OnlyXml,
-    });
+    } as Response);
     const result = await lookupProvider('user@x.com');
     expect(result).toBeNull();
   });
