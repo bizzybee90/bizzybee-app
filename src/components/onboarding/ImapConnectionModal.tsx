@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Loader2, Eye, EyeOff, ExternalLink, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 import { lookupProvider, type ProviderPreset } from '@/lib/email/providerPresets';
 import { logger } from '@/lib/logger';
 
@@ -129,7 +128,6 @@ export function ImapConnectionModal({
         return;
       }
 
-      toast.success(`Connected to ${email}`);
       onConnected(email);
     } catch (err) {
       logger.error('IMAP submit error', err);

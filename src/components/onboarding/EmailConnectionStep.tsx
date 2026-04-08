@@ -532,11 +532,6 @@ export function EmailConnectionStep({
                   onClick={() => handleConnect(provider.id)}
                   disabled={!provider.available || isConnecting}
                 >
-                  {provider.comingSoon && (
-                    <span className="absolute top-1 right-1 text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                      Soon
-                    </span>
-                  )}
                   {isConnecting && selectedProvider === provider.id ? (
                     <Loader2 className="h-6 w-6 animate-spin" />
                   ) : provider.icon ? (
@@ -579,6 +574,7 @@ export function EmailConnectionStep({
             }}
             onConnected={(email) => {
               setImapModalOpen(false);
+              setSelectedProvider(null);
               setConnectedEmail(email);
               onEmailConnected(email);
               void checkEmailConnection();
