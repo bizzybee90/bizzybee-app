@@ -171,8 +171,20 @@ export function useChannelSetup(workspaceId?: string | null) {
       };
     }
 
+    // Unique channel name per effect run. Two problems this fixes:
+    //
+    // 1. Multiple hook instances on the same page. ChannelsSetupStep uses
+    //    useChannelSetup directly AND renders ChannelManagementPanel, which
+    //    also uses it. With a stable name both instances request the same
+    //    Supabase channel; the second .on() call throws because the first
+    //    has already called .subscribe().
+    //
+    // 2. React StrictMode double-mount. Mount → cleanup → mount can reuse
+    //    the same cached channel in the supabase-js client before the async
+    //    removeChannel() from cleanup has settled.
+    const channelName = `channel-setup-${workspaceId}-${crypto.randomUUID()}`;
     const realtimeChannel = supabase
-      .channel(`channel-setup-${workspaceId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
