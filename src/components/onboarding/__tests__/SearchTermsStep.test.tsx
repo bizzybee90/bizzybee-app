@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import { SearchTermsStep } from '../SearchTermsStep';
 
 // Mock Supabase client — use vi.hoisted so mocks are available at mock-hoist time
@@ -32,11 +33,6 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
-}));
-
-// Mock preview mode helper
-vi.mock('@/lib/previewMode', () => ({
-  isPreviewModeEnabled: () => false,
 }));
 
 describe('SearchTermsStep — early competitor discovery trigger', () => {
@@ -105,8 +101,14 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     const continueButton = await screen.findByRole('button', { name: /continue/i });
     await user.click(continueButton);
 
-    // onNext should be called even though the trigger failed
+    // Both should be true: trigger was called, AND onNext was called regardless of the rejection
     await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('trigger-n8n-workflow', {
+        body: {
+          workspace_id: 'test-workspace-id',
+          workflow_type: 'competitor_discovery',
+        },
+      });
       expect(onNext).toHaveBeenCalled();
     });
   });
@@ -128,8 +130,10 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     const continueButton = await screen.findByRole('button', { name: /continue/i });
     await user.click(continueButton);
 
-    // Wait a tick for promises to settle
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Wait for the error path to actually execute
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to save search terms');
+    });
 
     // Trigger should NOT have been called because upsert failed
     expect(mockInvoke).not.toHaveBeenCalled();
