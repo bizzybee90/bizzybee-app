@@ -29,6 +29,7 @@ import {
   MapPin,
   Loader2,
   Store,
+  ChevronDown,
 } from 'lucide-react';
 import { EmailAccountCard } from './EmailAccountCard';
 import {
@@ -61,6 +62,11 @@ interface ChannelManagementPanelProps {
   workspaceId?: string;
   showEmailSection?: boolean;
   showProviderStatus?: boolean;
+  /** When set, scroll to the matching channel card and expand it. */
+  focusChannelKey?: ChannelKey | null;
+  /** Invoked after the panel has handled a focus request so the parent
+   *  can clear its focus state. */
+  onFocusHandled?: () => void;
 }
 
 const providerChecklists: Record<string, { title: string; steps: string[] }> = {
@@ -108,6 +114,8 @@ export const ChannelManagementPanel = ({
   workspaceId: forcedWorkspaceId,
   showEmailSection = true,
   showProviderStatus = true,
+  focusChannelKey = null,
+  onFocusHandled,
 }: ChannelManagementPanelProps) => {
   const { workspace, loading: workspaceLoading } = useWorkspace();
   const { isAdmin } = useUserRole();
@@ -137,6 +145,48 @@ export const ChannelManagementPanel = ({
     connectionSummary,
     providerGroupSummaries,
   } = useChannelSetup(activeWorkspaceId);
+
+  // Collapsible messaging channels: onboarding starts fully collapsed so the
+  // step stays scannable; settings keeps everything expanded so admins can
+  // edit routing identifiers without clicking into each row.
+  const [collapsedChannelKeys, setCollapsedChannelKeys] = useState<Set<string>>(() =>
+    mode === 'onboarding' ? new Set(messagingChannelDefinitions.map((d) => d.key)) : new Set(),
+  );
+  const isChannelExpanded = (key: string) => !collapsedChannelKeys.has(key);
+  const toggleChannelCollapsed = (key: string) => {
+    setCollapsedChannelKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Handle focus requests from parent (e.g. clicking a badge in
+  // ChannelsSetupStep). Scroll to the matching card and expand it.
+  useEffect(() => {
+    if (!focusChannelKey) {
+      return;
+    }
+    setCollapsedChannelKeys((current) => {
+      if (!current.has(focusChannelKey)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(focusChannelKey);
+      return next;
+    });
+    window.requestAnimationFrame(() => {
+      channelCardRefs.current[focusChannelKey]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      onFocusHandled?.();
+    });
+  }, [focusChannelKey, onFocusHandled]);
 
   const importModeLabels: Record<string, string> = {
     new_only: 'New emails only',
@@ -743,105 +793,112 @@ export const ChannelManagementPanel = ({
 
   return (
     <div className="space-y-6">
-      <Card className="border-[0.5px] border-bb-border bg-bb-white p-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-bb-text">Channels at a glance</h3>
-            <p className="mt-1 text-sm text-bb-warm-gray">
-              BizzyBee now treats Channels as one shared system across onboarding, settings, and the
-              dashboard. These counts show what is enabled versus actually ready.
-            </p>
+      {/* In onboarding the parent step already shows a summary card and the
+          provider badges, so rendering another "at a glance" card here just
+          duplicates the numbers and (on narrow layouts) breaks visually. */}
+      {mode !== 'onboarding' && (
+        <Card className="border-[0.5px] border-bb-border bg-bb-white p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-bb-text">Channels at a glance</h3>
+              <p className="mt-1 text-sm text-bb-warm-gray">
+                BizzyBee now treats Channels as one shared system across onboarding, settings, and
+                the dashboard. These counts show what is enabled versus actually ready.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-bb-border bg-bb-linen px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-bb-warm-gray">Enabled</p>
+                <p className="mt-1 text-2xl font-semibold text-bb-text">
+                  {connectionSummary.enabled}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-emerald-700">Ready</p>
+                <p className="mt-1 text-2xl font-semibold text-emerald-700">
+                  {connectionSummary.ready}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-amber-700">Need setup</p>
+                <p className="mt-1 text-2xl font-semibold text-amber-700">
+                  {connectionSummary.needsSetup}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-2xl border border-bb-border bg-bb-linen px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-bb-warm-gray">Enabled</p>
-              <p className="mt-1 text-2xl font-semibold text-bb-text">
-                {connectionSummary.enabled}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-emerald-700">Ready</p>
-              <p className="mt-1 text-2xl font-semibold text-emerald-700">
-                {connectionSummary.ready}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-xs uppercase tracking-wide text-amber-700">Need setup</p>
-              <p className="mt-1 text-2xl font-semibold text-amber-700">
-                {connectionSummary.needsSetup}
-              </p>
-            </div>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
-      <Card className="border-[0.5px] border-bb-border bg-bb-white p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
-              Launch readiness
-            </p>
-            <h3 className="text-sm font-medium text-bb-text">Channels control center</h3>
-            <p className="max-w-2xl text-sm leading-6 text-bb-warm-gray">
-              Channels should not just show status. They should make it obvious what is enabled,
-              what is truly ready, and what the next blocking setup step is.
-            </p>
-          </div>
-          <Badge
-            variant="outline"
-            className={
-              channelLaunchChecklist.every((item) => item.complete)
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-bb-border bg-bb-linen text-bb-warm-gray'
-            }
-          >
-            {channelLaunchChecklist.filter((item) => item.complete).length}/
-            {channelLaunchChecklist.length} ready
-          </Badge>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {channelLaunchChecklist.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-linen/50 px-3 py-3"
+      {mode !== 'onboarding' && (
+        <Card className="border-[0.5px] border-bb-border bg-bb-white p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
+                Launch readiness
+              </p>
+              <h3 className="text-sm font-medium text-bb-text">Channels control center</h3>
+              <p className="max-w-2xl text-sm leading-6 text-bb-warm-gray">
+                Channels should not just show status. They should make it obvious what is enabled,
+                what is truly ready, and what the next blocking setup step is.
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className={
+                channelLaunchChecklist.every((item) => item.complete)
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-bb-border bg-bb-linen text-bb-warm-gray'
+              }
             >
-              <span className="text-sm text-bb-text">{item.label}</span>
-              <Badge
-                className={
-                  item.complete
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
-                    : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
-                }
-              >
-                {item.complete ? 'Ready' : 'Pending'}
-              </Badge>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-bb-border bg-bb-linen/60 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-bb-text">Next channel step</p>
-              <p className="text-sm leading-6 text-bb-warm-gray">
-                {nextChannelLaunchStep
-                  ? `${nextChannelLaunchStep.label} is the next blocker before Channels feels fully production-ready.`
-                  : 'Channels now has a strong internal setup foundation. The next layer is deeper provider self-serve linking.'}
-              </p>
-            </div>
-            {nextChannelLaunchStep ? (
-              <Button size="sm" variant="outline" onClick={nextChannelLaunchStep.action}>
-                {nextChannelLaunchStep.actionLabel}
-              </Button>
-            ) : (
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-                Internal handoff ready
-              </Badge>
-            )}
+              {channelLaunchChecklist.filter((item) => item.complete).length}/
+              {channelLaunchChecklist.length} ready
+            </Badge>
           </div>
-        </div>
-      </Card>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {channelLaunchChecklist.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-linen/50 px-3 py-3"
+              >
+                <span className="text-sm text-bb-text">{item.label}</span>
+                <Badge
+                  className={
+                    item.complete
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
+                      : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
+                  }
+                >
+                  {item.complete ? 'Ready' : 'Pending'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-bb-border bg-bb-linen/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-bb-text">Next channel step</p>
+                <p className="text-sm leading-6 text-bb-warm-gray">
+                  {nextChannelLaunchStep
+                    ? `${nextChannelLaunchStep.label} is the next blocker before Channels feels fully production-ready.`
+                    : 'Channels now has a strong internal setup foundation. The next layer is deeper provider self-serve linking.'}
+                </p>
+              </div>
+              {nextChannelLaunchStep ? (
+                <Button size="sm" variant="outline" onClick={nextChannelLaunchStep.action}>
+                  {nextChannelLaunchStep.actionLabel}
+                </Button>
+              ) : (
+                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                  Internal handoff ready
+                </Badge>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {showEmailSection && (
         <div ref={emailSectionRef} className="space-y-4">
@@ -979,6 +1036,8 @@ export const ChannelManagementPanel = ({
                   } missing`
                 : 'All required identifiers saved';
 
+            const expanded = isChannelExpanded(definition.key);
+
             return (
               <Card
                 key={channel.id ?? definition.key}
@@ -988,8 +1047,21 @@ export const ChannelManagementPanel = ({
                 className={`p-4 ${isTargetedChannel ? 'ring-2 ring-bb-gold/25 border-bb-gold/40' : ''}`}
               >
                 <div className="space-y-3">
-                  {/* Header row */}
-                  <div className="flex items-center justify-between">
+                  {/* Header row — clickable to toggle expansion */}
+                  <div
+                    className="flex items-center justify-between cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={expanded}
+                    aria-controls={`channel-details-${definition.key}`}
+                    onClick={() => toggleChannelCollapsed(definition.key)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggleChannelCollapsed(definition.key);
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-3">
                       <div
                         className={`p-2 rounded-lg ${channel.enabled ? 'bg-primary/10 text-primary' : 'bg-muted'}`}
@@ -1017,7 +1089,7 @@ export const ChannelManagementPanel = ({
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">{definition.description}</p>
-                        {requiredFields.length > 0 && (
+                        {expanded && requiredFields.length > 0 && (
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-bb-warm-gray">
                             <span>
                               Setup progress: {setupProgress.completedCount}/
@@ -1035,15 +1107,28 @@ export const ChannelManagementPanel = ({
                         )}
                       </div>
                     </div>
-                    <Switch
-                      checked={channel.enabled}
-                      onCheckedChange={() => toggleChannel(channel)}
-                      disabled={definition.key === 'webchat' || !canManageChannels}
-                    />
+                    <div className="flex items-center gap-2">
+                      {/* Stop propagation so flipping the switch doesn't also
+                          toggle the collapsible row. */}
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Switch
+                          checked={channel.enabled}
+                          onCheckedChange={() => toggleChannel(channel)}
+                          disabled={definition.key === 'webchat' || !canManageChannels}
+                          aria-label={`Toggle ${definition.label}`}
+                        />
+                      </div>
+                      <ChevronDown
+                        className={`h-4 w-4 text-bb-warm-gray transition-transform ${
+                          expanded ? 'rotate-180' : ''
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </div>
                   </div>
 
                   {/* Automation level selector */}
-                  {channel.enabled && definition.key !== 'webchat' && (
+                  {expanded && channel.enabled && definition.key !== 'webchat' && (
                     <div className="pl-11 pt-2 border-t space-y-3">
                       <div className="flex items-center gap-2 mb-2">
                         <ModeIcon className={`h-3.5 w-3.5 ${currentMode?.color}`} />

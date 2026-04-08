@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,7 +12,6 @@ import {
 } from 'lucide-react';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ChannelManagementPanel } from '@/components/settings/ChannelManagementPanel';
 import { PanelNotice } from '@/components/settings/PanelNotice';
 import { useChannelSetup } from '@/hooks/useChannelSetup';
@@ -38,6 +38,7 @@ const channelIcons: Record<ChannelKey, typeof MessageSquare> = {
 export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetupStepProps) {
   const { connectionSummary, channelsNeedingSetup, displayedMessagingChannels } =
     useChannelSetup(workspaceId);
+  const [focusChannelKey, setFocusChannelKey] = useState<ChannelKey | null>(null);
   const enabledChannelLabels = displayedMessagingChannels
     .filter((channel) => channel.enabled)
     .map(
@@ -64,14 +65,16 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
           const Icon = channelIcons[channel.key];
 
           return (
-            <Badge
+            <button
               key={channel.key}
-              variant="outline"
-              className="border-bb-border bg-bb-white px-3 py-1.5 text-bb-text-secondary"
+              type="button"
+              onClick={() => setFocusChannelKey(channel.key)}
+              className="inline-flex items-center rounded-full border border-bb-border bg-bb-white px-3 py-1.5 text-sm text-bb-text-secondary transition-colors hover:border-bb-gold hover:bg-bb-gold/5 hover:text-bb-text focus:outline-none focus-visible:ring-2 focus-visible:ring-bb-gold focus-visible:ring-offset-2"
+              aria-label={`Configure ${channel.label}`}
             >
-              <Icon className="mr-1.5 h-3.5 w-3.5 text-bb-gold" />
+              <Icon className="mr-1.5 h-3.5 w-3.5 text-bb-gold" aria-hidden="true" />
               {channel.label}
-            </Badge>
+            </button>
           );
         })}
       </div>
@@ -117,7 +120,9 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
         workspaceId={workspaceId}
         mode="onboarding"
         showEmailSection={false}
-        showProviderStatus={true}
+        showProviderStatus={false}
+        focusChannelKey={focusChannelKey}
+        onFocusHandled={() => setFocusChannelKey(null)}
       />
 
       <div className="rounded-2xl border border-bb-border bg-bb-white p-4">
