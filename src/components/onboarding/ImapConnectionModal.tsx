@@ -94,15 +94,39 @@ export function ImapConnectionModal({
         body: { workspaceId, email, password, host, port, secure, importMode },
       });
 
+      // supabase-js throws on non-2xx, surfacing the body in error.context.
+      // Extract the typed error payload so the smart error mapper below can use it.
+      let payload: {
+        success?: boolean;
+        error?: string;
+        message?: string;
+        missingFields?: string[];
+        providerHint?: string;
+        aurinkoStatus?: number;
+        aurinkoHint?: string;
+      } | null = data ?? null;
+
       if (error) {
-        logger.error('Edge function error', error);
-        setErrorMessage('Failed to reach email service. Please try again.');
-        return;
+        // FunctionsHttpError exposes the underlying Response on error.context
+        const errCtx = (error as { context?: Response }).context;
+        if (errCtx && typeof errCtx.json === 'function') {
+          try {
+            payload = await errCtx.json();
+          } catch {
+            logger.error('Edge function returned non-JSON error', error);
+            setErrorMessage('Failed to reach email service. Please try again.');
+            return;
+          }
+        } else {
+          logger.error('Edge function error (no context)', error);
+          setErrorMessage('Failed to reach email service. Please try again.');
+          return;
+        }
       }
 
-      if (!data?.success) {
+      if (!payload?.success) {
         // Map error codes to friendly messages using preset metadata
-        if (data?.error === 'AUTHENTICATION_FAILED') {
+        if (payload?.error === 'AUTHENTICATION_FAILED') {
           if (preset?.requiresAppPassword === 'always') {
             setErrorMessage(
               `That password didn't work. ${preset.name} requires an app-specific password, not your regular account password.`,
@@ -116,14 +140,16 @@ export function ImapConnectionModal({
               'Authentication failed. Check your email and password. Some providers require an app-specific password instead of your regular one.',
             );
           }
-        } else if (data?.error === 'IMAP_UNREACHABLE') {
-          setErrorMessage(data.message ?? "Couldn't reach the mail server");
-        } else if (data?.error === 'SERVICE_UNAVAILABLE') {
+        } else if (payload?.error === 'IMAP_UNREACHABLE') {
+          setErrorMessage(payload.message ?? "Couldn't reach the mail server");
+        } else if (payload?.error === 'SERVICE_UNAVAILABLE') {
           setErrorMessage(
-            data.message ?? 'Email service temporarily unavailable. Please try again.',
+            payload.message ?? 'Email service temporarily unavailable. Please try again.',
           );
+        } else if (payload?.error === 'INVALID_REQUEST') {
+          setErrorMessage(payload.message ?? 'The request was invalid. Please check the form.');
         } else {
-          setErrorMessage(data?.message ?? 'Connection failed');
+          setErrorMessage(payload?.message ?? 'Connection failed');
         }
         return;
       }
