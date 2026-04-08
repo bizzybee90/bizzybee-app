@@ -167,6 +167,14 @@ export const ChannelManagementPanel = ({
 
   // Handle focus requests from parent (e.g. clicking a badge in
   // ChannelsSetupStep). Scroll to the matching card and expand it.
+  //
+  // We query the DOM directly rather than reading channelCardRefs because
+  // the callback ref on the <Card> has proved unreliable here — by the time
+  // RAF fires, the entry for the focused channel is sometimes null or stale,
+  // which is why the badges appeared "clickable but did nothing" in prod.
+  // `data-channel-key` on the Card gives us a stable selector regardless of
+  // re-renders, StrictMode double-mounts, or key changes when a channel is
+  // first persisted.
   useEffect(() => {
     if (!focusChannelKey) {
       return;
@@ -180,10 +188,8 @@ export const ChannelManagementPanel = ({
       return next;
     });
     window.requestAnimationFrame(() => {
-      channelCardRefs.current[focusChannelKey]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+      const target = document.querySelector<HTMLElement>(`[data-channel-key="${focusChannelKey}"]`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       onFocusHandled?.();
     });
   }, [focusChannelKey, onFocusHandled]);
@@ -1044,6 +1050,7 @@ export const ChannelManagementPanel = ({
                 ref={(element) => {
                   channelCardRefs.current[definition.key] = element;
                 }}
+                data-channel-key={definition.key}
                 className={`p-4 ${isTargetedChannel ? 'ring-2 ring-bb-gold/25 border-bb-gold/40' : ''}`}
               >
                 <div className="space-y-3">
