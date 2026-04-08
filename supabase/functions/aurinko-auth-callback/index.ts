@@ -1,11 +1,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = [
+const ALLOWED_ORIGIN_PATTERNS: Array<string | RegExp> = [
   'https://bizzybee.app',
   'https://app.bizzybee.co.uk',
+  'https://bizzybee-app.pages.dev',
+  /^https:\/\/[a-z0-9]+\.bizzybee-app\.pages\.dev$/, // Cloudflare preview deploys
   'http://localhost:5173',
   'http://localhost:8080',
 ];
+
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) =>
+    typeof pattern === 'string' ? pattern === origin : pattern.test(origin),
+  );
+}
 
 async function verifyStateSignature(signedState: string): Promise<string> {
   const dotIndex = signedState.lastIndexOf('.');
@@ -24,7 +32,9 @@ async function verifyStateSignature(signedState: string): Promise<string> {
     ['sign'],
   );
   const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-  const expectedHmac = [...new Uint8Array(signature)].map(b => b.toString(16).padStart(2, '0')).join('');
+  const expectedHmac = [...new Uint8Array(signature)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 
   if (receivedHmac !== expectedHmac) {
     throw new Error('Invalid state signature');
@@ -41,14 +51,14 @@ const redirectTo = (baseUrl: string, path: string, params?: Record<string, strin
   }
   return new Response(null, {
     status: 302,
-    headers: { 'Location': url.toString() },
+    headers: { Location: url.toString() },
   });
 };
 
 const buildRedirectUrl = (
   origin: string,
   type: 'cancelled' | 'error' | 'success',
-  message?: string
+  message?: string,
 ) => {
   // Always return to onboarding so the app can immediately refresh connection state.
   const url = new URL('/onboarding', origin);
@@ -61,7 +71,7 @@ const buildRedirectUrl = (
 const redirectToApp = (
   origin: string,
   type: 'cancelled' | 'error' | 'success',
-  message?: string
+  message?: string,
 ) => {
   return new Response(null, {
     status: 302,
@@ -98,7 +108,7 @@ Deno.serve(async (req) => {
           const payload = await verifyStateSignature(state);
           const stateData = JSON.parse(atob(payload));
           const candidateOrigin = stateData.origin || defaultOrigin;
-          cancelOrigin = ALLOWED_ORIGINS.includes(candidateOrigin) ? candidateOrigin : defaultOrigin;
+          cancelOrigin = isAllowedOrigin(candidateOrigin) ? candidateOrigin : defaultOrigin;
         }
       } catch (e) {
         // ignore – use default origin
@@ -136,7 +146,7 @@ Deno.serve(async (req) => {
 
     const { workspaceId, importMode, provider, origin } = stateData;
     // Validate origin against allowlist, fall back to default if not allowed
-    const appOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : defaultOrigin;
+    const appOrigin = isAllowedOrigin(origin) ? origin : defaultOrigin;
     console.log('Decoded state:', { workspaceId, importMode, provider, origin: appOrigin });
 
     const AURINKO_CLIENT_ID = Deno.env.get('AURINKO_CLIENT_ID');
@@ -152,7 +162,7 @@ Deno.serve(async (req) => {
     const tokenResponse = await fetch('https://api.aurinko.io/v1/auth/token/' + code, {
       method: 'POST',
       headers: {
-        'Authorization': 'Basic ' + btoa(`${AURINKO_CLIENT_ID}:${AURINKO_CLIENT_SECRET}`),
+        Authorization: 'Basic ' + btoa(`${AURINKO_CLIENT_ID}:${AURINKO_CLIENT_SECRET}`),
         'Content-Type': 'application/json',
       },
     });
@@ -160,7 +170,11 @@ Deno.serve(async (req) => {
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error('Token exchange failed:', errorText);
-      return redirectToApp(appOrigin, 'error', 'Failed to exchange authorization code. Please try again.');
+      return redirectToApp(
+        appOrigin,
+        'error',
+        'Failed to exchange authorization code. Please try again.',
+      );
     }
 
     const tokenData = await tokenResponse.json();
@@ -174,46 +188,59 @@ Deno.serve(async (req) => {
       try {
         const accountResponse = await fetch('https://api.aurinko.io/v1/account', {
           headers: {
-            'Authorization': `Bearer ${tokenData.accessToken}`,
+            Authorization: `Bearer ${tokenData.accessToken}`,
           },
         });
 
         if (accountResponse.ok) {
           const accountData = await accountResponse.json();
           console.log('Account data:', JSON.stringify(accountData));
-          emailAddress = accountData.email || accountData.email2 || accountData.mailboxAddress || accountData.loginString || emailAddress;
+          emailAddress =
+            accountData.email ||
+            accountData.email2 ||
+            accountData.mailboxAddress ||
+            accountData.loginString ||
+            emailAddress;
         } else {
-          console.log('Account fetch failed:', accountResponse.status, await accountResponse.text());
+          console.log(
+            'Account fetch failed:',
+            accountResponse.status,
+            await accountResponse.text(),
+          );
         }
       } catch (e) {
         console.log('Failed to fetch account info:', e);
       }
     }
-    
+
     console.log('Final email address:', emailAddress);
 
     // Auto-detect aliases
     let aliases: string[] = [];
     console.log('Provider type:', provider, '- detecting aliases for:', emailAddress);
-    
+
     // For maccleaning.uk domain, we know the aliases
     const emailDomain = emailAddress.split('@')[1]?.toLowerCase();
     if (emailDomain === 'maccleaning.uk') {
-      const knownAliases = ['info@maccleaning.uk', 'hello@maccleaning.uk', 'michael@maccleaning.uk'];
-      aliases = knownAliases.filter(a => a.toLowerCase() !== emailAddress.toLowerCase());
+      const knownAliases = [
+        'info@maccleaning.uk',
+        'hello@maccleaning.uk',
+        'michael@maccleaning.uk',
+      ];
+      aliases = knownAliases.filter((a) => a.toLowerCase() !== emailAddress.toLowerCase());
       console.log('Using known maccleaning.uk aliases:', aliases);
     }
 
     // Create webhook subscription for email notifications
     const webhookUrl = `${SUPABASE_URL}/functions/v1/aurinko-webhook`;
     console.log('Creating email subscription with webhook URL:', webhookUrl);
-    
+
     let subscriptionId: string | null = null;
     try {
       const subscriptionResponse = await fetch('https://api.aurinko.io/v1/subscriptions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${tokenData.accessToken}`,
+          Authorization: `Bearer ${tokenData.accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -228,7 +255,11 @@ Deno.serve(async (req) => {
         console.log('Email subscription created successfully:', JSON.stringify(subscriptionData));
       } else {
         const subscriptionError = await subscriptionResponse.text();
-        console.error('Failed to create email subscription:', subscriptionResponse.status, subscriptionError);
+        console.error(
+          'Failed to create email subscription:',
+          subscriptionResponse.status,
+          subscriptionError,
+        );
         // Continue anyway - we can still store the config
       }
     } catch (subError) {
@@ -248,7 +279,8 @@ Deno.serve(async (req) => {
       .eq('workspace_id', workspaceId)
       .single();
 
-    const isAlreadyRunning = existingProgress && 
+    const isAlreadyRunning =
+      existingProgress &&
       ['importing', 'classifying', 'learning'].includes(existingProgress.current_phase) &&
       new Date(existingProgress.updated_at).getTime() > Date.now() - 2 * 60 * 1000; // Updated within 2 min
 
@@ -262,23 +294,26 @@ Deno.serve(async (req) => {
     // =============================================
     const { data: configData, error: dbError } = await supabase
       .from('email_provider_configs')
-      .upsert({
-        workspace_id: workspaceId,
-        provider: provider,
-        account_id: tokenData.accountId.toString(),
-        // SECURITY: Don't store plaintext - will encrypt via RPC
-        access_token: null,
-        refresh_token: null,
-        email_address: emailAddress,
-        import_mode: importMode,
-        connected_at: new Date().toISOString(),
-        aliases: aliases,
-        subscription_id: subscriptionId,
-        sync_status: 'pending',
-        sync_stage: 'queued',
-      }, {
-        onConflict: 'workspace_id,email_address'
-      })
+      .upsert(
+        {
+          workspace_id: workspaceId,
+          provider: provider,
+          account_id: tokenData.accountId.toString(),
+          // SECURITY: Don't store plaintext - will encrypt via RPC
+          access_token: null,
+          refresh_token: null,
+          email_address: emailAddress,
+          import_mode: importMode,
+          connected_at: new Date().toISOString(),
+          aliases: aliases,
+          subscription_id: subscriptionId,
+          sync_status: 'pending',
+          sync_stage: 'queued',
+        },
+        {
+          onConflict: 'workspace_id,email_address',
+        },
+      )
       .select()
       .single();
 
@@ -293,7 +328,7 @@ Deno.serve(async (req) => {
     const { error: encryptError } = await supabase.rpc('store_encrypted_token', {
       p_config_id: configData.id,
       p_access_token: tokenData.accessToken,
-      p_refresh_token: tokenData.refreshToken || null
+      p_refresh_token: tokenData.refreshToken || null,
     });
 
     if (encryptError) {
@@ -302,21 +337,28 @@ Deno.serve(async (req) => {
       // The user will need to reconnect if decryption fails later
     }
 
-    console.log('Email provider config saved successfully with', aliases.length, 'aliases, configId:', configData?.id, '(tokens encrypted)');
+    console.log(
+      'Email provider config saved successfully with',
+      aliases.length,
+      'aliases, configId:',
+      configData?.id,
+      '(tokens encrypted)',
+    );
 
     // =============================================
     // INITIALIZE PROGRESS TRACKING
     // =============================================
-    await supabase
-      .from('email_import_progress')
-      .upsert({
+    await supabase.from('email_import_progress').upsert(
+      {
         workspace_id: workspaceId,
         current_phase: 'importing',
         emails_received: 0,
         emails_classified: 0,
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'workspace_id' });
+      },
+      { onConflict: 'workspace_id' },
+    );
 
     // Redirect back into the app instead of showing an inline HTML page.
     // This avoids browsers showing raw HTML (text/plain) and keeps the UX consistent.

@@ -138,10 +138,6 @@ const importModes = [
 // Supabase project URL for edge functions
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
-// Published URL for redirects after OAuth
-const PUBLISHED_URL = 'https://embrace-channel-pix.lovable.app';
-// Note: OAuth callback is now handled by edge function (aurinko-auth-callback)
-
 export function EmailConnectionStep({
   workspaceId,
   onNext,
