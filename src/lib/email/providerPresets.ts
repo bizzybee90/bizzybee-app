@@ -53,6 +53,58 @@ const FASTMAIL_BASE: ProviderPreset = Object.freeze({
   ],
 }) as ProviderPreset;
 
+/**
+ * Maps MX hostname patterns to detected providers.
+ * Used as Tier 3 detection for custom domains whose MX records reveal
+ * a known mail host (Fastmail, Google Workspace, Microsoft 365).
+ */
+const MX_PROVIDER_MAP: Array<{ pattern: RegExp; preset: ProviderPreset }> = [
+  // Fastmail (including custom domains hosted on Fastmail's messagingengine.com)
+  {
+    pattern: /messagingengine\.com\.?$/i,
+    preset: FASTMAIL_BASE,
+  },
+  // Google Workspace (custom domains using Gmail)
+  {
+    pattern: /\.google\.com\.?$|\.googlemail\.com\.?$/i,
+    preset: Object.freeze({
+      name: 'Google Workspace',
+      host: 'imap.gmail.com',
+      port: 993,
+      secure: true,
+      requiresAppPassword: 'always',
+      appPasswordHelpUrl: 'https://myaccount.google.com/apppasswords',
+      passwordFormatHint: 'Google app passwords are 16 characters',
+      instructions: [
+        'Visit myaccount.google.com/apppasswords (sign in if needed)',
+        'You may need to enable 2-Step Verification first',
+        'Click "Select app", choose "Mail", then "Other (Custom name)" and label it BizzyBee',
+        'Copy the 16-character password and paste it below',
+      ],
+    }) as ProviderPreset,
+  },
+  // Microsoft 365 (custom domains routed through Office 365)
+  {
+    pattern: /\.protection\.outlook\.com\.?$|\.outlook\.com\.?$/i,
+    preset: Object.freeze({
+      name: 'Microsoft 365',
+      host: 'outlook.office365.com',
+      port: 993,
+      secure: true,
+      requiresAppPassword: 'always',
+      appPasswordHelpUrl: 'https://account.microsoft.com/security',
+      passwordFormatHint: 'Microsoft app passwords are 16 lowercase characters',
+      instructions: [
+        'Sign in to account.microsoft.com/security',
+        'Make sure 2-Step Verification is enabled',
+        'Go to Advanced security options → App passwords',
+        'Click "Create a new app password" and label it BizzyBee',
+        'Copy the password and paste it below',
+      ],
+    }) as ProviderPreset,
+  },
+];
+
 const HARDCODED_PRESETS: Record<string, ProviderPreset> = {
   'icloud.com': ICLOUD_BASE,
   'me.com': ICLOUD_BASE,
@@ -162,13 +214,64 @@ async function lookupIspdb(domain: string): Promise<ProviderPreset | null> {
   }
 }
 
+interface DnsAnswer {
+  name: string;
+  type: number;
+  TTL: number;
+  data: string;
+}
+
+interface DnsResponse {
+  Status: number;
+  Answer?: DnsAnswer[];
+}
+
+/**
+ * Tier 3: Look up the domain's MX records via DNS-over-HTTPS and match
+ * the hostnames against known mail providers. This catches custom domains
+ * hosted by Fastmail, Google Workspace, Microsoft 365, etc.
+ */
+async function lookupViaMx(domain: string): Promise<ProviderPreset | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
+      {
+        headers: { Accept: 'application/dns-json' },
+        signal: controller.signal,
+      },
+    );
+    clearTimeout(timeout);
+
+    if (!response.ok) return null;
+    const dns = (await response.json()) as DnsResponse;
+    if (dns.Status !== 0 || !dns.Answer || dns.Answer.length === 0) return null;
+
+    // Each MX answer's `data` looks like "10 mail.example.com.". Strip the priority.
+    for (const answer of dns.Answer) {
+      const parts = answer.data.trim().split(/\s+/);
+      const host = parts[parts.length - 1] ?? '';
+      for (const { pattern, preset } of MX_PROVIDER_MAP) {
+        if (pattern.test(host)) {
+          return preset;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Look up a provider preset for an email address.
  *
  * Tier 1: Hardcoded presets (instant).
  * Tier 2: Mozilla ISPDB (async fetch to autoconfig.thunderbird.net).
+ * Tier 3: MX records via DNS-over-HTTPS (Cloudflare).
  *
- * Returns null if the domain isn't recognised by either tier.
+ * Returns null if the domain isn't recognised by any tier.
  */
 export async function lookupProvider(email: string): Promise<ProviderPreset | null> {
   const domain = extractDomain(email);
@@ -180,5 +283,9 @@ export async function lookupProvider(email: string): Promise<ProviderPreset | nu
   }
 
   // Tier 2: Mozilla ISPDB
-  return lookupIspdb(domain);
+  const ispdbResult = await lookupIspdb(domain);
+  if (ispdbResult) return ispdbResult;
+
+  // Tier 3: MX records via DNS-over-HTTPS
+  return lookupViaMx(domain);
 }

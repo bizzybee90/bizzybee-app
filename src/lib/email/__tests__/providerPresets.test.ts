@@ -136,6 +136,159 @@ describe('lookupProvider — Mozilla ISPDB fallback', () => {
   });
 });
 
+describe('lookupProvider — MX-based detection (Tier 3)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function mockResponses(handlers: Record<string, () => Promise<unknown>>) {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      for (const [pattern, handler] of Object.entries(handlers)) {
+        if (url.includes(pattern)) {
+          const data = await handler();
+          if (data === 'NOT_FOUND') {
+            return new Response('', { status: 404 });
+          }
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+      return new Response('', { status: 404 });
+    });
+  }
+
+  it('detects Fastmail when MX points to messagingengine.com', async () => {
+    mockResponses({
+      'autoconfig.thunderbird.net': async () => 'NOT_FOUND',
+      'cloudflare-dns.com': async () => ({
+        Status: 0,
+        Answer: [
+          { name: 'maccleaning.uk', type: 15, TTL: 300, data: '10 in1-smtp.messagingengine.com.' },
+          { name: 'maccleaning.uk', type: 15, TTL: 300, data: '20 in2-smtp.messagingengine.com.' },
+        ],
+      }),
+    });
+
+    const result = await lookupProvider('michael@maccleaning.uk');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('Fastmail');
+    expect(result?.host).toBe('imap.fastmail.com');
+    expect(result?.requiresAppPassword).toBe('always');
+    expect(result?.appPasswordHelpUrl).toContain('fastmail.com');
+  });
+
+  it('detects Google Workspace when MX points to google.com', async () => {
+    mockResponses({
+      'autoconfig.thunderbird.net': async () => 'NOT_FOUND',
+      'cloudflare-dns.com': async () => ({
+        Status: 0,
+        Answer: [
+          { name: 'example.com', type: 15, TTL: 300, data: '1 aspmx.l.google.com.' },
+          { name: 'example.com', type: 15, TTL: 300, data: '5 alt1.aspmx.l.google.com.' },
+        ],
+      }),
+    });
+
+    const result = await lookupProvider('user@example.com');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('Google Workspace');
+    expect(result?.host).toBe('imap.gmail.com');
+    expect(result?.requiresAppPassword).toBe('always');
+  });
+
+  it('detects Microsoft 365 when MX points to outlook.com', async () => {
+    mockResponses({
+      'autoconfig.thunderbird.net': async () => 'NOT_FOUND',
+      'cloudflare-dns.com': async () => ({
+        Status: 0,
+        Answer: [
+          {
+            name: 'example.com',
+            type: 15,
+            TTL: 300,
+            data: '0 example-com.mail.protection.outlook.com.',
+          },
+        ],
+      }),
+    });
+
+    const result = await lookupProvider('user@example.com');
+
+    expect(result).not.toBeNull();
+    expect(result?.name).toBe('Microsoft 365');
+    expect(result?.host).toBe('outlook.office365.com');
+    expect(result?.requiresAppPassword).toBe('always');
+  });
+
+  it('returns null when MX records do not match any known provider', async () => {
+    mockResponses({
+      'autoconfig.thunderbird.net': async () => 'NOT_FOUND',
+      'cloudflare-dns.com': async () => ({
+        Status: 0,
+        Answer: [
+          { name: 'example.com', type: 15, TTL: 300, data: '10 mail.someweirdhost.example.' },
+        ],
+      }),
+    });
+
+    const result = await lookupProvider('user@example.com');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when MX query fails', async () => {
+    mockResponses({
+      'autoconfig.thunderbird.net': async () => 'NOT_FOUND',
+      'cloudflare-dns.com': async () => 'NOT_FOUND',
+    });
+
+    const result = await lookupProvider('user@example.com');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when MX query throws', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('autoconfig.thunderbird.net')) {
+        return new Response('', { status: 404 });
+      }
+      throw new Error('network');
+    });
+
+    const result = await lookupProvider('user@example.com');
+    expect(result).toBeNull();
+  });
+
+  it('still prefers hardcoded preset over MX lookup', async () => {
+    mockResponses({
+      'cloudflare-dns.com': async () => ({
+        Status: 0,
+        Answer: [
+          { name: 'fastmail.com', type: 15, TTL: 300, data: '10 in1-smtp.messagingengine.com.' },
+        ],
+      }),
+    });
+
+    await lookupProvider('user@fastmail.com');
+
+    // Cloudflare DNS should NOT be called for hardcoded domains
+    const calls = vi.mocked(globalThis.fetch).mock.calls;
+    const dnsCalls = calls.filter((call) => {
+      const url = typeof call[0] === 'string' ? call[0] : (call[0] as URL).toString();
+      return url.includes('cloudflare-dns.com');
+    });
+    expect(dnsCalls).toHaveLength(0);
+  });
+});
+
 describe('lookupProvider — edge cases', () => {
   it('returns null for empty string', async () => {
     expect(await lookupProvider('')).toBeNull();
