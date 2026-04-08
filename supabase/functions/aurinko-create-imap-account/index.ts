@@ -37,18 +37,6 @@ function errorResponse(
   });
 }
 
-function inferSmtp(imapHost: string): { host: string; port: number } {
-  // iCloud special case
-  if (imapHost.endsWith('mail.me.com')) {
-    return { host: 'smtp.mail.me.com', port: 587 };
-  }
-  // Generic: imap.X → smtp.X
-  return {
-    host: imapHost.replace(/^imap\./, 'smtp.'),
-    port: 587,
-  };
-}
-
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -73,6 +61,24 @@ function inferProviderName(host: string): string {
   return 'generic';
 }
 
+/**
+ * Maps an IMAP server host to Aurinko's serviceProvider enum value.
+ * Aurinko uses these to track which "brand" of IMAP provider is connected,
+ * which improves their internal monitoring and may enable provider-specific
+ * optimizations.
+ */
+function inferAurinkoServiceProvider(host: string): string {
+  const lowerHost = host.toLowerCase();
+  if (lowerHost === 'imap.mail.me.com') return 'iCloud';
+  if (lowerHost === 'imap.fastmail.com') return 'Fastmail';
+  if (lowerHost === 'imap.mail.yahoo.com') return 'Yahoo';
+  if (lowerHost === 'imap.aol.com') return 'AOL';
+  if (lowerHost === 'imap.zoho.com') return 'Zoho';
+  if (lowerHost === 'imap.gmail.com') return 'Google';
+  if (lowerHost === 'outlook.office365.com') return 'Office365';
+  return 'IMAP'; // generic fallback
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -82,12 +88,25 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as CreateImapBody;
     const { workspaceId, email, password, host, port, secure = true, importMode } = body;
 
-    // Basic validation
-    if (!workspaceId || !email || !password || !host || !port || !importMode) {
-      return errorResponse(
-        'INVALID_REQUEST',
-        'workspaceId, email, password, host, port, and importMode are required',
+    // Basic validation — be specific about which field is missing so the
+    // modal can show actionable feedback (and to make debugging easy)
+    const missing: string[] = [];
+    if (!workspaceId) missing.push('workspaceId');
+    if (!email) missing.push('email');
+    if (!password) missing.push('password');
+    if (!host) missing.push('host');
+    if (!port) missing.push('port');
+    if (!importMode) missing.push('importMode');
+    if (missing.length > 0) {
+      console.warn(
+        '[aurinko-create-imap-account] INVALID_REQUEST — missing fields:',
+        missing.join(', '),
+        '— received keys:',
+        Object.keys(body || {}).join(', '),
       );
+      return errorResponse('INVALID_REQUEST', `Missing required fields: ${missing.join(', ')}`, {
+        missingFields: missing,
+      });
     }
 
     // Verify the caller owns this workspace
@@ -134,8 +153,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    const smtp = inferSmtp(host);
-
     // Call Aurinko's native IMAP account create endpoint
     let aurinkoResponse: Response;
     try {
@@ -147,10 +164,15 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           serviceType: 'IMAP',
-          username: email,
+          serviceProvider: inferAurinkoServiceProvider(host),
+          serverUrl: host,
+          // NOTE: Aurinko's API doesn't accept a port field — it infers the port
+          // from the serviceProvider/serverUrl. For custom domains on non-standard
+          // ports (e.g. 143 with STARTTLS) the user can't currently express that.
+          // If this becomes a real issue, file a request with Aurinko for a serverPort field.
+          email: email,
           password: password,
-          imap: { host, port, useSSL: secure },
-          smtp: { host: smtp.host, port: smtp.port, useTLS: true },
+          active: true,
         }),
       });
     } catch (err) {
