@@ -217,11 +217,15 @@ function InlineCompetitorReview({
   onStartAnalysis,
   autoStarted = false,
   scrapeComplete = false,
+  canStartAnalysis = true,
+  analysisStatusMessage,
 }: {
   workspaceId: string;
   onStartAnalysis: () => void;
   autoStarted?: boolean;
   scrapeComplete?: boolean;
+  canStartAnalysis?: boolean;
+  analysisStatusMessage?: string;
 }) {
   const [competitors, setCompetitors] = useState<CompetitorItem[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -527,8 +531,8 @@ function InlineCompetitorReview({
         )}
       </ScrollArea>
 
-      {/* Start/Re-run button — hidden while auto-trigger is in progress, shown when complete for re-runs */}
-      {(!autoStarted || scrapeComplete) && (
+      {/* Start/Re-run button — hidden until competitor validation is ready */}
+      {canStartAnalysis && (!autoStarted || scrapeComplete) && (
         <Button
           onClick={handleStart}
           disabled={isStarting || selectedCount === 0}
@@ -540,6 +544,12 @@ function InlineCompetitorReview({
             ? `Re-run Analysis (${selectedCount} competitors)`
             : `Start Analysis (${selectedCount} competitors)`}
         </Button>
+      )}
+      {!canStartAnalysis && analysisStatusMessage && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          {analysisStatusMessage}
+        </div>
       )}
       {autoStarted && !scrapeComplete && (
         <div className="flex items-center gap-2 text-sm text-primary py-1">
@@ -952,6 +962,19 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     emailTrack.status === 'complete' || emailTrack.status === 'classification_complete';
   const allComplete =
     isDiscoveryComplete && isScrapeComplete && isEmailImportComplete && isEmailComplete;
+  const canReviewCompetitors = isDiscoveryComplete && !reviewDismissed;
+  const canStartCompetitorAnalysis =
+    scrapeTrack.status === 'review_ready' || scrapeTrack.status === 'complete';
+  const competitorReviewStatusMessage =
+    scrapeTrack.status === 'validating'
+      ? 'BizzyBee is validating the competitors now. You can review the list while this finishes.'
+      : scrapeTrack.status === 'pending'
+        ? 'Competitors are queued for analysis. You can still review the list below.'
+        : scrapeTrack.status === 'scraping' ||
+            scrapeTrack.status === 'extracting' ||
+            scrapeTrack.status === 'scrape_processing'
+          ? 'Analysis is already running. You can still inspect the competitor list below.'
+          : undefined;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1026,16 +1049,16 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           counts={discoveryTrack.counts}
           error={discoveryTrack.error}
         />
-        {/* Inline review gate — shown when discovery is done (review_ready or complete) */}
-        {(scrapeTrack.status === 'review_ready' || scrapeTrack.status === 'complete') &&
-          !reviewDismissed && (
-            <InlineCompetitorReview
-              workspaceId={workspaceId}
-              onStartAnalysis={() => setReviewDismissed(true)}
-              autoStarted={false}
-              scrapeComplete={scrapeTrack.status === 'complete'}
-            />
-          )}
+        {canReviewCompetitors && (
+          <InlineCompetitorReview
+            workspaceId={workspaceId}
+            onStartAnalysis={() => setReviewDismissed(true)}
+            autoStarted={false}
+            scrapeComplete={scrapeTrack.status === 'complete'}
+            canStartAnalysis={canStartCompetitorAnalysis}
+            analysisStatusMessage={competitorReviewStatusMessage}
+          />
+        )}
         <TrackProgress
           title="Analysing Competitors"
           phases={SCRAPE_PHASES}
