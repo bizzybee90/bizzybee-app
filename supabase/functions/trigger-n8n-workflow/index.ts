@@ -214,6 +214,7 @@ Deno.serve(async (req) => {
         workspace_id,
         website_url: websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`,
         business_name: businessContext?.company_name || 'Own Website',
+        business_type: businessContext?.business_type || '',
         callback_url: callbackUrl,
       };
 

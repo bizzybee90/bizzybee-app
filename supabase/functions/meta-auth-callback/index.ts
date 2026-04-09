@@ -71,12 +71,6 @@ Deno.serve(async (req) => {
   // Fallback origin if state verification fails
   const fallbackOrigin = Deno.env.get('APP_URL') || 'https://bizzybee-app.pages.dev';
 
-  // Log ALL callback params — FLfB may pass selected Pages in the URL
-  const allParams: Record<string, string> = {};
-  url.searchParams.forEach((v, k) => { allParams[k] = k === 'code' ? v.slice(0, 20) + '...' : v; });
-  const tempSupa = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  await tempSupa.from('_meta_auth_debug').insert({ step: 'callback_params', detail: JSON.stringify(allParams).slice(0, 500) });
-
   // --- Handle user cancellation or Meta error ---
   if (errorParam) {
     console.warn('[meta-auth-callback] Meta returned error:', errorParam, errorReason);
@@ -114,22 +108,8 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const redirectUri = `${SUPABASE_URL}/functions/v1/meta-auth-callback`;
 
-    // Debug helper — writes to _meta_auth_debug table so we can see
-    // exactly which step fails (console.log isn't visible in Supabase logs)
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
-    const dbg = async (step: string, detail?: string) => {
-      await supabaseAdmin
-        .from('_meta_auth_debug')
-        .insert({ step, detail: detail?.slice(0, 500) })
-        .then(() => {});
-    };
-
-    await dbg('start', `workspace=${workspaceId}, appId=${META_APP_ID}, secret=${META_APP_SECRET.slice(0, 4)}...`);
-
     // --- Step 1: Exchange code for short-lived user token ---
+    console.log('[meta-auth-callback] Exchanging code for token...');
     const tokenUrl = new URL(`${GRAPH_API}/oauth/access_token`);
     tokenUrl.searchParams.set('client_id', META_APP_ID);
     tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
@@ -139,16 +119,16 @@ Deno.serve(async (req) => {
     const tokenRes = await fetch(tokenUrl.toString());
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
-      await dbg('step1_FAIL', `status=${tokenRes.status} body=${body}`);
+      console.error('[meta-auth-callback] Token exchange failed:', tokenRes.status, body);
       return redirectToApp(appOrigin, 'error', {
         message: `Token exchange failed (${tokenRes.status}): ${body.slice(0, 100)}`,
       });
     }
     const tokenData = await tokenRes.json();
     const shortLivedToken = tokenData.access_token;
-    await dbg('step1_OK', `hasToken=${!!shortLivedToken}, tokenLen=${shortLivedToken?.length}`);
 
     // --- Step 2: Exchange for long-lived user token (60 days) ---
+    console.log('[meta-auth-callback] Exchanging for long-lived token...');
     const longLivedUrl = new URL(`${GRAPH_API}/oauth/access_token`);
     longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
     longLivedUrl.searchParams.set('client_id', META_APP_ID);
@@ -156,21 +136,25 @@ Deno.serve(async (req) => {
     longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
 
     const longLivedRes = await fetch(longLivedUrl.toString());
-    const longLivedBody = await longLivedRes.text();
     let longLivedData: Record<string, unknown> | null = null;
-    try {
-      longLivedData = JSON.parse(longLivedBody);
-    } catch {
-      // not JSON
+    if (longLivedRes.ok) {
+      try {
+        longLivedData = await longLivedRes.json();
+      } catch {
+        // not JSON — fall back to short-lived
+      }
     }
-    await dbg('step2', `ok=${longLivedRes.ok}, status=${longLivedRes.status}, body=${longLivedBody.slice(0, 200)}`);
-
     const longLivedUserToken = (longLivedData?.access_token as string) || shortLivedToken;
     const expiresInSeconds = (longLivedData?.expires_in as number) || 3600;
 
-    // --- Step 3: Get Pages via multiple approaches ---
-    // /me/accounts returns empty when Pages are managed via Business Portfolio
-    // (not direct personal admin). Try multiple strategies:
+    // --- Step 3: Discover Pages via multiple strategies ---
+    // Strategy A: /me/accounts (works for personal Page admins)
+    // Strategy B: /me/businesses → /{biz}/owned_pages (works for Business Portfolio Pages)
+    // Strategy C: /me/accounts with long-lived token (fallback)
+    //
+    // Many small businesses manage Pages through Business Portfolios, so
+    // /me/accounts alone returns empty. The business_management permission
+    // (granted via FLfB config) enables Strategy B.
 
     let pages: Array<{ id: string; name: string; access_token: string }> = [];
 
@@ -178,58 +162,58 @@ Deno.serve(async (req) => {
     const pagesRes = await fetch(
       `${GRAPH_API}/me/accounts?access_token=${shortLivedToken}&fields=id,name,access_token`,
     );
-    const pagesBody = await pagesRes.text();
-    const pagesDataA = JSON.parse(pagesBody);
-    if (pagesDataA?.data?.length > 0) {
-      pages = pagesDataA.data;
-      await dbg('step3', `strategy=me/accounts, count=${pages.length}`);
+    if (pagesRes.ok) {
+      const pagesDataA = await pagesRes.json();
+      if (pagesDataA?.data?.length > 0) {
+        pages = pagesDataA.data;
+        console.log(`[meta-auth-callback] Found ${pages.length} page(s) via /me/accounts`);
+      }
     }
 
-    // Strategy B: Get Business Portfolios, then their Pages
+    // Strategy B: Business Portfolios → owned Pages
     if (pages.length === 0) {
-      const bizRes = await fetch(`${GRAPH_API}/me/businesses?access_token=${shortLivedToken}&fields=id,name`);
-      const bizBody = await bizRes.text();
-      await dbg('step3_biz', `body=${bizBody.slice(0, 300)}`);
+      const bizRes = await fetch(
+        `${GRAPH_API}/me/businesses?access_token=${shortLivedToken}&fields=id,name`,
+      );
+      if (bizRes.ok) {
+        const bizData = await bizRes.json();
+        const businesses = bizData?.data || [];
+        console.log(`[meta-auth-callback] Found ${businesses.length} business portfolio(s)`);
 
-      const bizData = JSON.parse(bizBody);
-      const businesses = bizData?.data || [];
-
-      for (const biz of businesses) {
-        const bizPagesRes = await fetch(
-          `${GRAPH_API}/${biz.id}/owned_pages?access_token=${shortLivedToken}&fields=id,name,access_token`,
-        );
-        const bizPagesBody = await bizPagesRes.text();
-        await dbg(`step3_biz_${biz.name}`, `body=${bizPagesBody.slice(0, 300)}`);
-
-        const bizPagesData = JSON.parse(bizPagesBody);
-        if (bizPagesData?.data?.length > 0) {
-          pages = [...pages, ...bizPagesData.data];
+        for (const biz of businesses) {
+          const bizPagesRes = await fetch(
+            `${GRAPH_API}/${biz.id}/owned_pages?access_token=${shortLivedToken}&fields=id,name,access_token`,
+          );
+          if (bizPagesRes.ok) {
+            const bizPagesData = await bizPagesRes.json();
+            if (bizPagesData?.data?.length > 0) {
+              pages = [...pages, ...bizPagesData.data];
+            }
+          }
+        }
+        if (pages.length > 0) {
+          console.log(`[meta-auth-callback] Found ${pages.length} page(s) via business portfolios`);
         }
       }
-
-      if (pages.length > 0) {
-        await dbg('step3', `strategy=businesses, count=${pages.length}`);
-      }
     }
 
-    // Strategy C: Try /me/accounts with the long-lived token
+    // Strategy C: long-lived token fallback
     if (pages.length === 0) {
       const pagesResLong = await fetch(
         `${GRAPH_API}/me/accounts?access_token=${longLivedUserToken}&fields=id,name,access_token`,
       );
-      const pagesBodyLong = await pagesResLong.text();
-      const pagesDataC = JSON.parse(pagesBodyLong);
-      if (pagesDataC?.data?.length > 0) {
-        pages = pagesDataC.data;
-        await dbg('step3', `strategy=long-lived, count=${pages.length}`);
+      if (pagesResLong.ok) {
+        const pagesDataC = await pagesResLong.json();
+        if (pagesDataC?.data?.length > 0) {
+          pages = pagesDataC.data;
+        }
       }
     }
 
-    await dbg('step3_final', `total_pages=${pages.length}, names=${pages.map(p => p.name).join(',')}`);
-
     if (pages.length === 0) {
+      console.warn('[meta-auth-callback] No Pages found via any strategy');
       return redirectToApp(appOrigin, 'error', {
-        message: 'No Facebook Pages found via any strategy. Check Business Portfolio page access.',
+        message: 'No Facebook Pages found. Make sure you manage at least one Page.',
       });
     }
 
