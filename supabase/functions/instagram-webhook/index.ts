@@ -130,6 +130,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Per-workspace token lookup with global fallback
+        let pageAccessToken: string | undefined;
+        const { data: metaConfig } = await supabase
+          .from('meta_provider_configs')
+          .select('id')
+          .eq('workspace_id', workspaceId)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (metaConfig) {
+          const { data: decrypted } = await supabase.rpc('get_meta_decrypted_token', {
+            p_config_id: metaConfig.id,
+          });
+          if (decrypted) pageAccessToken = decrypted;
+        }
+        if (!pageAccessToken) {
+          pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN') || undefined;
+        }
+
         // Find or create customer by Instagram sender ID (stored as ig:SENDER_ID)
         let { data: customer } = await supabase
           .from('customers')
@@ -141,7 +159,6 @@ Deno.serve(async (req) => {
         if (!customer) {
           // Try to fetch Instagram profile name via Graph API
           let profileName = igIdentifier;
-          const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
           if (pageAccessToken) {
             try {
               const profileRes = await fetch(

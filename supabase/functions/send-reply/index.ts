@@ -387,9 +387,25 @@ Deno.serve(async (req) => {
 
       case 'facebook':
       case 'instagram': {
-        const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
+        // Per-workspace token from meta_provider_configs, global env fallback
+        let pageAccessToken: string | undefined;
+        const { data: metaConfig } = await supabase
+          .from('meta_provider_configs')
+          .select('id')
+          .eq('workspace_id', conversation.workspace_id)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (metaConfig) {
+          const { data: decrypted } = await supabase.rpc('get_meta_decrypted_token', {
+            p_config_id: metaConfig.id,
+          });
+          if (decrypted) pageAccessToken = decrypted;
+        }
         if (!pageAccessToken) {
-          throw new Error('META_PAGE_ACCESS_TOKEN not configured.');
+          pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
+        }
+        if (!pageAccessToken) {
+          throw new Error('No Meta Page Access Token configured for this workspace.');
         }
 
         // Customer identifier is stored as fb:SENDER_ID or ig:SENDER_ID

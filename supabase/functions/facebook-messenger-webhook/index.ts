@@ -119,6 +119,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Per-workspace token lookup with global fallback
+        let pageAccessToken: string | undefined;
+        const { data: metaConfig } = await supabase
+          .from('meta_provider_configs')
+          .select('id')
+          .eq('workspace_id', workspaceId)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (metaConfig) {
+          const { data: decrypted } = await supabase.rpc('get_meta_decrypted_token', {
+            p_config_id: metaConfig.id,
+          });
+          if (decrypted) pageAccessToken = decrypted;
+        }
+        if (!pageAccessToken) {
+          pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN') || undefined;
+        }
+
         // Store Facebook sender ID as fb:SENDER_ID since we don't have a phone number
         const customerPhone = `fb:${senderId}`;
 
@@ -134,7 +152,6 @@ Deno.serve(async (req) => {
           // Try to get the user's name from the Messenger Profile API
           let profileName = customerPhone;
           try {
-            const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN');
             if (pageAccessToken) {
               const profileRes = await fetch(
                 `https://graph.facebook.com/v19.0/${senderId}?fields=first_name,last_name&access_token=${pageAccessToken}`,
