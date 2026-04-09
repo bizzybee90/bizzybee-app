@@ -270,17 +270,46 @@ function InlineCompetitorReview({
         logger.error('Failed to load discovered competitors', error);
         setCompetitors([]);
       } else {
-        setCompetitors(
-          (data || []).map((c) => ({
-            id: c.id,
-            business_name: c.business_name,
-            domain: c.domain,
-            url: c.url,
-            is_selected: c.is_selected ?? true,
-            discovery_source: c.discovery_source,
-            validation_status: c.validation_status,
-          })),
-        );
+        const mapped = (data || []).map((c) => ({
+          id: c.id,
+          business_name: c.business_name,
+          domain: c.domain,
+          url: c.url,
+          is_selected: c.is_selected ?? true,
+          discovery_source: c.discovery_source,
+          validation_status: c.validation_status,
+        }));
+
+        if (mapped.length > 0) {
+          setCompetitors(mapped);
+        } else {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('competitor_sites')
+            .select(
+              'id, business_name, domain, url, is_selected, discovery_source, validation_status',
+            )
+            .eq('workspace_id', workspaceId)
+            .not('status', 'eq', 'rejected')
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+          if (fallbackError) {
+            logger.error('Failed to load fallback competitors', fallbackError);
+            setCompetitors([]);
+          } else {
+            setCompetitors(
+              (fallbackData || []).map((c) => ({
+                id: c.id,
+                business_name: c.business_name,
+                domain: c.domain,
+                url: c.url,
+                is_selected: c.is_selected ?? true,
+                discovery_source: c.discovery_source,
+                validation_status: c.validation_status,
+              })),
+            );
+          }
+        }
       }
       setIsLoading(false);
     };
@@ -317,6 +346,38 @@ function InlineCompetitorReview({
     }
 
     setIsAdding(true);
+
+    const { data: existingRows } = await supabase
+      .from('competitor_sites')
+      .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
+      .eq('workspace_id', workspaceId)
+      .or(`domain.eq.${hostname},url.eq.${cleanUrl}`)
+      .limit(1);
+
+    if (existingRows && existingRows.length > 0) {
+      const existing = existingRows[0];
+      setCompetitors((prev) =>
+        prev.some((c) => c.id === existing.id)
+          ? prev
+          : [
+              {
+                id: existing.id,
+                business_name: existing.business_name,
+                domain: existing.domain,
+                url: existing.url,
+                is_selected: existing.is_selected ?? true,
+                discovery_source: existing.discovery_source,
+                validation_status: existing.validation_status,
+              },
+              ...prev,
+            ],
+      );
+      setManualUrl('');
+      setIsAdding(false);
+      toast.success('Competitor already existed and has been loaded');
+      return;
+    }
+
     const { data, error } = await supabase
       .from('competitor_sites')
       .insert({
