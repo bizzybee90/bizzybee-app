@@ -71,6 +71,12 @@ Deno.serve(async (req) => {
   // Fallback origin if state verification fails
   const fallbackOrigin = Deno.env.get('APP_URL') || 'https://bizzybee-app.pages.dev';
 
+  // Log ALL callback params — FLfB may pass selected Pages in the URL
+  const allParams: Record<string, string> = {};
+  url.searchParams.forEach((v, k) => { allParams[k] = k === 'code' ? v.slice(0, 20) + '...' : v; });
+  const tempSupa = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  await tempSupa.from('_meta_auth_debug').insert({ step: 'callback_params', detail: JSON.stringify(allParams).slice(0, 500) });
+
   // --- Handle user cancellation or Meta error ---
   if (errorParam) {
     console.warn('[meta-auth-callback] Meta returned error:', errorParam, errorReason);
@@ -186,6 +192,16 @@ Deno.serve(async (req) => {
     const permsRes = await fetch(`${GRAPH_API}/me/permissions?access_token=${shortLivedToken}`);
     const permsBody = await permsRes.text();
     await dbg('step3_perms', `body=${permsBody.slice(0, 400)}`);
+
+    // Try querying MAC Cleaning Page directly by known ID
+    const directPageRes = await fetch(`${GRAPH_API}/717972668319488?fields=id,name,access_token&access_token=${shortLivedToken}`);
+    const directPageBody = await directPageRes.text();
+    await dbg('step3_direct_page', `ok=${directPageRes.ok}, status=${directPageRes.status}, body=${directPageBody.slice(0, 300)}`);
+
+    // Try /me/accounts with business_id context
+    const bizAccountsRes = await fetch(`${GRAPH_API}/me/accounts?access_token=${shortLivedToken}&type=page&limit=100`);
+    const bizAccountsBody = await bizAccountsRes.text();
+    await dbg('step3_accounts_typed', `body=${bizAccountsBody.slice(0, 300)}`);
 
     // Use whichever has pages
     let pagesBody = pagesBodyShort;
