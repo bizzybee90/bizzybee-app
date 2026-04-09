@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     const redirectUri = `${SUPABASE_URL}/functions/v1/meta-auth-callback`;
 
     // Use the actual browser origin for redirects, not the APP_URL env var
-    // (which may point to a domain like app.bizzybee.co.uk that doesn't exist yet)
+    // (which may point to a stale domain if the app is being served from a custom alias)
     const appOrigin = origin || Deno.env.get('APP_URL') || 'https://bizzybee-app.pages.dev';
     const statePayload = btoa(
       JSON.stringify({

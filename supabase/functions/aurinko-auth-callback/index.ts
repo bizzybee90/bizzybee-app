@@ -2,7 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ALLOWED_ORIGIN_PATTERNS: Array<string | RegExp> = [
   'https://bizzybee.app',
-  'https://app.bizzybee.co.uk',
+  'https://bizzyb.ee',
+  'https://bizzybee.ee',
   'https://bizzybee-app.pages.dev',
   /^https:\/\/[a-z0-9-]+\.bizzybee-app\.pages\.dev$/, // Cloudflare preview deploys
   'http://localhost:5173',
