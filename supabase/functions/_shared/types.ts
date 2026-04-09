@@ -1,5 +1,12 @@
-export type Channel = "email" | "whatsapp" | "sms" | "facebook" | "voice";
-export type Direction = "inbound" | "outbound";
+export type Channel =
+  | 'email'
+  | 'whatsapp'
+  | 'sms'
+  | 'facebook'
+  | 'instagram'
+  | 'google_business'
+  | 'voice';
+export type Direction = 'inbound' | 'outbound';
 
 export interface UnifiedMessage {
   external_id: string;
@@ -27,11 +34,11 @@ export interface QueueRecord<T> {
 }
 
 export interface ImportFetchJob {
-  job_type: "IMPORT_FETCH";
+  job_type: 'IMPORT_FETCH';
   workspace_id: string;
   run_id: string;
   config_id: string;
-  folder: "SENT" | "INBOX";
+  folder: 'SENT' | 'INBOX';
   pageToken?: string | null;
   cap?: number;
   fetched_so_far?: number;
@@ -40,7 +47,7 @@ export interface ImportFetchJob {
 }
 
 export interface MaterializeJob {
-  job_type: "MATERIALIZE";
+  job_type: 'MATERIALIZE';
   event_id: string;
   workspace_id: string;
   run_id?: string | null;
@@ -49,7 +56,7 @@ export interface MaterializeJob {
 }
 
 export interface ClassifyJob {
-  job_type: "CLASSIFY";
+  job_type: 'CLASSIFY';
   workspace_id: string;
   run_id?: string | null;
   config_id: string;
@@ -60,7 +67,7 @@ export interface ClassifyJob {
 }
 
 export interface DraftJob {
-  job_type: "DRAFT";
+  job_type: 'DRAFT';
   workspace_id: string;
   run_id?: string | null;
   conversation_id: string;
