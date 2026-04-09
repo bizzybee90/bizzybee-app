@@ -63,9 +63,10 @@ Deno.serve(async (req) => {
         return new Response('Invalid signature', { status: 403 });
       }
     } else {
-      console.warn(
-        '[facebook-messenger-webhook] META_APP_SECRET not set — skipping signature verification',
+      console.error(
+        '[facebook-messenger-webhook] META_APP_SECRET not set — rejecting unsigned request',
       );
+      return new Response('Server misconfigured', { status: 500 });
     }
 
     const body = JSON.parse(rawBody);
@@ -167,26 +168,45 @@ Deno.serve(async (req) => {
             console.warn('[facebook-messenger-webhook] Failed to fetch profile name:', e);
           }
 
+          // Use upsert to handle race condition from concurrent webhook deliveries
           const { data: newCustomer, error: custError } = await supabase
             .from('customers')
-            .insert({
-              workspace_id: workspaceId,
-              phone: customerPhone,
-              name: profileName,
-              preferred_channel: 'facebook',
-            })
+            .upsert(
+              {
+                workspace_id: workspaceId,
+                phone: customerPhone,
+                name: profileName,
+                preferred_channel: 'facebook',
+              },
+              { onConflict: 'workspace_id,phone', ignoreDuplicates: true },
+            )
             .select('id, name, email, phone')
             .single();
 
           if (custError) {
-            console.error('[facebook-messenger-webhook] Failed to create customer:', custError);
-            throw new Error(`Failed to create customer: ${custError.message}`);
+            // If upsert returned nothing (ignoreDuplicates), re-fetch
+            const { data: existingCustomer } = await supabase
+              .from('customers')
+              .select('id, name, email, phone')
+              .eq('workspace_id', workspaceId)
+              .eq('phone', customerPhone)
+              .single();
+            if (existingCustomer) {
+              customer = existingCustomer;
+            } else {
+              console.error('[facebook-messenger-webhook] Failed to create customer:', custError);
+              throw new Error(`Failed to create customer: ${custError.message}`);
+            }
+          } else {
+            customer = newCustomer;
           }
-          customer = newCustomer;
         }
 
         // Find existing open conversation or create new one
-        let { data: conversation } = await supabase
+        let conversation: { id: string } | null = null;
+        let isNewConversation = false;
+
+        const { data: existingConv } = await supabase
           .from('conversations')
           .select('id')
           .eq('workspace_id', workspaceId)
@@ -197,7 +217,9 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        if (!conversation) {
+        if (existingConv) {
+          conversation = existingConv;
+        } else {
           const { data: newConv, error: convError } = await supabase
             .from('conversations')
             .insert({
@@ -218,9 +240,10 @@ Deno.serve(async (req) => {
             throw new Error(`Failed to create conversation: ${convError.message}`);
           }
           conversation = newConv;
+          isNewConversation = true;
         }
 
-        // Save the inbound message
+        // Save the inbound message (unique index on conversation_id+external_id prevents duplicates)
         const { error: msgError } = await supabase.from('messages').insert({
           conversation_id: conversation.id,
           direction: 'inbound',
@@ -234,19 +257,25 @@ Deno.serve(async (req) => {
         });
 
         if (msgError) {
+          // If duplicate (unique constraint on external_id), skip silently
+          if (msgError.code === '23505') {
+            console.log('[facebook-messenger-webhook] Duplicate message skipped:', messageId);
+            continue;
+          }
           console.error('[facebook-messenger-webhook] Failed to save message:', msgError);
         }
 
-        // Update conversation timestamps
-        await supabase
-          .from('conversations')
-          .update({
-            status: 'new',
-            requires_reply: true,
-            last_message_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', conversation.id);
+        // Update conversation — only reset status to 'new' for brand new conversations
+        // For existing conversations, preserve current status (don't override escalated/ai_handling)
+        const convUpdate: Record<string, unknown> = {
+          requires_reply: true,
+          last_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        if (isNewConversation) {
+          convUpdate.status = 'new';
+        }
+        await supabase.from('conversations').update(convUpdate).eq('id', conversation.id);
 
         // Fire-and-forget: trigger AI enrichment
         fetch(`${supabaseUrl}/functions/v1/ai-enrich-conversation`, {

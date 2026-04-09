@@ -127,25 +127,45 @@ Deno.serve(async (req) => {
     const tokenData = await tokenRes.json();
     const shortLivedToken = tokenData.access_token;
 
-    // --- Step 2: Exchange for long-lived user token (60 days) ---
-    console.log('[meta-auth-callback] Exchanging for long-lived token...');
-    const longLivedUrl = new URL(`${GRAPH_API}/oauth/access_token`);
-    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-    longLivedUrl.searchParams.set('client_id', META_APP_ID);
-    longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
-    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
+    // --- Step 2: Exchange for long-lived token ---
+    // System-user tokens (from FLfB with system-user access token config) never expire,
+    // so this exchange may fail or return the same token. That's fine.
+    let longLivedUserToken = shortLivedToken;
+    let expiresInSeconds = tokenData.expires_in as number | undefined;
 
-    const longLivedRes = await fetch(longLivedUrl.toString());
-    let longLivedData: Record<string, unknown> | null = null;
-    if (longLivedRes.ok) {
-      try {
-        longLivedData = await longLivedRes.json();
-      } catch {
-        // not JSON — fall back to short-lived
+    // If the initial token already has a long/no expiry, skip the exchange
+    const isSystemUserToken = !expiresInSeconds || expiresInSeconds === 0;
+
+    if (!isSystemUserToken) {
+      console.log('[meta-auth-callback] Exchanging for long-lived token...');
+      const longLivedUrl = new URL(`${GRAPH_API}/oauth/access_token`);
+      longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
+      longLivedUrl.searchParams.set('client_id', META_APP_ID);
+      longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
+      longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
+
+      const longLivedRes = await fetch(longLivedUrl.toString());
+      if (longLivedRes.ok) {
+        try {
+          const longLivedData = await longLivedRes.json();
+          if (longLivedData.access_token) {
+            longLivedUserToken = longLivedData.access_token;
+            expiresInSeconds = longLivedData.expires_in || expiresInSeconds;
+          }
+        } catch {
+          // not JSON — fall back to short-lived
+        }
       }
+    } else {
+      console.log(
+        '[meta-auth-callback] System-user token detected — never expires, skipping exchange',
+      );
     }
-    const longLivedUserToken = (longLivedData?.access_token as string) || shortLivedToken;
-    const expiresInSeconds = (longLivedData?.expires_in as number) || 3600;
+
+    // Default: 10 years for non-expiring system-user tokens, 60 days for user tokens
+    if (!expiresInSeconds || expiresInSeconds === 0) {
+      expiresInSeconds = 10 * 365 * 24 * 3600; // ~10 years
+    }
 
     // --- Step 3: Discover Pages via multiple strategies ---
     // Strategy A: /me/accounts (works for personal Page admins)
@@ -226,8 +246,11 @@ Deno.serve(async (req) => {
     console.log(`[meta-auth-callback] Using Page: ${pageName} (${pageId})`);
 
     // --- Step 4: Check for linked Instagram Business account ---
+    // Try multiple discovery methods since different permissions yield different results
     let instagramAccountId: string | null = null;
     let instagramUsername: string | null = null;
+
+    // Method A: Query Page for instagram_business_account (needs pages_read_engagement)
     try {
       const igRes = await fetch(
         `${GRAPH_API}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageAccessToken}`,
@@ -238,14 +261,86 @@ Deno.serve(async (req) => {
           instagramAccountId = igData.instagram_business_account.id;
           instagramUsername = igData.instagram_business_account.username || null;
           console.log(
-            `[meta-auth-callback] Found linked Instagram: @${instagramUsername} (${instagramAccountId})`,
+            `[meta-auth-callback] Found Instagram via Page query: @${instagramUsername} (${instagramAccountId})`,
           );
-        } else {
-          console.log('[meta-auth-callback] No Instagram Business account linked to this Page');
         }
+      } else {
+        console.log('[meta-auth-callback] Page Instagram query failed (trying business route)');
       }
     } catch (igErr) {
-      console.warn('[meta-auth-callback] Instagram check failed (non-fatal):', igErr);
+      console.warn('[meta-auth-callback] Page Instagram check failed:', igErr);
+    }
+
+    // Method B: Query via Business Portfolio (needs business_management, which we have)
+    if (!instagramAccountId) {
+      try {
+        const bizRes = await fetch(
+          `${GRAPH_API}/me/businesses?access_token=${longLivedUserToken}&fields=id,name`,
+        );
+        if (bizRes.ok) {
+          const bizData = await bizRes.json();
+          for (const biz of bizData?.data || []) {
+            const igAccRes = await fetch(
+              `${GRAPH_API}/${biz.id}/instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
+            );
+            if (igAccRes.ok) {
+              const igAccData = await igAccRes.json();
+              if (igAccData?.data?.length > 0) {
+                instagramAccountId = igAccData.data[0].id;
+                instagramUsername = igAccData.data[0].username || null;
+                console.log(
+                  `[meta-auth-callback] Found Instagram via business route: @${instagramUsername} (${instagramAccountId})`,
+                );
+                break;
+              }
+            }
+            // Also try owned_instagram_accounts endpoint
+            if (!instagramAccountId) {
+              const ownedIgRes = await fetch(
+                `${GRAPH_API}/${biz.id}/owned_instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
+              );
+              if (ownedIgRes.ok) {
+                const ownedIgData = await ownedIgRes.json();
+                if (ownedIgData?.data?.length > 0) {
+                  instagramAccountId = ownedIgData.data[0].id;
+                  instagramUsername = ownedIgData.data[0].username || null;
+                  console.log(
+                    `[meta-auth-callback] Found Instagram via owned_instagram_accounts: @${instagramUsername} (${instagramAccountId})`,
+                  );
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch (bizIgErr) {
+        console.warn('[meta-auth-callback] Business Instagram check failed (non-fatal):', bizIgErr);
+      }
+    }
+
+    // Method C: page_backed_instagram_accounts on the Page (alternative endpoint)
+    if (!instagramAccountId) {
+      try {
+        const pbiRes = await fetch(
+          `${GRAPH_API}/${pageId}/page_backed_instagram_accounts?access_token=${pageAccessToken}&fields=id,username`,
+        );
+        if (pbiRes.ok) {
+          const pbiData = await pbiRes.json();
+          if (pbiData?.data?.length > 0) {
+            instagramAccountId = pbiData.data[0].id;
+            instagramUsername = pbiData.data[0].username || null;
+            console.log(
+              `[meta-auth-callback] Found Instagram via page_backed: @${instagramUsername} (${instagramAccountId})`,
+            );
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
+    if (!instagramAccountId) {
+      console.log('[meta-auth-callback] No Instagram Business account found via any method');
     }
 
     // --- Step 5: Subscribe Page to messaging webhook ---
