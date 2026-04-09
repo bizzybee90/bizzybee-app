@@ -235,9 +235,12 @@ function InlineCompetitorReview({
   const [isStarting, setIsStarting] = useState(false);
   const [isRemovingId, setIsRemovingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetch = async () => {
-      setIsLoading(true);
+  const loadCompetitors = useCallback(
+    async (showLoading: boolean) => {
+      if (showLoading) {
+        setIsLoading(true);
+      }
+
       const { data: latestJob, error: jobError } = await supabase
         .from('competitor_research_jobs')
         .select('id')
@@ -316,9 +319,35 @@ function InlineCompetitorReview({
         }
       }
       setIsLoading(false);
+    },
+    [workspaceId],
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchCompetitors = async (showLoading: boolean) => {
+      await loadCompetitors(showLoading);
+      if (!active) return;
     };
-    fetch();
-  }, [workspaceId, scrapeComplete]);
+
+    void fetchCompetitors(true);
+
+    if (scrapeComplete) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const interval = window.setInterval(() => {
+      void fetchCompetitors(false);
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [loadCompetitors, scrapeComplete]);
 
   const selectedCount = competitors.filter((c) => c.is_selected).length;
 
@@ -490,7 +519,9 @@ function InlineCompetitorReview({
       <ScrollArea className="h-[280px]">
         {competitors.length === 0 ? (
           <div className="rounded-md border border-dashed border-border/70 bg-background/70 px-3 py-6 text-center text-sm text-muted-foreground">
-            No competitors loaded yet. You can add one manually below if you want to widen the set.
+            {canStartAnalysis
+              ? 'No competitors loaded yet. You can add one manually below if you want to widen the set.'
+              : 'BizzyBee is still loading the discovered competitors. You can add one manually now if you want to widen the set.'}
           </div>
         ) : (
           <div className="space-y-1">
