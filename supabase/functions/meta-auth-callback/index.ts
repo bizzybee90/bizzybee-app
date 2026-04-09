@@ -168,49 +168,64 @@ Deno.serve(async (req) => {
     const longLivedUserToken = (longLivedData?.access_token as string) || shortLivedToken;
     const expiresInSeconds = (longLivedData?.expires_in as number) || 3600;
 
-    // --- Step 3: Get list of Pages the user manages ---
-    // Try short-lived token first (long-lived exchange sometimes strips page permissions)
-    const pagesResShort = await fetch(
+    // --- Step 3: Get Pages via multiple approaches ---
+    // /me/accounts returns empty when Pages are managed via Business Portfolio
+    // (not direct personal admin). Try multiple strategies:
+
+    let pages: Array<{ id: string; name: string; access_token: string }> = [];
+
+    // Strategy A: standard /me/accounts
+    const pagesRes = await fetch(
       `${GRAPH_API}/me/accounts?access_token=${shortLivedToken}&fields=id,name,access_token`,
     );
-    const pagesBodyShort = await pagesResShort.text();
-    await dbg('step3_short', `ok=${pagesResShort.ok}, body=${pagesBodyShort.slice(0, 300)}`);
-
-    // Also try long-lived token for comparison
-    const pagesResLong = await fetch(
-      `${GRAPH_API}/me/accounts?access_token=${longLivedUserToken}&fields=id,name,access_token`,
-    );
-    const pagesBodyLong = await pagesResLong.text();
-    await dbg('step3_long', `ok=${pagesResLong.ok}, body=${pagesBodyLong.slice(0, 300)}`);
-
-    // Also check /me to verify token identity and granted scopes
-    const meRes = await fetch(`${GRAPH_API}/me?access_token=${shortLivedToken}&fields=id,name`);
-    const meBody = await meRes.text();
-    await dbg('step3_me', `body=${meBody.slice(0, 200)}`);
-
-    // Check granted permissions
-    const permsRes = await fetch(`${GRAPH_API}/me/permissions?access_token=${shortLivedToken}`);
-    const permsBody = await permsRes.text();
-    await dbg('step3_perms', `body=${permsBody.slice(0, 400)}`);
-
-    // Try querying MAC Cleaning Page directly by known ID
-    const directPageRes = await fetch(`${GRAPH_API}/717972668319488?fields=id,name,access_token&access_token=${shortLivedToken}`);
-    const directPageBody = await directPageRes.text();
-    await dbg('step3_direct_page', `ok=${directPageRes.ok}, status=${directPageRes.status}, body=${directPageBody.slice(0, 300)}`);
-
-    // Try /me/accounts with business_id context
-    const bizAccountsRes = await fetch(`${GRAPH_API}/me/accounts?access_token=${shortLivedToken}&type=page&limit=100`);
-    const bizAccountsBody = await bizAccountsRes.text();
-    await dbg('step3_accounts_typed', `body=${bizAccountsBody.slice(0, 300)}`);
-
-    // Use whichever has pages
-    let pagesBody = pagesBodyShort;
-    const pagesRes = pagesResShort;
-    const shortParsed = JSON.parse(pagesBodyShort);
-    if (shortParsed?.data?.length === 0) {
-      // Short token also empty, use long token result
-      pagesBody = pagesBodyLong;
+    const pagesBody = await pagesRes.text();
+    const pagesDataA = JSON.parse(pagesBody);
+    if (pagesDataA?.data?.length > 0) {
+      pages = pagesDataA.data;
+      await dbg('step3', `strategy=me/accounts, count=${pages.length}`);
     }
+
+    // Strategy B: Get Business Portfolios, then their Pages
+    if (pages.length === 0) {
+      const bizRes = await fetch(`${GRAPH_API}/me/businesses?access_token=${shortLivedToken}&fields=id,name`);
+      const bizBody = await bizRes.text();
+      await dbg('step3_biz', `body=${bizBody.slice(0, 300)}`);
+
+      const bizData = JSON.parse(bizBody);
+      const businesses = bizData?.data || [];
+
+      for (const biz of businesses) {
+        const bizPagesRes = await fetch(
+          `${GRAPH_API}/${biz.id}/owned_pages?access_token=${shortLivedToken}&fields=id,name,access_token`,
+        );
+        const bizPagesBody = await bizPagesRes.text();
+        await dbg(`step3_biz_${biz.name}`, `body=${bizPagesBody.slice(0, 300)}`);
+
+        const bizPagesData = JSON.parse(bizPagesBody);
+        if (bizPagesData?.data?.length > 0) {
+          pages = [...pages, ...bizPagesData.data];
+        }
+      }
+
+      if (pages.length > 0) {
+        await dbg('step3', `strategy=businesses, count=${pages.length}`);
+      }
+    }
+
+    // Strategy C: Try /me/accounts with the long-lived token
+    if (pages.length === 0) {
+      const pagesResLong = await fetch(
+        `${GRAPH_API}/me/accounts?access_token=${longLivedUserToken}&fields=id,name,access_token`,
+      );
+      const pagesBodyLong = await pagesResLong.text();
+      const pagesDataC = JSON.parse(pagesBodyLong);
+      if (pagesDataC?.data?.length > 0) {
+        pages = pagesDataC.data;
+        await dbg('step3', `strategy=long-lived, count=${pages.length}`);
+      }
+    }
+
+    await dbg('step3_final', `total_pages=${pages.length}, names=${pages.map(p => p.name).join(',')}`);
 
     if (!pagesRes.ok) {
       return redirectToApp(appOrigin, 'error', { message: `Could not fetch Pages: ${pagesBody.slice(0, 100)}` });
