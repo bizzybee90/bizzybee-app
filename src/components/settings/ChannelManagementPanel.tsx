@@ -139,6 +139,7 @@ export const ChannelManagementPanel = ({
     setChannels,
     emailConfigs,
     loading,
+    refresh,
     refreshEmailConfigs,
     messagingChannelDefinitions,
     displayedMessagingChannels,
