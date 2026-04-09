@@ -227,24 +227,9 @@ Deno.serve(async (req) => {
 
     await dbg('step3_final', `total_pages=${pages.length}, names=${pages.map(p => p.name).join(',')}`);
 
-    if (!pagesRes.ok) {
-      return redirectToApp(appOrigin, 'error', { message: `Could not fetch Pages: ${pagesBody.slice(0, 100)}` });
-    }
-
-    let pagesData: { data?: Array<{ id: string; name: string; access_token: string }> };
-    try {
-      pagesData = JSON.parse(pagesBody);
-    } catch {
-      await dbg('step3_PARSE_FAIL', pagesBody.slice(0, 200));
-      return redirectToApp(appOrigin, 'error', { message: 'Invalid response from Facebook Pages API' });
-    }
-
-    const pages = pagesData.data || [];
-    await dbg('step3_pages', `count=${pages.length}, names=${pages.map((p) => p.name).join(',')}`);
-
     if (pages.length === 0) {
       return redirectToApp(appOrigin, 'error', {
-        message: 'No Facebook Pages found. Make sure you manage at least one Page.',
+        message: 'No Facebook Pages found via any strategy. Check Business Portfolio page access.',
       });
     }
 
