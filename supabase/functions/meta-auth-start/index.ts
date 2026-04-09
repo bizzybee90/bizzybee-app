@@ -56,14 +56,11 @@ Deno.serve(async (req) => {
     const state = await signState(statePayload);
 
     // Facebook Login for Business OAuth URL
-    // One consent screen grants both Messenger and Instagram permissions
-    const scopes = [
-      'pages_messaging',
-      'pages_manage_metadata',
-      'pages_show_list',
-      'instagram_basic',
-      'instagram_manage_messages',
-    ].join(',');
+    // Instagram scopes (instagram_basic, instagram_manage_messages) require
+    // the Instagram API use case to be added to the Meta App separately.
+    // For now, request only Messenger scopes. Instagram will be added in a
+    // follow-up once the use case is configured in the app dashboard.
+    const scopes = ['pages_messaging', 'pages_manage_metadata', 'pages_show_list'].join(',');
 
     const authUrl = new URL('https://www.facebook.com/v19.0/dialog/oauth');
     authUrl.searchParams.set('client_id', META_APP_ID);
