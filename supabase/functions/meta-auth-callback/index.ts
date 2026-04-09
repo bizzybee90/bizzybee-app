@@ -163,11 +163,38 @@ Deno.serve(async (req) => {
     const expiresInSeconds = (longLivedData?.expires_in as number) || 3600;
 
     // --- Step 3: Get list of Pages the user manages ---
-    const pagesRes = await fetch(
+    // Try short-lived token first (long-lived exchange sometimes strips page permissions)
+    const pagesResShort = await fetch(
+      `${GRAPH_API}/me/accounts?access_token=${shortLivedToken}&fields=id,name,access_token`,
+    );
+    const pagesBodyShort = await pagesResShort.text();
+    await dbg('step3_short', `ok=${pagesResShort.ok}, body=${pagesBodyShort.slice(0, 300)}`);
+
+    // Also try long-lived token for comparison
+    const pagesResLong = await fetch(
       `${GRAPH_API}/me/accounts?access_token=${longLivedUserToken}&fields=id,name,access_token`,
     );
-    const pagesBody = await pagesRes.text();
-    await dbg('step3_raw', `ok=${pagesRes.ok}, status=${pagesRes.status}, body=${pagesBody.slice(0, 300)}`);
+    const pagesBodyLong = await pagesResLong.text();
+    await dbg('step3_long', `ok=${pagesResLong.ok}, body=${pagesBodyLong.slice(0, 300)}`);
+
+    // Also check /me to verify token identity and granted scopes
+    const meRes = await fetch(`${GRAPH_API}/me?access_token=${shortLivedToken}&fields=id,name`);
+    const meBody = await meRes.text();
+    await dbg('step3_me', `body=${meBody.slice(0, 200)}`);
+
+    // Check granted permissions
+    const permsRes = await fetch(`${GRAPH_API}/me/permissions?access_token=${shortLivedToken}`);
+    const permsBody = await permsRes.text();
+    await dbg('step3_perms', `body=${permsBody.slice(0, 400)}`);
+
+    // Use whichever has pages
+    let pagesBody = pagesBodyShort;
+    const pagesRes = pagesResShort;
+    const shortParsed = JSON.parse(pagesBodyShort);
+    if (shortParsed?.data?.length === 0) {
+      // Short token also empty, use long token result
+      pagesBody = pagesBodyLong;
+    }
 
     if (!pagesRes.ok) {
       return redirectToApp(appOrigin, 'error', { message: `Could not fetch Pages: ${pagesBody.slice(0, 100)}` });
