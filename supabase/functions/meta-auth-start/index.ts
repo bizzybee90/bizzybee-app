@@ -45,12 +45,13 @@ Deno.serve(async (req) => {
 
     const redirectUri = `${SUPABASE_URL}/functions/v1/meta-auth-callback`;
 
-    // State contains workspaceId and origin for the callback redirect
-    const APP_URL = Deno.env.get('APP_URL') || origin || 'https://bizzybee.app';
+    // Use the actual browser origin for redirects, not the APP_URL env var
+    // (which may point to a domain like app.bizzybee.co.uk that doesn't exist yet)
+    const appOrigin = origin || Deno.env.get('APP_URL') || 'https://bizzybee-app.pages.dev';
     const statePayload = btoa(
       JSON.stringify({
         workspaceId,
-        origin: APP_URL,
+        origin: appOrigin,
       }),
     );
     const state = await signState(statePayload);

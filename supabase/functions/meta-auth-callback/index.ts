@@ -116,12 +116,16 @@ Deno.serve(async (req) => {
     tokenUrl.searchParams.set('redirect_uri', redirectUri);
     tokenUrl.searchParams.set('code', code);
 
+    console.log(
+      '[meta-auth-callback] Token exchange URL:',
+      tokenUrl.toString().replace(META_APP_SECRET, '***'),
+    );
     const tokenRes = await fetch(tokenUrl.toString());
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
-      console.error('[meta-auth-callback] Token exchange failed:', body);
+      console.error('[meta-auth-callback] Token exchange failed:', tokenRes.status, body);
       return redirectToApp(appOrigin, 'error', {
-        message: 'Failed to exchange authorization code',
+        message: `Token exchange failed (${tokenRes.status}): ${body.slice(0, 100)}`,
       });
     }
     const tokenData = await tokenRes.json();
