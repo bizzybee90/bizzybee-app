@@ -197,6 +197,9 @@ export function EmailConnectionStep({
             toastedEmailRef.current = email;
             toast.success(`Connected to ${email}`);
           }
+        } else {
+          setConnectedEmail(null);
+          onEmailConnected('');
         }
       } catch (error) {
         logger.error('Error checking connection', error);
@@ -366,7 +369,7 @@ export function EmailConnectionStep({
         throw lookupError;
       }
 
-      if (existingConfig?.provider?.toLowerCase() === 'imap') {
+      if (existingConfig?.id) {
         const { data, error } = await supabase.functions.invoke('aurinko-reset-account', {
           body: {
             workspaceId,
@@ -378,21 +381,17 @@ export function EmailConnectionStep({
 
         const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
         toast.success(
-          warnings[0] || 'IMAP connection reset. You can reconnect this inbox from scratch now.',
+          warnings[0] || 'Email connection reset. You can reconnect this inbox from scratch now.',
         );
       } else {
-        await Promise.all([
-          supabase.from('email_provider_configs').delete().eq('workspace_id', workspaceId),
-          supabase.from('email_import_progress').delete().eq('workspace_id', workspaceId),
-        ]);
-
-        toast.success('Email disconnected');
+        toast.success('No email connection was found for this workspace.');
       }
 
       setConnectedEmail(null);
       setProgress(null);
       setImportStarted(false);
       toastedEmailRef.current = null;
+      onEmailConnected('');
     } catch (error) {
       logger.error('Failed to disconnect email connection', error);
       toast.error('Failed to disconnect');

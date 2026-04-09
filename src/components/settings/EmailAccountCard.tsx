@@ -215,11 +215,24 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      const { error } = await supabase.from('email_provider_configs').delete().eq('id', config.id);
+      const { data, error } = await supabase.functions.invoke('aurinko-reset-account', {
+        body: {
+          workspaceId: config.workspace_id,
+          configId: config.id,
+        },
+      });
 
       if (error) throw error;
 
-      toast({ title: 'Email disconnected', description: 'Account has been removed' });
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+      toast({
+        title: warnings.length > 0 ? 'Email disconnected with warning' : 'Email disconnected',
+        description:
+          warnings[0] ||
+          data?.message ||
+          'Account has been removed and can be reconnected from scratch.',
+        variant: warnings.length > 0 ? 'destructive' : 'default',
+      });
       onDisconnect();
     } catch (error) {
       logger.error('Error disconnecting email', error);
