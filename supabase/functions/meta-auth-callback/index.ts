@@ -108,31 +108,41 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const redirectUri = `${SUPABASE_URL}/functions/v1/meta-auth-callback`;
 
+    // Debug helper — writes to _meta_auth_debug table so we can see
+    // exactly which step fails (console.log isn't visible in Supabase logs)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const dbg = async (step: string, detail?: string) => {
+      await supabaseAdmin
+        .from('_meta_auth_debug')
+        .insert({ step, detail: detail?.slice(0, 500) })
+        .then(() => {});
+    };
+
+    await dbg('start', `workspace=${workspaceId}, appId=${META_APP_ID}, secret=${META_APP_SECRET.slice(0, 4)}...`);
+
     // --- Step 1: Exchange code for short-lived user token ---
-    console.log('[meta-auth-callback] Exchanging code for token...');
     const tokenUrl = new URL(`${GRAPH_API}/oauth/access_token`);
     tokenUrl.searchParams.set('client_id', META_APP_ID);
     tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
     tokenUrl.searchParams.set('redirect_uri', redirectUri);
     tokenUrl.searchParams.set('code', code);
 
-    console.log(
-      '[meta-auth-callback] Token exchange URL:',
-      tokenUrl.toString().replace(META_APP_SECRET, '***'),
-    );
     const tokenRes = await fetch(tokenUrl.toString());
     if (!tokenRes.ok) {
       const body = await tokenRes.text();
-      console.error('[meta-auth-callback] Token exchange failed:', tokenRes.status, body);
+      await dbg('step1_FAIL', `status=${tokenRes.status} body=${body}`);
       return redirectToApp(appOrigin, 'error', {
         message: `Token exchange failed (${tokenRes.status}): ${body.slice(0, 100)}`,
       });
     }
     const tokenData = await tokenRes.json();
     const shortLivedToken = tokenData.access_token;
+    await dbg('step1_OK', `hasToken=${!!shortLivedToken}, tokenLen=${shortLivedToken?.length}`);
 
     // --- Step 2: Exchange for long-lived user token (60 days) ---
-    console.log('[meta-auth-callback] Exchanging for long-lived token...');
     const longLivedUrl = new URL(`${GRAPH_API}/oauth/access_token`);
     longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
     longLivedUrl.searchParams.set('client_id', META_APP_ID);
@@ -140,30 +150,41 @@ Deno.serve(async (req) => {
     longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
 
     const longLivedRes = await fetch(longLivedUrl.toString());
-    if (!longLivedRes.ok) {
-      const body = await longLivedRes.text();
-      console.error('[meta-auth-callback] Long-lived token exchange failed:', body);
-      // Fall back to short-lived token
+    const longLivedBody = await longLivedRes.text();
+    let longLivedData: Record<string, unknown> | null = null;
+    try {
+      longLivedData = JSON.parse(longLivedBody);
+    } catch {
+      // not JSON
     }
-    const longLivedData = longLivedRes.ok ? await longLivedRes.json() : null;
-    const longLivedUserToken = longLivedData?.access_token || shortLivedToken;
-    const expiresInSeconds = longLivedData?.expires_in || 3600; // 60 days or 1 hour
+    await dbg('step2', `ok=${longLivedRes.ok}, status=${longLivedRes.status}, body=${longLivedBody.slice(0, 200)}`);
+
+    const longLivedUserToken = (longLivedData?.access_token as string) || shortLivedToken;
+    const expiresInSeconds = (longLivedData?.expires_in as number) || 3600;
 
     // --- Step 3: Get list of Pages the user manages ---
-    console.log('[meta-auth-callback] Fetching managed Pages...');
     const pagesRes = await fetch(
       `${GRAPH_API}/me/accounts?access_token=${longLivedUserToken}&fields=id,name,access_token`,
     );
+    const pagesBody = await pagesRes.text();
+    await dbg('step3_raw', `ok=${pagesRes.ok}, status=${pagesRes.status}, body=${pagesBody.slice(0, 300)}`);
+
     if (!pagesRes.ok) {
-      const body = await pagesRes.text();
-      console.error('[meta-auth-callback] Failed to fetch Pages:', body);
-      return redirectToApp(appOrigin, 'error', { message: 'Could not fetch your Facebook Pages' });
+      return redirectToApp(appOrigin, 'error', { message: `Could not fetch Pages: ${pagesBody.slice(0, 100)}` });
     }
-    const pagesData = await pagesRes.json();
+
+    let pagesData: { data?: Array<{ id: string; name: string; access_token: string }> };
+    try {
+      pagesData = JSON.parse(pagesBody);
+    } catch {
+      await dbg('step3_PARSE_FAIL', pagesBody.slice(0, 200));
+      return redirectToApp(appOrigin, 'error', { message: 'Invalid response from Facebook Pages API' });
+    }
+
     const pages = pagesData.data || [];
+    await dbg('step3_pages', `count=${pages.length}, names=${pages.map((p) => p.name).join(',')}`);
 
     if (pages.length === 0) {
-      console.warn('[meta-auth-callback] No Pages found for user');
       return redirectToApp(appOrigin, 'error', {
         message: 'No Facebook Pages found. Make sure you manage at least one Page.',
       });
