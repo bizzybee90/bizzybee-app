@@ -19,6 +19,7 @@ import {
   Plus,
   Globe,
   Play,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
@@ -207,6 +208,8 @@ interface CompetitorItem {
   domain: string;
   url: string;
   is_selected: boolean;
+  discovery_source?: string | null;
+  validation_status?: string | null;
 }
 
 function InlineCompetitorReview({
@@ -221,29 +224,64 @@ function InlineCompetitorReview({
   scrapeComplete?: boolean;
 }) {
   const [competitors, setCompetitors] = useState<CompetitorItem[]>([]);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [manualUrl, setManualUrl] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isRemovingId, setIsRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetch = async () => {
       setIsLoading(true);
-      const { data } = await supabase
-        .from('competitor_sites')
-        .select('id, business_name, domain, url, is_selected, validation_status')
+      const { data: latestJob, error: jobError } = await supabase
+        .from('competitor_research_jobs')
+        .select('id')
         .eq('workspace_id', workspaceId)
-        .in('status', ['discovered', 'validated', 'approved'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (jobError) {
+        logger.error('Failed to load latest competitor job', jobError);
+        setCompetitors([]);
+        setJobId(null);
+        setIsLoading(false);
+        return;
+      }
+
+      setJobId(latestJob?.id ?? null);
+
+      if (!latestJob?.id) {
+        setCompetitors([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('competitor_sites')
+        .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
+        .eq('job_id', latestJob.id)
+        .not('status', 'eq', 'rejected')
+        .order('distance_miles', { ascending: true, nullsFirst: false })
         .order('relevance_score', { ascending: false, nullsFirst: false });
-      setCompetitors(
-        (data || []).map((c) => ({
-          id: c.id,
-          business_name: c.business_name,
-          domain: c.domain,
-          url: c.url,
-          is_selected: c.is_selected ?? true,
-        })),
-      );
+
+      if (error) {
+        logger.error('Failed to load discovered competitors', error);
+        setCompetitors([]);
+      } else {
+        setCompetitors(
+          (data || []).map((c) => ({
+            id: c.id,
+            business_name: c.business_name,
+            domain: c.domain,
+            url: c.url,
+            is_selected: c.is_selected ?? true,
+            discovery_source: c.discovery_source,
+            validation_status: c.validation_status,
+          })),
+        );
+      }
       setIsLoading(false);
     };
     fetch();
@@ -258,6 +296,11 @@ function InlineCompetitorReview({
 
   const addManualUrl = async () => {
     if (!manualUrl.trim()) return;
+    if (!jobId) {
+      toast.error('Competitor discovery is still starting');
+      return;
+    }
+
     let cleanUrl = manualUrl.trim();
     if (!cleanUrl.startsWith('http')) cleanUrl = 'https://' + cleanUrl;
     let hostname: string;
@@ -274,32 +317,26 @@ function InlineCompetitorReview({
     }
 
     setIsAdding(true);
-    // Get latest job_id
-    const { data: job } = await supabase
-      .from('competitor_research_jobs')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
     const { data, error } = await supabase
       .from('competitor_sites')
       .insert({
-        job_id: job?.id || workspaceId,
+        job_id: jobId,
         workspace_id: workspaceId,
         business_name: hostname,
         url: cleanUrl,
         domain: hostname,
         discovery_source: 'manual',
         status: 'approved',
+        scrape_status: 'pending',
         is_selected: true,
+        validation_status: 'pending',
         relevance_score: 100,
       })
-      .select('id, business_name, domain, url, is_selected')
+      .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
       .single();
 
     if (error) {
+      logger.error('Failed to add manual competitor', error);
       toast.error('Failed to add');
     } else if (data) {
       setCompetitors((prev) => [data as CompetitorItem, ...prev]);
@@ -307,6 +344,25 @@ function InlineCompetitorReview({
       toast.success('Competitor added');
     }
     setIsAdding(false);
+  };
+
+  const removeCompetitor = async (id: string) => {
+    const existing = competitors.find((c) => c.id === id);
+    if (!existing) return;
+
+    setIsRemovingId(id);
+    setCompetitors((prev) => prev.filter((c) => c.id !== id));
+
+    const { error } = await supabase.from('competitor_sites').delete().eq('id', id);
+
+    if (error) {
+      logger.error('Failed to remove competitor', error);
+      setCompetitors((prev) => [existing, ...prev]);
+      toast.error('Failed to remove');
+    } else {
+      toast.success('Competitor removed');
+    }
+    setIsRemovingId(null);
   };
 
   const handleStart = async () => {
@@ -367,24 +423,47 @@ function InlineCompetitorReview({
 
       {/* Compact competitor list */}
       <ScrollArea className="h-[280px]">
-        <div className="space-y-1">
-          {competitors.map((c) => (
-            <label
-              key={c.id}
-              className="flex items-center gap-2 p-1.5 rounded hover:bg-accent/50 cursor-pointer text-sm"
-            >
-              <Checkbox
-                checked={c.is_selected}
-                onCheckedChange={(v) => toggleSelection(c.id, !!v)}
-              />
-              <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-              <span className="truncate flex-1">{c.business_name || c.domain}</span>
-              <span className="text-xs text-muted-foreground truncate max-w-[120px]">
-                {c.domain}
-              </span>
-            </label>
-          ))}
-        </div>
+        {competitors.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border/70 bg-background/70 px-3 py-6 text-center text-sm text-muted-foreground">
+            No competitors loaded yet. You can add one manually below if you want to widen the set.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {competitors.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-2 p-1.5 rounded hover:bg-accent/50 text-sm"
+              >
+                <Checkbox
+                  checked={c.is_selected}
+                  onCheckedChange={(v) => toggleSelection(c.id, !!v)}
+                />
+                <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{c.business_name || c.domain}</div>
+                  <div className="truncate text-xs text-muted-foreground">{c.domain}</div>
+                </div>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {c.discovery_source === 'manual' ? 'Manual' : 'Found'}
+                </div>
+                <Button
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  disabled={isRemovingId === c.id}
+                  onClick={() => removeCompetitor(c.id)}
+                >
+                  {isRemovingId === c.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </ScrollArea>
 
       {/* Start/Re-run button — hidden while auto-trigger is in progress, shown when complete for re-runs */}
