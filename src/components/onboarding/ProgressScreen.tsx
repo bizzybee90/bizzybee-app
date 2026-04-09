@@ -65,7 +65,13 @@ const SCRAPE_PHASES = [
   { key: 'failed', label: 'Failed', icon: AlertCircle },
 ];
 
-// Bug 6 Fix: Added 'dispatched' status
+const EMAIL_IMPORT_PHASES = [
+  { key: 'pending', label: 'Waiting to start', icon: Loader2 },
+  { key: 'importing', label: 'Importing emails...', icon: Download },
+  { key: 'complete', label: 'Complete', icon: CheckCircle2 },
+  { key: 'failed', label: 'Failed', icon: AlertCircle },
+];
+
 const EMAIL_PHASES = [
   { key: 'pending', label: 'Waiting for import...', icon: Loader2 },
   { key: 'dispatched', label: 'Starting classification...', icon: FileCheck },
@@ -412,6 +418,10 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     counts: [],
   });
   const [scrapeTrack, setScrapeTrack] = useState<TrackState>({ status: 'waiting', counts: [] });
+  const [emailImportTrack, setEmailImportTrack] = useState<TrackState>({
+    status: 'pending',
+    counts: [],
+  });
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [emailTrack, setEmailTrack] = useState<TrackState>({ status: 'pending', counts: [] });
   const [isLoading, setIsLoading] = useState(!isPreview);
@@ -422,6 +432,14 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   const startTimeRef = useRef<number>(Date.now());
   const autoTriggeredRef = useRef(false);
 
+  const resetDiscoveryTrack = useCallback(() => {
+    setDiscoveryTrack({
+      status: 'starting',
+      counts: [],
+      error: null,
+    });
+  }, []);
+
   // Auto-trigger n8n workflows on mount (fire-and-forget)
   useEffect(() => {
     if (autoTriggeredRef.current || isPreview) return;
@@ -429,21 +447,41 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
 
     const autoTrigger = async () => {
       try {
+        const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+
         // Check competitor_discovery status
         const { data: workflowRecords } = (await supabase
           .from('n8n_workflow_progress' as 'allowed_webhook_ips')
-          .select('workflow_type, status')
+          .select('workflow_type, status, details, updated_at')
           .eq('workspace_id', workspaceId)) as unknown as {
-          data: Array<{ workflow_type: string; status: string }> | null;
+          data: Array<{
+            workflow_type: string;
+            status: string;
+            details?: Record<string, unknown> | null;
+            updated_at?: string | null;
+          }> | null;
         };
 
         const discoveryRecord = workflowRecords?.find(
           (r) => r.workflow_type === 'competitor_discovery',
         );
         const emailRecord = workflowRecords?.find((r) => r.workflow_type === 'email_import');
+        const isDiscoveryStale =
+          !!discoveryRecord?.updated_at &&
+          !['complete', 'failed', 'classification_complete'].includes(discoveryRecord.status) &&
+          Date.now() - new Date(discoveryRecord.updated_at).getTime() > STALE_THRESHOLD_MS;
+        const discoveryFailedWithoutResults =
+          discoveryRecord?.status === 'failed' &&
+          ((discoveryRecord.details?.competitors_found as number | undefined) || 0) === 0;
 
-        // Trigger competitor_discovery if no record or status is pending
-        if (!discoveryRecord || discoveryRecord.status === 'pending') {
+        // Trigger competitor_discovery if no record, still pending, or failed/timed out with no results
+        if (
+          !discoveryRecord ||
+          discoveryRecord.status === 'pending' ||
+          discoveryFailedWithoutResults ||
+          isDiscoveryStale
+        ) {
+          resetDiscoveryTrack();
           supabase.functions
             .invoke('trigger-n8n-workflow', {
               body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
@@ -494,7 +532,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     };
 
     autoTrigger();
-  }, [workspaceId, isPreview]);
+  }, [workspaceId, isPreview, resetDiscoveryTrack]);
 
   // Realtime subscription for live FAQ count + keep ref in sync
   useEffect(() => {
@@ -651,12 +689,33 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           const classifiedEmails =
             totalEmails > 0 ? Math.min(rawClassified, totalEmails) : rawClassified;
 
+          let importStatus: string = 'pending';
           let effectiveEmailStatus = emailStatus;
 
           // Detect learning/voice phase as complete for the progress screen
           const currentPhase = emailProgress?.current_phase as string | undefined;
           const voiceComplete = emailProgress?.voice_profile_complete as boolean | undefined;
           const phase1Done = emailProgress?.phase1_status === 'complete';
+          const estimatedTotal =
+            (emailProgress?.estimated_total_emails as number | undefined) || undefined;
+          const remainingEmails = Math.max(totalEmails - classifiedEmails, 0);
+
+          if (currentPhase === 'error') {
+            importStatus = totalEmails > 0 ? 'complete' : 'failed';
+            effectiveEmailStatus = 'failed';
+          } else if (currentPhase === 'importing') {
+            importStatus = 'importing';
+            effectiveEmailStatus = 'pending';
+          } else if (
+            currentPhase === 'classifying' ||
+            currentPhase === 'learning' ||
+            currentPhase === 'complete' ||
+            currentPhase === 'converting'
+          ) {
+            importStatus = 'complete';
+          } else if (totalEmails > 0) {
+            importStatus = 'complete';
+          }
 
           if (
             currentPhase === 'learning' ||
@@ -695,19 +754,35 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           const percentage =
             totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : 0;
 
+          setEmailImportTrack({
+            status: importStatus,
+            counts: [
+              { label: 'emails imported', value: totalEmails },
+              ...(estimatedTotal && estimatedTotal > totalEmails
+                ? [{ label: 'estimated total', value: estimatedTotal }]
+                : []),
+            ],
+            error:
+              currentPhase === 'error'
+                ? (emailProgress?.last_error as string | undefined) ||
+                  (emailDetails.error as string | undefined)
+                : undefined,
+          });
+
           setEmailTrack({
             status: effectiveEmailStatus,
             counts:
               totalEmails > 0
                 ? [
-                    { label: 'total emails', value: totalEmails },
-                    { label: `classified (${percentage}%)`, value: classifiedEmails },
+                    { label: 'emails classified', value: classifiedEmails },
+                    { label: 'remaining', value: remainingEmails },
                   ]
                 : [],
             error: emailDetails.error as string | undefined,
             actualPercent: percentage,
           });
         } else {
+          setEmailImportTrack({ status: 'pending', counts: [] });
           setEmailTrack({ status: 'pending', counts: [] });
         }
       } catch (error) {
@@ -732,9 +807,11 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   // Bug 4 Fix: Require ALL three tracks to be complete
   const isDiscoveryComplete = discoveryTrack.status === 'complete';
   const isScrapeComplete = scrapeTrack.status === 'complete';
+  const isEmailImportComplete = emailImportTrack.status === 'complete';
   const isEmailComplete =
     emailTrack.status === 'complete' || emailTrack.status === 'classification_complete';
-  const allComplete = isDiscoveryComplete && isScrapeComplete && isEmailComplete;
+  const allComplete =
+    isDiscoveryComplete && isScrapeComplete && isEmailImportComplete && isEmailComplete;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -862,11 +939,18 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         )}
       </div>
 
-      {/* Email Classification */}
+      {/* Email Import + Classification */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">
-          Email Classification
+          Email Training
         </h2>
+        <TrackProgress
+          title="Importing Emails"
+          phases={EMAIL_IMPORT_PHASES}
+          currentStatus={emailImportTrack.status}
+          counts={emailImportTrack.counts}
+          error={emailImportTrack.error}
+        />
         <TrackProgress
           title="Email Classification"
           phases={EMAIL_PHASES}
