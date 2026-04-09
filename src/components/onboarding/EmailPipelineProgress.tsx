@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { Progress } from '@/components/ui/progress';
@@ -149,10 +149,6 @@ function ProgressLine({ currentStage }: { currentStage: number }) {
   );
 }
 
-// n8n classification webhook URL
-const N8N_CLASSIFY_URL = 'https://bizzybee.app.n8n.cloud/webhook/email-classification';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
 export function EmailPipelineProgress({
   workspaceId,
   connectedEmail,
@@ -173,6 +169,19 @@ export function EmailPipelineProgress({
   const [startTime] = useState(Date.now());
   const [showSlowMessage, setShowSlowMessage] = useState(false);
   const classificationTriggeredRef = useRef(false);
+
+  const triggerClassificationWorkflow = useCallback(async () => {
+    const { error } = await supabase.functions.invoke('trigger-n8n-workflow', {
+      body: {
+        workspace_id: workspaceId,
+        workflow_type: 'email_classification',
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  }, [workspaceId]);
 
   // Poll raw_emails for real-time progress every 3 seconds
   useEffect(() => {
@@ -261,19 +270,7 @@ export function EmailPipelineProgress({
       setWebhookError(false);
 
       try {
-        const response = await fetch(N8N_CLASSIFY_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workspace_id: workspaceId,
-            callback_url: `${SUPABASE_URL}/functions/v1/n8n-email-callback`,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Webhook returned ${response.status}`);
-        }
-
+        await triggerClassificationWorkflow();
         logger.debug('n8n classification triggered');
       } catch (error) {
         logger.error('Failed to trigger classification', error);
@@ -284,7 +281,7 @@ export function EmailPipelineProgress({
     };
 
     triggerClassification();
-  }, [importComplete, workspaceId, skipClassification]);
+  }, [importComplete, skipClassification, triggerClassificationWorkflow]);
 
   // Update onboarding_progress when classification completes
   useEffect(() => {

@@ -170,6 +170,7 @@ export function ImapConnectionModal({
       : 'Connect Email';
 
   const needsAppPassword = preset?.requiresAppPassword === 'always';
+  const isFastmail = preset?.name === 'Fastmail';
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -247,6 +248,13 @@ export function ImapConnectionModal({
                   ))}
                 </ol>
               )}
+              {isFastmail && (
+                <div className="rounded-md border border-amber-200 bg-white/70 p-2 text-xs text-amber-900">
+                  Fastmail tip: when you create the app password, choose
+                  <span className="font-medium"> Mail (IMAP/POP/SMTP)</span>. The broader
+                  contacts/calendar option can leave the Aurinko mailbox setup hanging.
+                </div>
+              )}
             </div>
           )}
 
@@ -318,6 +326,13 @@ export function ImapConnectionModal({
           {errorMessage && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {errorMessage}
+            </div>
+          )}
+
+          {isFastmail && (
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+              If Fastmail keeps saying it is loading folders, the most reliable recovery is to
+              delete the stuck Aurinko account and reconnect with a fresh Fastmail app password.
             </div>
           )}
         </div>

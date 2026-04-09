@@ -205,6 +205,31 @@ Deno.serve(async (req) => {
     if (!aurinkoResponse.ok) {
       const errorText = await aurinkoResponse.text();
       console.error('[aurinko-create-imap-account] Aurinko error:', errorText);
+      const normalizedError = errorText.toLowerCase();
+
+      if (
+        normalizedError.includes('mailbox.unavailable') ||
+        normalizedError.includes('loading imap folders')
+      ) {
+        const providerName = inferProviderName(host);
+        const providerSpecificHint =
+          providerName === 'fastmail'
+            ? ' Delete the stuck Aurinko account, then reconnect with a fresh Fastmail app password using Mail (IMAP/POP/SMTP) scope.'
+            : ' Delete the stuck Aurinko account and reconnect this inbox from scratch.';
+
+        return errorResponse(
+          'SERVICE_UNAVAILABLE',
+          `The email provider is still loading mailbox folders.${providerSpecificHint}`,
+          {
+            retryable: true,
+            providerHint: providerName,
+            aurinkoStatus: aurinkoResponse.status,
+            aurinkoHint: errorText.slice(0, 200),
+          },
+          503,
+        );
+      }
+
       return errorResponse(
         'IMAP_UNREACHABLE',
         `Couldn't reach ${host}. Check your server settings.`,
