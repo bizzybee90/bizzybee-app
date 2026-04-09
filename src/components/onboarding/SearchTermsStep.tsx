@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, ChevronRight, Plus, X, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
-import { generateSearchTerms } from '@/lib/generateSearchTerms';
+import { generateSearchTerms, normalizePrimaryServiceLocation } from '@/lib/generateSearchTerms';
 
 interface SearchTermsStepProps {
   workspaceId: string;
@@ -44,7 +44,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         // In preview mode, generate sample terms without querying Supabase
         setBusinessContext({
           businessType: 'window_cleaning',
-          location: 'Luton',
+          location: normalizePrimaryServiceLocation('Luton'),
           companyName: 'Preview Business',
           websiteUrl: '',
         });
@@ -66,7 +66,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         if (data) {
           setBusinessContext({
             businessType: data.business_type || '',
-            location: data.service_area || '',
+            location: normalizePrimaryServiceLocation(data.service_area || ''),
             companyName: data.company_name || '',
             websiteUrl: data.website_url || '',
           });

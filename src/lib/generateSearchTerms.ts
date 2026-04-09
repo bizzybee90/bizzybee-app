@@ -19,18 +19,18 @@ const PRACTITIONER_MAP: Record<string, string> = {
   'upholstery cleaning': 'upholstery cleaner',
   'end of tenancy cleaning': 'end of tenancy cleaner',
   'pressure washing': 'pressure washer',
-  'landscaping': 'landscaper',
-  'plumbing': 'plumber',
-  'roofing': 'roofer',
-  'flooring': 'flooring fitter',
-  'fencing': 'fencing contractor',
-  'decking': 'decking installer',
-  'scaffolding': 'scaffolder',
-  'painting': 'painter',
-  'decorating': 'decorator',
+  landscaping: 'landscaper',
+  plumbing: 'plumber',
+  roofing: 'roofer',
+  flooring: 'flooring fitter',
+  fencing: 'fencing contractor',
+  decking: 'decking installer',
+  scaffolding: 'scaffolder',
+  painting: 'painter',
+  decorating: 'decorator',
   'car valeting': 'car valeter',
   'car servicing': 'mechanic',
-  'gardening': 'gardener',
+  gardening: 'gardener',
   'garden maintenance': 'gardener',
   'lawn care': 'lawn care specialist',
   'dog grooming': 'dog groomer',
@@ -38,17 +38,17 @@ const PRACTITIONER_MAP: Record<string, string> = {
   'dog walking': 'dog walker',
   'pet sitting': 'pet sitter',
   'dog training': 'dog trainer',
-  'photography': 'photographer',
-  'videography': 'videographer',
-  'catering': 'caterer',
+  photography: 'photographer',
+  videography: 'videographer',
+  catering: 'caterer',
   'event planning': 'event planner',
   'wedding planning': 'wedding planner',
-  'bookkeeping': 'bookkeeper',
-  'surveying': 'surveyor',
+  bookkeeping: 'bookkeeper',
+  surveying: 'surveyor',
   'it support': 'it technician',
   'computer repair': 'computer technician',
   'pest control': 'pest controller',
-  'removals': 'removal company',
+  removals: 'removal company',
   'skip hire': 'skip hire company',
   'waste removal': 'waste removal company',
 };
@@ -58,39 +58,43 @@ const RELATED_SERVICES: Record<string, string[]> = {
   'window cleaning': ['gutter cleaning', 'conservatory cleaning', 'fascia cleaning'],
   'carpet cleaning': ['upholstery cleaning', 'rug cleaning'],
   'pressure washing': ['driveway cleaning', 'patio cleaning'],
-  'plumber': ['boiler repair', 'emergency plumber', 'bathroom fitter'],
-  'plumbing': ['boiler repair', 'emergency plumber', 'bathroom fitter'],
-  'electrician': ['emergency electrician', 'electrical testing'],
-  'roofer': ['roof repair', 'flat roofing'],
-  'roofing': ['roof repair', 'flat roofing'],
-  'builder': ['house extension', 'loft conversion'],
+  plumber: ['boiler repair', 'emergency plumber', 'bathroom fitter'],
+  plumbing: ['boiler repair', 'emergency plumber', 'bathroom fitter'],
+  electrician: ['emergency electrician', 'electrical testing'],
+  roofer: ['roof repair', 'flat roofing'],
+  roofing: ['roof repair', 'flat roofing'],
+  builder: ['house extension', 'loft conversion'],
   'painter & decorator': ['interior decorator', 'exterior painting'],
   'painter decorator': ['interior decorator', 'exterior painting'],
-  'landscaping': ['garden design', 'artificial grass'],
-  'gardener': ['garden maintenance', 'hedge trimming'],
-  'handyman': ['property maintenance', 'odd jobs'],
+  landscaping: ['garden design', 'artificial grass'],
+  gardener: ['garden maintenance', 'hedge trimming'],
+  handyman: ['property maintenance', 'odd jobs'],
   'mobile mechanic': ['car servicing', 'mot'],
   'car valeting': ['mobile valeting', 'car detailing'],
   'dog groomer': ['mobile dog groomer', 'pet groomer'],
-  'hairdresser': ['mobile hairdresser', 'hair salon'],
-  'barber': ['barber shop', 'mens haircut'],
-  'locksmith': ['emergency locksmith', '24 hour locksmith'],
+  hairdresser: ['mobile hairdresser', 'hair salon'],
+  barber: ['barber shop', 'mens haircut'],
+  locksmith: ['emergency locksmith', '24 hour locksmith'],
   'gas engineer': ['boiler engineer', 'gas safe engineer'],
   'heating engineer': ['boiler repair', 'central heating'],
 };
 
-export function generateSearchTerms(businessType: string, location: string): string[] {
-  const cleanType = businessType
-    .split(',')[0]
-    .trim()
-    .toLowerCase()
-    .replace(/_/g, ' ');
-
-  const cleanLocation = location
+export function normalizePrimaryServiceLocation(location: string): string {
+  const normalized = location
     .split('|')[0]
     .replace(/\s*\(\d+\s*miles?\)/i, '')
-    .trim()
-    .toLowerCase();
+    .replace(/\s*&\s*surrounding areas?$/i, '')
+    .replace(/\bsurrounding areas?\b/gi, '')
+    .split(',')[0]
+    .trim();
+
+  return normalized;
+}
+
+export function generateSearchTerms(businessType: string, location: string): string[] {
+  const cleanType = businessType.split(',')[0].trim().toLowerCase().replace(/_/g, ' ');
+
+  const cleanLocation = normalizePrimaryServiceLocation(location).toLowerCase();
 
   if (!cleanType || !cleanLocation) return [];
 
@@ -113,8 +117,12 @@ export function generateSearchTerms(businessType: string, location: string): str
 
   // 4. Review-intent term
   const pluralPractitioner = practitioner
-    ? (practitioner.endsWith('s') ? practitioner : practitioner + 's')
-    : (cleanType.endsWith('s') ? cleanType : cleanType + 's');
+    ? practitioner.endsWith('s')
+      ? practitioner
+      : practitioner + 's'
+    : cleanType.endsWith('s')
+      ? cleanType
+      : cleanType + 's';
   terms.push(`best rated ${pluralPractitioner} ${cleanLocation}`);
 
   // 5. Commercial/specialty variant if applicable

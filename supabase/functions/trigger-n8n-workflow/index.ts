@@ -6,6 +6,36 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function normalizePrimaryServiceLocation(location: string | null | undefined): string {
+  if (!location) return '';
+
+  return location
+    .split('|')[0]
+    .replace(/\s*\(\d+\s*miles?\)/i, '')
+    .replace(/\s*&\s*surrounding areas?$/i, '')
+    .replace(/\bsurrounding areas?\b/gi, '')
+    .split(',')[0]
+    .trim();
+}
+
+function normalizeCompetitorSearchQuery(query: string, primaryLocation: string): string {
+  const trimmed = query.trim();
+
+  if (!trimmed || !primaryLocation) return trimmed;
+
+  const looksLikeLegacyServiceArea = trimmed.includes(',') || /surrounding areas?/i.test(trimmed);
+
+  if (!looksLikeLegacyServiceArea) return trimmed;
+
+  const queryLower = trimmed.toLowerCase();
+  const locationLower = primaryLocation.toLowerCase();
+  const locationIndex = queryLower.indexOf(locationLower);
+
+  if (locationIndex === -1) return trimmed;
+
+  return `${trimmed.slice(0, locationIndex)}${primaryLocation}`.replace(/\s+/g, ' ').trim();
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -72,6 +102,14 @@ Deno.serve(async (req) => {
     const emailCallbackUrl = `${supabaseUrl}/functions/v1/n8n-email-callback`;
 
     if (workflow_type === 'competitor_discovery') {
+      const primaryLocation = normalizePrimaryServiceLocation(businessContext?.service_area);
+      const savedSearchQueries = Array.isArray(searchConfig.search_queries)
+        ? (searchConfig.search_queries as string[])
+        : [];
+      const searchQueries = savedSearchQueries
+        .map((query) => normalizeCompetitorSearchQuery(query, primaryLocation))
+        .filter(Boolean);
+
       // Extract domain from website URL for exclusion
       let excludeDomains: string[] = [];
       if (businessContext?.website_url) {
@@ -93,9 +131,9 @@ Deno.serve(async (req) => {
         .insert({
           workspace_id,
           status: 'discovering',
-          niche_query: `${businessContext?.business_type || 'business'} near ${businessContext?.service_area || 'local area'}`,
+          niche_query: `${businessContext?.business_type || 'business'} near ${primaryLocation || 'local area'}`,
           industry: businessContext?.business_type || null,
-          location: businessContext?.service_area || null,
+          location: primaryLocation || null,
           target_count: (searchConfig.target_count as number) || 50,
         })
         .select('id')
@@ -116,9 +154,9 @@ Deno.serve(async (req) => {
         business_name: businessContext?.company_name || 'Unknown Business',
         business_type: businessContext?.business_type || '',
         website_url: businessContext?.website_url || '',
-        location: businessContext?.service_area || '',
+        location: primaryLocation,
         radius_miles: 20,
-        search_queries: (searchConfig.search_queries as string[]) || [],
+        search_queries: searchQueries,
         target_count: (searchConfig.target_count as number) || 50,
         exclude_domains: excludeDomains,
         callback_url: callbackUrl,
