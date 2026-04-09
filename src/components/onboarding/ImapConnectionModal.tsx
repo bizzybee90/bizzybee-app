@@ -40,6 +40,7 @@ export function ImapConnectionModal({
   const [preset, setPreset] = useState<ProviderPreset | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [showManualSettings, setShowManualSettings] = useState(false);
+  const [detectionAttempted, setDetectionAttempted] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   const [manualHost, setManualHost] = useState('');
   const [manualPort, setManualPort] = useState('993');
@@ -49,12 +50,14 @@ export function ImapConnectionModal({
   async function runDetection(emailValue: string) {
     if (!emailValue.includes('@')) return;
     setDetecting(true);
+    setDetectionAttempted(true);
     try {
       const result = await lookupProvider(emailValue);
       setPreset(result);
       if (!result) {
         setShowManualSettings(true);
       } else {
+        setShowManualSettings(false);
         setManualHost(result.host);
         setManualPort(String(result.port));
       }
@@ -68,6 +71,17 @@ export function ImapConnectionModal({
 
   function handleEmailBlur() {
     void runDetection(email);
+  }
+
+  function handleEmailChange(value: string) {
+    setEmail(value);
+    setErrorMessage(null);
+    setDetectionAttempted(false);
+    setPreset(null);
+    setShowManualSettings(false);
+    setShowInstructions(false);
+    setManualHost('');
+    setManualPort('993');
   }
 
   async function handleSubmit() {
@@ -171,6 +185,7 @@ export function ImapConnectionModal({
 
   const needsAppPassword = preset?.requiresAppPassword === 'always';
   const isFastmail = preset?.name === 'Fastmail';
+  const shouldShowManualSettings = showManualSettings || (detectionAttempted && !preset);
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
@@ -193,7 +208,7 @@ export function ImapConnectionModal({
               autoComplete="email"
               placeholder="you@example.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
               onBlur={handleEmailBlur}
               autoFocus
             />
@@ -203,9 +218,34 @@ export function ImapConnectionModal({
               </p>
             )}
             {preset && !detecting && (
-              <p className="text-xs text-green-600 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> Detected: {preset.name}
-              </p>
+              <div className="space-y-2">
+                <p className="text-xs text-green-600 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Detected: {preset.name}
+                </p>
+                <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  BizzyBee filled in the standard secure IMAP settings for {preset.name}:
+                  <span className="ml-1 font-medium text-foreground">
+                    {preset.host}:{preset.port}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-bb-espresso underline underline-offset-2"
+                  onClick={() => setShowManualSettings((current) => !current)}
+                >
+                  {showManualSettings
+                    ? 'Use detected settings instead'
+                    : 'Enter IMAP settings manually'}
+                </button>
+              </div>
+            )}
+            {!preset && detectionAttempted && !detecting && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  BizzyBee could not identify the provider automatically. Enter the IMAP server
+                  details below.
+                </p>
+              </div>
             )}
           </div>
 
@@ -292,7 +332,7 @@ export function ImapConnectionModal({
           </div>
 
           {/* Advanced/manual settings */}
-          {(showManualSettings || !preset) && (
+          {shouldShowManualSettings && (
             <div className="space-y-3 pt-2 border-t border-border">
               <p className="text-xs text-muted-foreground">
                 {preset ? 'Advanced settings' : 'Enter your IMAP settings manually'}
@@ -319,6 +359,11 @@ export function ImapConnectionModal({
                   onChange={(e) => setManualPort(e.target.value)}
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                BizzyBee currently supports standard secure IMAP best. If your provider needs a
+                local bridge client or an unusual port, connect the underlying mailbox provider
+                instead of the mail app.
+              </p>
             </div>
           )}
 

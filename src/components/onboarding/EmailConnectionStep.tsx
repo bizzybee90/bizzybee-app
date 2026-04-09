@@ -89,7 +89,7 @@ const emailProviders = [
     icon: null,
     iconColor: 'text-bb-warm-gray',
     available: true,
-    subtitle: 'Fastmail, Yahoo, ProtonMail, Zoho, or any IMAP provider',
+    subtitle: 'Fastmail, Yahoo, Zoho, custom domains, or another IMAP provider',
   },
 ];
 
