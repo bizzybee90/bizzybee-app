@@ -44,6 +44,9 @@ verify_jwt = false
 [functions.refresh-aurinko-subscriptions]
 verify_jwt = false
 
+[functions.aurinko-reset-account]
+verify_jwt = false
+
 [functions.email-send]
 verify_jwt = false
 

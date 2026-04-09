@@ -70,6 +70,12 @@ const providerIcons: Record<string, string> = {
   Office365: '📬',
   iCloud: '🍎',
   IMAP: '📨',
+  google: '📧',
+  gmail: '📧',
+  office365: '📬',
+  outlook: '📬',
+  icloud: '🍎',
+  imap: '📨',
 };
 
 const providerLabels: Record<string, string> = {
@@ -77,7 +83,24 @@ const providerLabels: Record<string, string> = {
   Office365: 'Outlook',
   iCloud: 'Apple Mail',
   IMAP: 'IMAP',
+  google: 'Gmail',
+  gmail: 'Gmail',
+  office365: 'Outlook',
+  outlook: 'Outlook',
+  icloud: 'Apple Mail',
+  imap: 'IMAP',
 };
+
+function getProviderDisplay(provider: string) {
+  const normalized = provider.trim();
+  return {
+    icon: providerIcons[normalized] || providerIcons[normalized.toLowerCase()] || '📧',
+    label:
+      providerLabels[normalized] ||
+      providerLabels[normalized.toLowerCase()] ||
+      provider.replace(/_/g, ' '),
+  };
+}
 
 const AUTOMATION_LEVELS = [
   {
@@ -114,6 +137,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [aliasesOpen, setAliasesOpen] = useState(false);
   const [newAlias, setNewAlias] = useState('');
   const [addingAlias, setAddingAlias] = useState(false);
@@ -124,6 +148,8 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const currentLevel =
     AUTOMATION_LEVELS.find((l) => l.value === (config.automation_level || 'draft_only')) ||
     AUTOMATION_LEVELS[1];
+  const providerDisplay = getProviderDisplay(config.provider);
+  const isImapConnection = config.provider.toLowerCase() === 'imap';
 
   // Check if subscription is active
   const isSubscriptionActive = config.subscription_expires_at
@@ -200,6 +226,42 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
       toast({ title: 'Failed to disconnect', variant: 'destructive' });
     } finally {
       setDisconnecting(false);
+    }
+  };
+
+  const handleResetConnection = async () => {
+    setResetting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('aurinko-reset-account', {
+        body: {
+          workspaceId: config.workspace_id,
+          configId: config.id,
+        },
+      });
+
+      if (error) throw error;
+
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+      toast({
+        title: warnings.length > 0 ? 'Connection reset with warning' : 'IMAP connection reset',
+        description:
+          warnings[0] ||
+          data?.message ||
+          'BizzyBee removed the old IMAP connection. You can reconnect it from scratch now.',
+        variant: warnings.length > 0 ? 'destructive' : 'default',
+      });
+      onDisconnect();
+    } catch (error: any) {
+      logger.error('Error resetting email connection', error);
+      toast({
+        title: 'Failed to reset connection',
+        description:
+          (typeof error?.message === 'string' && error.message) ||
+          'BizzyBee could not fully reset this IMAP connection.',
+        variant: 'destructive',
+      });
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -303,8 +365,7 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
               <div className="flex items-center gap-2">
                 <span className="font-medium">{config.email_address}</span>
                 <Badge variant="secondary" className="text-xs">
-                  {providerIcons[config.provider] || '📧'}{' '}
-                  {providerLabels[config.provider] || config.provider}
+                  {providerDisplay.icon} {providerDisplay.label}
                 </Badge>
                 <Badge variant="outline" className="text-xs text-green-600">
                   <CheckCircle className="h-3 w-3 mr-1" />
@@ -363,6 +424,41 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
               <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing...' : 'Sync'}
             </Button>
+
+            {isImapConnection && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-amber-700 hover:text-amber-800 border-amber-300"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Reset IMAP
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset this IMAP connection?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Use this if {config.email_address} is stuck loading folders or Aurinko keeps
+                      rejecting reconnect attempts. BizzyBee will remove the local connection and
+                      try to clear the old Aurinko account before you reconnect.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleResetConnection}
+                      disabled={resetting}
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                    >
+                      {resetting ? 'Resetting...' : 'Reset connection'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
 
             <AlertDialog>
               <AlertDialogTrigger asChild>
