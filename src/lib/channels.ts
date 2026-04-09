@@ -135,7 +135,7 @@ export const CHANNEL_DEFINITIONS: Record<ChannelKey, ChannelDefinition> = {
     shortLabel: 'Facebook',
     description: 'Messages from your Facebook business page.',
     onboardingNote: 'Useful for enquiries from your page.',
-    setupMode: 'account_linking',
+    setupMode: 'self_serve',
     surfaces: ['settings', 'dashboard', 'onboarding', 'conversation'],
   },
   instagram: {
@@ -145,7 +145,7 @@ export const CHANNEL_DEFINITIONS: Record<ChannelKey, ChannelDefinition> = {
     shortLabel: 'Instagram',
     description: 'Instagram Direct Messages for social-first customer contact.',
     onboardingNote: 'Ideal for service businesses on social.',
-    setupMode: 'account_linking',
+    setupMode: 'self_serve',
     surfaces: ['settings', 'dashboard', 'onboarding', 'conversation'],
   },
   google_business: {

@@ -281,6 +281,29 @@ export const ChannelManagementPanel = ({
     }
   }, [refreshEmailConfigs, searchParams, setSearchParams, toast]);
 
+  // Handle meta_connected redirect from Meta OAuth callback
+  useEffect(() => {
+    const metaConnected = searchParams.get('meta_connected');
+    const pageName = searchParams.get('page_name');
+
+    if (metaConnected === 'true') {
+      toast({
+        title: 'Facebook connected!',
+        description: pageName
+          ? `${pageName} is now connected for Messenger and Instagram.`
+          : 'Messenger and Instagram are ready.',
+      });
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('meta_connected');
+      nextParams.delete('meta');
+      nextParams.delete('page_name');
+      nextParams.delete('instagram');
+      nextParams.delete('step');
+      setSearchParams(nextParams, { replace: true });
+      void refresh();
+    }
+  }, [refresh, searchParams, setSearchParams, toast]);
+
   useEffect(() => {
     if (loading || (mode === 'settings' && workspaceLoading)) {
       return;
@@ -315,6 +338,37 @@ export const ChannelManagementPanel = ({
       }
     });
   }, [loading, mode, searchParams, workspaceLoading]);
+
+  const handleConnectMeta = async () => {
+    if (!activeWorkspaceId) {
+      toast({
+        title: 'Workspace not loaded',
+        description: 'Please refresh the page',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setConnecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('meta-auth-start', {
+        body: { workspaceId: activeWorkspaceId, origin: window.location.origin },
+      });
+
+      if (error) throw error;
+
+      if (data?.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        toast({ title: 'Failed to get Facebook auth URL', variant: 'destructive' });
+        setConnecting(false);
+      }
+    } catch (error) {
+      logger.error('Error starting Meta OAuth', error);
+      toast({ title: 'Failed to connect Facebook', variant: 'destructive' });
+      setConnecting(false);
+    }
+  };
 
   const handleConnectEmail = async () => {
     logger.debug('handleConnectEmail called', {
@@ -756,6 +810,17 @@ export const ChannelManagementPanel = ({
       return (
         <Button size="sm" variant="outline" onClick={() => openSettingsSection('email')}>
           {getChannelSetupActionLabel(definition, state)}
+        </Button>
+      );
+    }
+
+    if (
+      (definition.key === 'facebook' || definition.key === 'instagram') &&
+      state === 'needs_connection'
+    ) {
+      return (
+        <Button size="sm" variant="outline" onClick={handleConnectMeta} disabled={connecting}>
+          {connecting ? 'Connecting...' : 'Connect with Facebook'}
         </Button>
       );
     }
