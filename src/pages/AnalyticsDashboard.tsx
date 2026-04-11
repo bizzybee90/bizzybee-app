@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -49,7 +50,7 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsDashboard() {
-  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const [timeRange, setTimeRange] = useState<TimeRange>('7days');
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -222,6 +223,69 @@ export default function AnalyticsDashboard() {
 
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  if (entitlements && !entitlements.features.analytics) {
+    const lockedContent = (
+      <div className="flex h-full items-center justify-center p-6">
+        <Card className="max-w-xl border-[0.5px] border-bb-border bg-bb-white">
+          <CardContent className="p-8 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bb-gold/10 text-bb-gold">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <h1 className="mt-4 text-2xl font-medium text-bb-text">
+              Analytics unlocks on Growth and above
+            </h1>
+            <p className="mt-3 text-sm text-bb-warm-gray">
+              This workspace is not on a plan that includes analytics yet. Upgrade to Growth or Pro
+              to unlock conversation trends, containment, response times, and channel performance.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <Button asChild>
+                <Link to="/settings">Review plan</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/">Back to inbox</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+    if (isMobile) {
+      return (
+        <>
+          <div className="flex h-screen w-full bg-bb-linen overflow-hidden flex-col">
+            <header className="flex-shrink-0 h-14 border-b border-bb-border bg-bb-white px-4 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarOpen(true)}
+                className="h-9 w-9"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              <h1 className="text-lg font-medium text-bb-text truncate">Analytics</h1>
+              <div className="w-9" />
+            </header>
+            <main className="flex-1 overflow-y-auto p-4">{lockedContent}</main>
+          </div>
+          <MobileSidebarSheet
+            open={sidebarOpen}
+            onOpenChange={setSidebarOpen}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+        </>
+      );
+    }
+
+    return (
+      <div className="flex h-screen w-full bg-bb-linen overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto p-6">{lockedContent}</main>
+      </div>
+    );
+  }
 
   if (isMobile) {
     return (

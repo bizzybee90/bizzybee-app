@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { isOnboardingComplete } from '@/lib/onboardingStatus';
+import { logger } from '@/lib/logger';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import { WorkspaceContext } from './workspace-context';
 
 const PREVIEW_WORKSPACE: Workspace = {
@@ -21,6 +23,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const { data: entitlements, isLoading: entitlementsLoading } = useEntitlements(
+    workspace?.id ?? null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -52,64 +57,86 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (cancelled) return;
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (cancelled) return;
 
-      if (!user) {
-        setWorkspace(null);
-        setOnboardingStep(null);
-        setOnboardingComplete(false);
-        setLoading(false);
-        return;
-      }
+        if (userError) {
+          throw userError;
+        }
 
-      const { data: userData } = await supabase
-        .from('users')
-        .select('workspace_id, onboarding_completed, onboarding_step')
-        .eq('id', user.id)
-        .single();
+        if (!user) {
+          setWorkspace(null);
+          setOnboardingStep(null);
+          setOnboardingComplete(false);
+          return;
+        }
 
-      if (cancelled) return;
+        const { data: userData, error: profileError } = await supabase
+          .from('users')
+          .select('workspace_id, onboarding_completed, onboarding_step')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      const nextOnboardingStep = userData?.onboarding_step ?? null;
-      setOnboardingStep(nextOnboardingStep);
+        if (cancelled) return;
 
-      if (!userData?.workspace_id) {
-        setOnboardingComplete(false);
-        setWorkspace(null);
-        setLoading(false);
-        return;
-      }
+        if (profileError) {
+          throw profileError;
+        }
 
-      const { data: workspaceData } = await supabase
-        .from('workspaces')
-        .select('*')
-        .eq('id', userData.workspace_id)
-        .single();
+        setOnboardingStep(userData?.onboarding_step ?? null);
 
-      const { data: businessContextData } = await supabase
-        .from('business_context')
-        .select('company_name')
-        .eq('workspace_id', userData.workspace_id)
-        .maybeSingle();
+        if (!userData?.workspace_id) {
+          setOnboardingComplete(false);
+          setWorkspace(null);
+          return;
+        }
 
-      const nextWorkspace = workspaceData ?? null;
-      const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
-      const nextOnboardingComplete =
-        isOnboardingComplete(userData) &&
-        hasBusinessIdentity &&
-        !isPlaceholderWorkspace(nextWorkspace);
+        const [
+          { data: workspaceData, error: workspaceError },
+          { data: businessContextData, error: businessContextError },
+        ] = await Promise.all([
+          supabase.from('workspaces').select('*').eq('id', userData.workspace_id).maybeSingle(),
+          supabase
+            .from('business_context')
+            .select('company_name')
+            .eq('workspace_id', userData.workspace_id)
+            .maybeSingle(),
+        ]);
 
-      setOnboardingComplete(nextOnboardingComplete);
+        if (cancelled) return;
 
-      if (!cancelled) {
+        if (workspaceError) {
+          throw workspaceError;
+        }
+
+        if (businessContextError) {
+          throw businessContextError;
+        }
+
+        const nextWorkspace = workspaceData ?? null;
+        const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
+        const nextOnboardingComplete =
+          isOnboardingComplete(userData) &&
+          hasBusinessIdentity &&
+          !isPlaceholderWorkspace(nextWorkspace);
+
+        setOnboardingComplete(nextOnboardingComplete);
         setWorkspace(nextWorkspace);
-      }
-
-      if (!cancelled) {
-        setLoading(false);
+      } catch (error) {
+        if (!cancelled) {
+          logger.error('Failed to load workspace context', error);
+          setWorkspace(null);
+          setOnboardingStep(null);
+          setOnboardingComplete(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -138,6 +165,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         onboardingStep,
         onboardingComplete,
         needsOnboarding: !onboardingComplete,
+        entitlements: entitlements ?? null,
+        entitlementsLoading,
       }}
     >
       {children}

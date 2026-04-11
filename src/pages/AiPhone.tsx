@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
@@ -6,6 +7,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAiPhoneConfig } from '@/hooks/useAiPhoneConfig';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
 import { BarChart3, Settings, BookOpen } from 'lucide-react';
 import { StatsBar } from '@/components/ai-phone/StatsBar';
 import { CallLogTable } from '@/components/ai-phone/CallLogTable';
@@ -22,10 +24,39 @@ const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
 ];
 
 const AiPhone = () => {
-  const { workspace } = useWorkspace();
+  const { workspace, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
   const { config, isLoading } = useAiPhoneConfig();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+
+  if (entitlements && !entitlements.canUseAiPhone) {
+    const lockedContent = (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-lg rounded-3xl border border-bb-border bg-bb-white p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-medium text-bb-text">AI Phone is an add-on</h1>
+          <p className="mt-3 text-sm text-bb-warm-gray">
+            This workspace does not have the AI Phone add-on enabled yet. Once it is active,
+            BizzyBee will unlock phone provisioning, call handling, and the voice knowledge base
+            here.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button asChild>
+              <Link to="/settings?category=connections&section=provider">Review add-ons</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/channels">Back to channels</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+
+    if (isMobile) {
+      return <MobilePageLayout title="AI Phone">{lockedContent}</MobilePageLayout>;
+    }
+
+    return <ThreeColumnLayout sidebar={<Sidebar />} main={lockedContent} />;
+  }
 
   const content = (
     <div className="flex flex-col h-full">

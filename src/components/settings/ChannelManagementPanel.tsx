@@ -42,6 +42,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PanelNotice } from './PanelNotice';
+import { resolveWorkspaceEntitlements } from '@/lib/billing/entitlements';
 import {
   CHANNEL_ROUTING_FIELDS,
   getChannelConnectionLabel,
@@ -117,7 +118,7 @@ export const ChannelManagementPanel = ({
   focusChannelKey = null,
   onFocusHandled,
 }: ChannelManagementPanelProps) => {
-  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const { isAdmin } = useUserRole();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -129,6 +130,7 @@ export const ChannelManagementPanel = ({
   const [selectedProvider, setSelectedProvider] = useState<string>('gmail');
   const [selectedImportMode, setSelectedImportMode] = useState<string>('all_historical_90_days');
   const activeWorkspaceId = forcedWorkspaceId ?? workspace?.id;
+  const activeEntitlements = entitlements ?? resolveWorkspaceEntitlements(null, []);
   const canManageChannels = mode === 'onboarding' || isAdmin;
   const emailSectionRef = useRef<HTMLDivElement>(null);
   const messagingSectionRef = useRef<HTMLDivElement>(null);
@@ -231,6 +233,68 @@ export const ChannelManagementPanel = ({
     outlook: 'Outlook / Microsoft 365',
     icloud: 'Apple Mail / iCloud',
     imap: 'Other (IMAP)',
+  };
+
+  const getChannelEntitlement = (channelKey: ChannelKey) => {
+    switch (channelKey) {
+      case 'email':
+        return {
+          available: activeEntitlements.features.unified_inbox,
+          aiAutomation: activeEntitlements.canUseAiInbox,
+          message: activeEntitlements.canUseAiInbox
+            ? null
+            : 'This plan includes the unified inbox. Upgrade to Starter or above for AI drafts and learning.',
+        };
+      case 'sms':
+        return {
+          available: activeEntitlements.canUseSmsRouting || activeEntitlements.canUseSmsAi,
+          aiAutomation: activeEntitlements.canUseSmsAi,
+          message: activeEntitlements.canUseSmsAi
+            ? null
+            : activeEntitlements.canUseSmsRouting
+              ? 'SMS routing is included on your current plan. Upgrade to SMS AI for drafting and automation.'
+              : 'Add SMS Routing on Connect or SMS AI on Starter and above to use SMS here.',
+        };
+      case 'whatsapp':
+        return {
+          available:
+            activeEntitlements.canUseWhatsAppRouting || activeEntitlements.canUseWhatsAppAi,
+          aiAutomation: activeEntitlements.canUseWhatsAppAi,
+          message: activeEntitlements.canUseWhatsAppAi
+            ? null
+            : activeEntitlements.canUseWhatsAppRouting
+              ? 'WhatsApp routing is included on your current plan. Upgrade to WhatsApp AI for drafting and automation.'
+              : 'Add WhatsApp Routing on Connect or WhatsApp AI on Starter and above to use WhatsApp here.',
+        };
+      case 'facebook':
+      case 'instagram':
+      case 'google_business':
+        return {
+          available: true,
+          aiAutomation: activeEntitlements.canUseAiInbox,
+          message: activeEntitlements.canUseAiInbox
+            ? null
+            : 'This plan includes routing only. Upgrade to Starter or above for AI replies and automation.',
+        };
+      case 'phone':
+        return {
+          available: activeEntitlements.canUseAiPhone,
+          aiAutomation: activeEntitlements.canUseAiPhone,
+          message: 'Add AI Phone to unlock voice setup and automation.',
+        };
+      case 'webchat':
+        return {
+          available: false,
+          aiAutomation: false,
+          message: 'Web Chat is still planned and is not yet ready for self-serve activation.',
+        };
+      default:
+        return {
+          available: true,
+          aiAutomation: activeEntitlements.canUseAiInbox,
+          message: null,
+        };
+    }
   };
 
   const getConfigValue = (config: unknown, key: string) => {
@@ -432,11 +496,29 @@ export const ChannelManagementPanel = ({
       return;
     }
 
+    const definition = getChannelDefinition(channel.channel);
+    const entitlement = definition ? getChannelEntitlement(definition.key) : null;
+
+    if (definition && entitlement && !entitlement.available) {
+      toast({
+        title: `${definition.label} needs a plan upgrade`,
+        description: entitlement.message ?? 'This channel is not included on the current plan.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       if (channel.id) {
         const { error } = await supabase
           .from('workspace_channels')
-          .update({ enabled: !channel.enabled })
+          .update({
+            enabled: !channel.enabled,
+            automation_level:
+              !channel.enabled && entitlement && !entitlement.aiAutomation
+                ? 'disabled'
+                : channel.automation_level,
+          })
           .eq('id', channel.id);
 
         if (error) throw error;
@@ -455,7 +537,10 @@ export const ChannelManagementPanel = ({
             workspace_id: activeWorkspaceId,
             channel: channel.channel,
             enabled: true,
-            automation_level: channel.automation_level || 'draft_only',
+            automation_level:
+              entitlement && !entitlement.aiAutomation
+                ? 'disabled'
+                : channel.automation_level || 'draft_only',
             config: channel.config ?? null,
           })
           .select('id, channel, enabled, automation_level, config')
@@ -481,6 +566,25 @@ export const ChannelManagementPanel = ({
     automationLevel: string,
   ) => {
     try {
+      const definition = getChannelDefinition(channel.channel);
+      const entitlement = definition ? getChannelEntitlement(definition.key) : null;
+
+      if (definition && entitlement && !entitlement.available) {
+        throw new Error(entitlement.message ?? `${definition.label} is not included on this plan`);
+      }
+
+      if (
+        definition &&
+        entitlement &&
+        !entitlement.aiAutomation &&
+        automationLevel !== 'disabled'
+      ) {
+        throw new Error(
+          entitlement.message ??
+            `${definition.label} needs AI access before automation can be enabled`,
+        );
+      }
+
       if (!activeWorkspaceId) {
         throw new Error('Workspace not loaded');
       }
@@ -507,7 +611,8 @@ export const ChannelManagementPanel = ({
             workspace_id: activeWorkspaceId,
             channel: channel.channel,
             enabled: true,
-            automation_level: automationLevel,
+            automation_level:
+              entitlement && !entitlement.aiAutomation ? 'disabled' : automationLevel,
             config: channel.config ?? null,
           })
           .select('id, channel, enabled, automation_level, config')
@@ -1109,6 +1214,7 @@ export const ChannelManagementPanel = ({
               JSON.stringify(draftConfig) !== JSON.stringify(channel.config ?? {});
             const draftProgress = getChannelSetupProgress(definition.key, draftConfig);
             const isSavingConfig = savingChannelKey === definition.key;
+            const entitlement = getChannelEntitlement(definition.key);
             const missingRoutingSummary =
               draftProgress.missingLabels.length > 0
                 ? `${draftProgress.missingLabels.length} required ${
@@ -1162,6 +1268,14 @@ export const ChannelManagementPanel = ({
                               Not configured yet
                             </Badge>
                           )}
+                          {!entitlement.available && (
+                            <Badge
+                              variant="outline"
+                              className="border-rose-200 bg-rose-50 text-rose-700"
+                            >
+                              Upgrade required
+                            </Badge>
+                          )}
                           <Badge
                             variant="outline"
                             className={`text-xs ${getConnectionBadgeClasses(connectionState)}`}
@@ -1195,7 +1309,11 @@ export const ChannelManagementPanel = ({
                         <Switch
                           checked={channel.enabled}
                           onCheckedChange={() => toggleChannel(channel)}
-                          disabled={definition.key === 'webchat' || !canManageChannels}
+                          disabled={
+                            definition.key === 'webchat' ||
+                            !canManageChannels ||
+                            !entitlement.available
+                          }
                           aria-label={`Toggle ${definition.label}`}
                         />
                       </div>
@@ -1211,36 +1329,48 @@ export const ChannelManagementPanel = ({
                   {/* Automation level selector */}
                   {expanded && channel.enabled && definition.key !== 'webchat' && (
                     <div className="pl-11 pt-2 border-t space-y-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <ModeIcon className={`h-3.5 w-3.5 ${currentMode?.color}`} />
-                        <span className="text-xs font-medium">AI Automation Mode</span>
-                      </div>
-                      <Select
-                        value={channel.automation_level || 'draft_only'}
-                        onValueChange={(value) => updateChannelAutomation(channel, value)}
-                      >
-                        <SelectTrigger className="w-full h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {automationModes.map((mode) => {
-                            const MIcon = mode.icon;
-                            return (
-                              <SelectItem key={mode.value} value={mode.value}>
-                                <div className="flex items-center gap-2">
-                                  <MIcon className={`h-3.5 w-3.5 ${mode.color}`} />
-                                  <div>
-                                    <span className="font-medium">{mode.label}</span>
-                                    <span className="text-muted-foreground ml-1">
-                                      - {mode.description}
-                                    </span>
-                                  </div>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                      {entitlement.aiAutomation ? (
+                        <>
+                          <div className="flex items-center gap-2 mb-2">
+                            <ModeIcon className={`h-3.5 w-3.5 ${currentMode?.color}`} />
+                            <span className="text-xs font-medium">AI Automation Mode</span>
+                          </div>
+                          <Select
+                            value={channel.automation_level || 'draft_only'}
+                            onValueChange={(value) => updateChannelAutomation(channel, value)}
+                          >
+                            <SelectTrigger className="w-full h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {automationModes.map((mode) => {
+                                const MIcon = mode.icon;
+                                return (
+                                  <SelectItem key={mode.value} value={mode.value}>
+                                    <div className="flex items-center gap-2">
+                                      <MIcon className={`h-3.5 w-3.5 ${mode.color}`} />
+                                      <div>
+                                        <span className="font-medium">{mode.label}</span>
+                                        <span className="text-muted-foreground ml-1">
+                                          - {mode.description}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </>
+                      ) : (
+                        <div className="rounded-xl border border-bb-border bg-bb-linen/70 p-3 text-sm text-bb-warm-gray">
+                          <p className="font-medium text-bb-text">Manual routing on current plan</p>
+                          <p className="mt-1">
+                            {entitlement.message ??
+                              'This channel is available for routing only until AI access is added.'}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex flex-col gap-2 rounded-xl border border-bb-border bg-bb-linen/70 p-3 md:flex-row md:items-center md:justify-between">
                         <div>
@@ -1480,7 +1610,9 @@ export const ChannelManagementPanel = ({
                       </Button>
                     ) : card.id === 'ai-phone' ? (
                       <Button size="sm" variant="outline" asChild>
-                        <Link to="/ai-phone">Open AI Phone</Link>
+                        <Link to="/ai-phone">
+                          {activeEntitlements.canUseAiPhone ? 'Open AI Phone' : 'Add AI Phone'}
+                        </Link>
                       </Button>
                     ) : card.id === 'twilio' ? (
                       <Button

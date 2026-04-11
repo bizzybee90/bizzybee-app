@@ -49,7 +49,7 @@ export const Sidebar = ({
 }: SidebarProps = {}) => {
   const isCollapsed = !isMobileDrawer && forceCollapsed;
   const isPreviewMode = isPreviewModeEnabled();
-  const { workspace, needsOnboarding, loading: workspaceLoading } = useWorkspace();
+  const { workspace, needsOnboarding, loading: workspaceLoading, entitlements } = useWorkspace();
 
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
@@ -185,14 +185,18 @@ export const Sidebar = ({
     { to: '/snoozed', icon: Clock, label: 'Snoozed', count: viewCounts?.snoozed },
     { to: '/done', icon: Archive, label: 'Cleared', count: viewCounts?.done },
     { to: '/sent', icon: Send, label: 'Sent' },
-    { to: '/ai-phone', icon: Phone, label: 'AI phone' },
+    ...(entitlements?.canUseAiPhone ? [{ to: '/ai-phone', icon: Phone, label: 'AI phone' }] : []),
   ];
 
   const secondaryItems: NavItem[] = [
     { to: '/channels', icon: MessageSquare, label: 'Channels' },
     { to: '/reviews', icon: Star, label: 'Reviews' },
-    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-    { to: '/knowledge-base', icon: BookOpen, label: 'Knowledge base' },
+    ...(entitlements?.features.analytics
+      ? [{ to: '/analytics', icon: BarChart3, label: 'Analytics' }]
+      : []),
+    ...(entitlements?.features.knowledge_base
+      ? [{ to: '/knowledge-base', icon: BookOpen, label: 'Knowledge base' }]
+      : []),
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 

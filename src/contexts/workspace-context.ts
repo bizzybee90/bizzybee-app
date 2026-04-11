@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type { Workspace } from '@/lib/types';
+import type { WorkspaceEntitlements } from '@/lib/billing/entitlements';
 
 export interface WorkspaceContextValue {
   workspace: Workspace | null;
@@ -7,6 +8,8 @@ export interface WorkspaceContextValue {
   onboardingStep: string | null;
   onboardingComplete: boolean;
   needsOnboarding: boolean;
+  entitlements: WorkspaceEntitlements | null;
+  entitlementsLoading: boolean;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue>({
@@ -15,4 +18,6 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   onboardingStep: null,
   onboardingComplete: false,
   needsOnboarding: true,
+  entitlements: null,
+  entitlementsLoading: true,
 });

@@ -1,14 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
-import { Mail, CheckCircle2, Loader2 } from 'lucide-react';
+import { Mail, CheckCircle2, Loader2, Clock, AlertCircle, Sparkles, Brain } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { EmailPipelineProgress } from './EmailPipelineProgress';
 import { ImapConnectionModal } from './ImapConnectionModal';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import {
+  deriveEmailImportState,
+  type EmailImportPhase,
+  type EmailImportProgressRow,
+  type EmailPipelineRunStatus,
+  type EmailProviderConfigStatus,
+} from '@/lib/email/importStatus';
 
 interface EmailConnectionStepProps {
   workspaceId: string;
@@ -21,7 +28,7 @@ type Provider = 'gmail' | 'outlook' | 'icloud' | 'imap';
 type ImportMode = 'new_only' | 'last_1000' | 'last_10000' | 'last_30000' | 'all_history';
 
 interface MakeProgress {
-  status: string;
+  status: 'idle' | 'queued' | 'importing' | 'classifying' | 'learning' | 'complete' | 'error';
   emails_imported: number;
   emails_classified: number;
   emails_total: number;
@@ -31,35 +38,150 @@ interface MakeProgress {
   completed_at: string | null;
 }
 
-type ImportPhase =
-  | 'idle'
-  | 'connecting'
-  | 'importing'
-  | 'classifying'
-  | 'analyzing'
-  | 'learning'
-  | 'complete'
-  | 'error';
+function normalizeProgressStatus(phase: EmailImportPhase): MakeProgress['status'] {
+  switch (phase) {
+    case 'idle':
+      return 'idle';
+    case 'queued':
+      return 'queued';
+    case 'classifying':
+      return 'classifying';
+    case 'learning':
+      return 'learning';
+    case 'complete':
+      return 'complete';
+    case 'error':
+    case 'rate_limited':
+      return 'error';
+    default:
+      return 'importing';
+  }
+}
 
-function mapImportProgressRowToMakeProgress(row: any): MakeProgress {
-  // We intentionally keep this component’s existing UI model (MakeProgress)
-  // and adapt the new pipeline table (`email_import_progress`) into it.
-  const status = (row?.current_phase || 'idle') as ImportPhase;
-  const emailsReceived = Number(row?.emails_received ?? 0);
-  const emailsClassified = Number(row?.emails_classified ?? 0);
-  const estimatedTotal = Number(row?.estimated_total_emails ?? 0);
-
+function mapDerivedStateToMakeProgress(
+  state: ReturnType<typeof deriveEmailImportState>,
+): MakeProgress | null {
+  if (state.phase === 'idle') return null;
   return {
-    status,
-    // Best-effort: older UI wants “emails_imported”; pipeline tracks received.
-    emails_imported: emailsReceived,
-    emails_classified: emailsClassified,
-    emails_total: estimatedTotal,
-    voice_profile_complete: Boolean(row?.voice_profile_complete ?? false),
-    error_message: row?.last_error ?? null,
-    started_at: row?.started_at ?? null,
-    completed_at: row?.completed_at ?? null,
+    status: normalizeProgressStatus(state.phase),
+    emails_imported: state.emailsReceived,
+    emails_classified: state.emailsClassified,
+    emails_total: Math.max(state.estimatedTotal, state.emailsReceived),
+    voice_profile_complete: state.phase === 'complete',
+    error_message: state.errorMessage,
+    started_at: null,
+    completed_at: state.phase === 'complete' ? new Date().toISOString() : null,
   };
+}
+
+function getConnectionProgressCopy(
+  progress: MakeProgress | null,
+): {
+  icon:
+    | typeof Clock
+    | typeof Loader2
+    | typeof Sparkles
+    | typeof Brain
+    | typeof CheckCircle2
+    | typeof AlertCircle;
+  title: string;
+  description: string;
+  className: string;
+} | null {
+  if (!progress || progress.status === 'idle') return null;
+
+  switch (progress.status) {
+    case 'queued':
+      return {
+        icon: Clock,
+        title: 'Import queued',
+        description: 'BizzyBee has the connection and the import worker will pick it up shortly.',
+        className: 'border-border bg-muted/50 text-muted-foreground',
+      };
+    case 'importing':
+      return {
+        icon: Loader2,
+        title: 'Importing emails',
+        description: 'BizzyBee is pulling messages from your inbox in the background.',
+        className: 'border-primary/20 bg-primary/5 text-foreground',
+      };
+    case 'classifying':
+      return {
+        icon: Sparkles,
+        title: 'Classifying emails',
+        description: 'BizzyBee is categorising messages automatically after import.',
+        className: 'border-primary/20 bg-primary/5 text-foreground',
+      };
+    case 'learning':
+      return {
+        icon: Brain,
+        title: 'Learning your voice',
+        description: 'BizzyBee is training on the imported emails in the background.',
+        className: 'border-primary/20 bg-primary/5 text-foreground',
+      };
+    case 'complete':
+      return {
+        icon: CheckCircle2,
+        title: 'Import complete',
+        description: 'BizzyBee has finished this import pass and is ready for the next step.',
+        className: 'border-success/20 bg-success/5 text-success',
+      };
+    case 'error':
+      return {
+        icon: AlertCircle,
+        title: 'Import blocked',
+        description: progress.error_message || 'BizzyBee could not start or continue the import.',
+        className: 'border-destructive/20 bg-destructive/5 text-destructive',
+      };
+    default:
+      return null;
+  }
+}
+
+function getFunctionErrorMessage(error: unknown, data: any, fallback: string): string {
+  const payload = data && typeof data === 'object' ? data : null;
+  const message =
+    (payload && typeof payload.message === 'string' && payload.message) ||
+    (payload && typeof payload.error === 'string' && payload.error) ||
+    (payload && typeof payload.details === 'string' && payload.details) ||
+    (error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : null);
+
+  return message || fallback;
+}
+
+async function getFunctionErrorMessageAsync(
+  error: unknown,
+  data: any,
+  fallback: string,
+): Promise<string> {
+  const directMessage = getFunctionErrorMessage(error, data, '');
+  if (directMessage && directMessage !== 'Edge Function returned a non-2xx status code') {
+    return directMessage;
+  }
+
+  const errorContext =
+    error && typeof error === 'object' && 'context' in error
+      ? ((error as { context?: unknown }).context as Response | undefined)
+      : undefined;
+
+  if (errorContext && typeof errorContext.clone === 'function') {
+    try {
+      const payload = await errorContext.clone().json();
+      const payloadMessage = getFunctionErrorMessage(null, payload, '');
+      if (payloadMessage) {
+        return payloadMessage;
+      }
+    } catch {
+      // Ignore non-JSON error bodies and fall back below.
+    }
+  }
+
+  return fallback;
 }
 
 const emailProviders = [
@@ -128,6 +250,58 @@ const importModes = [
   },
 ];
 
+const IMPORT_MODE_LIMITS: Record<ImportMode, number> = {
+  new_only: 0,
+  last_1000: 1_000,
+  last_10000: 10_000,
+  last_30000: 30_000,
+  all_history: Number.POSITIVE_INFINITY,
+};
+
+function getAllowedImportModes(emailHistoryImportLimit: number, aiInboxEnabled: boolean) {
+  if (!aiInboxEnabled || emailHistoryImportLimit <= 0) {
+    return importModes.filter((mode) => mode.value === 'new_only');
+  }
+
+  return importModes.filter((mode) => {
+    if (mode.value === 'new_only') {
+      return true;
+    }
+
+    return IMPORT_MODE_LIMITS[mode.value] <= emailHistoryImportLimit;
+  });
+}
+
+function getDefaultImportMode(
+  emailHistoryImportLimit: number,
+  aiInboxEnabled: boolean,
+): ImportMode {
+  if (!aiInboxEnabled || emailHistoryImportLimit <= 0) {
+    return 'new_only';
+  }
+
+  if (emailHistoryImportLimit >= 30_000) {
+    return 'last_30000';
+  }
+
+  if (emailHistoryImportLimit >= 10_000) {
+    return 'last_10000';
+  }
+
+  if (emailHistoryImportLimit >= 1_000) {
+    return 'last_1000';
+  }
+
+  return 'new_only';
+}
+
+function formatEmailHistoryLimit(limit: number): string {
+  if (limit >= 30_000) return '30,000 emails';
+  if (limit >= 10_000) return '10,000 emails';
+  if (limit >= 1_000) return '1,000 emails';
+  return 'new emails only';
+}
+
 // Supabase project URL for edge functions
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
@@ -138,6 +312,7 @@ export function EmailConnectionStep({
   onEmailConnected,
 }: EmailConnectionStepProps) {
   const isPreview = workspaceId === 'preview-workspace';
+  const { data: entitlements } = useEntitlements(workspaceId);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
@@ -146,9 +321,23 @@ export function EmailConnectionStep({
   const [initialLoading, setInitialLoading] = useState(true);
   const [importStarted, setImportStarted] = useState(false);
   const [progress, setProgress] = useState<MakeProgress | null>(null);
+  const [emailConfigId, setEmailConfigId] = useState<string | null>(null);
 
   const toastedEmailRef = useRef<string | null>(null);
   const pollIntervalRef = useRef<number | undefined>(undefined);
+  const aiInboxEnabled = entitlements?.canUseAiInbox ?? true;
+  const emailHistoryImportLimit = entitlements?.limits.emailHistoryImportLimit ?? 30_000;
+  const allowedImportModes = useMemo(
+    () => getAllowedImportModes(emailHistoryImportLimit, aiInboxEnabled),
+    [emailHistoryImportLimit, aiInboxEnabled],
+  );
+  const importLimitLabel = formatEmailHistoryLimit(emailHistoryImportLimit);
+
+  useEffect(() => {
+    if (!allowedImportModes.some((mode) => mode.value === importMode)) {
+      setImportMode(getDefaultImportMode(emailHistoryImportLimit, aiInboxEnabled));
+    }
+  }, [allowedImportModes, aiInboxEnabled, emailHistoryImportLimit, importMode]);
 
   const checkEmailConnection = useCallback(
     async (isInitialLoad = false) => {
@@ -159,10 +348,12 @@ export function EmailConnectionStep({
       }
 
       try {
-        const [configResult, progressResult] = await Promise.all([
+        const [configResult, progressResult, pipelineResult] = await Promise.all([
           supabase
             .from('email_provider_configs')
-            .select('id, import_mode, email_address, sync_status')
+            .select(
+              'id, import_mode, email_address, sync_status, sync_error, sync_started_at, sync_completed_at',
+            )
             .eq('workspace_id', workspaceId)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -172,23 +363,42 @@ export function EmailConnectionStep({
             .select('*')
             .eq('workspace_id', workspaceId)
             .maybeSingle(),
+          supabase
+            .from('pipeline_runs')
+            .select('id, state, started_at, completed_at, last_error, metrics')
+            .eq('workspace_id', workspaceId)
+            .eq('channel', 'email')
+            .eq('state', 'running')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
         ]);
 
-        if (!progressResult.error && progressResult.data) {
-          const mapped = mapImportProgressRowToMakeProgress(progressResult.data);
-          setProgress(mapped);
-          if (mapped.status && mapped.status !== 'idle') {
-            setImportStarted(true);
-          } else {
-            setImportStarted(false);
-          }
-        } else {
-          // No progress record exists - reset state
-          setProgress(null);
-          setImportStarted(false);
-        }
+        const derivedState = deriveEmailImportState({
+          progress: !progressResult.error
+            ? (progressResult.data as EmailImportProgressRow | null)
+            : null,
+          config: !configResult.error
+            ? (configResult.data as EmailProviderConfigStatus | null)
+            : null,
+          activeRun: !pipelineResult.error
+            ? (pipelineResult.data as EmailPipelineRunStatus | null)
+            : null,
+        });
+        const effectiveProgress = mapDerivedStateToMakeProgress(derivedState);
+
+        setProgress(effectiveProgress);
+        setImportStarted(
+          Boolean(
+            effectiveProgress &&
+            (effectiveProgress.status === 'importing' ||
+              effectiveProgress.status === 'classifying' ||
+              effectiveProgress.status === 'learning'),
+          ),
+        );
 
         if (!configResult.error && configResult.data?.email_address) {
+          setEmailConfigId(configResult.data.id);
           const email = configResult.data.email_address;
           setConnectedEmail(email);
           onEmailConnected(email);
@@ -198,6 +408,7 @@ export function EmailConnectionStep({
             toast.success(`Connected to ${email}`);
           }
         } else {
+          setEmailConfigId(null);
           setConnectedEmail(null);
           onEmailConnected('');
         }
@@ -221,20 +432,41 @@ export function EmailConnectionStep({
     if (!importStarted || !workspaceId || isPreview) return;
 
     const poll = async () => {
-      const { data, error } = await supabase
-        .from('email_import_progress')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .maybeSingle();
+      const [progressResult, pipelineResult] = await Promise.all([
+        supabase
+          .from('email_import_progress')
+          .select('*')
+          .eq('workspace_id', workspaceId)
+          .maybeSingle(),
+        supabase
+          .from('pipeline_runs')
+          .select('id, state, started_at, completed_at, last_error, metrics')
+          .eq('workspace_id', workspaceId)
+          .eq('channel', 'email')
+          .eq('state', 'running')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      if (error) return;
-      if (!data) return;
+      if (progressResult.error) return;
 
-      const mapped = mapImportProgressRowToMakeProgress(data);
-      setProgress(mapped);
+      const derivedState = deriveEmailImportState({
+        progress: !progressResult.error
+          ? (progressResult.data as EmailImportProgressRow | null)
+          : null,
+        activeRun: !pipelineResult.error
+          ? (pipelineResult.data as EmailPipelineRunStatus | null)
+          : null,
+      });
+      const effectiveProgress = mapDerivedStateToMakeProgress(derivedState);
+
+      if (!effectiveProgress) return;
+
+      setProgress(effectiveProgress);
 
       // Stop polling if complete or error
-      if (mapped.status === 'complete' || mapped.status === 'error') {
+      if (effectiveProgress.status === 'complete' || effectiveProgress.status === 'error') {
         if (pollIntervalRef.current) {
           window.clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = undefined;
@@ -307,14 +539,14 @@ export function EmailConnectionStep({
 
       if (error) {
         logger.error('Error from aurinko-auth-start', error);
-        toast.error('Failed to start email connection');
+        toast.error(getFunctionErrorMessage(error, data, 'Failed to start email connection'));
         setIsConnecting(false);
         return;
       }
 
       if (!data?.authUrl) {
         logger.error('No auth URL returned');
-        toast.error('Failed to get authentication URL');
+        toast.error(getFunctionErrorMessage(null, data, 'Failed to get authentication URL'));
         setIsConnecting(false);
         return;
       }
@@ -323,7 +555,7 @@ export function EmailConnectionStep({
       window.location.href = data.authUrl;
     } catch (error) {
       logger.error('Error starting OAuth', error);
-      toast.error('Failed to start email connection');
+      toast.error(getFunctionErrorMessage(error, null, 'Failed to start email connection'));
       setIsConnecting(false);
     }
   };
@@ -334,21 +566,49 @@ export function EmailConnectionStep({
     setImportStarted(true);
 
     try {
-      // Trigger n8n workflows via edge function (avoids CORS issues from browser)
-      const { data, error: fnError } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'email_classification' },
-      });
+      let configId = emailConfigId;
 
-      if (fnError) {
-        logger.error('Edge function error', fnError);
-        throw new Error('Failed to trigger AI training workflows');
+      if (!configId) {
+        const { data: latestConfig, error: lookupError } = await supabase
+          .from('email_provider_configs')
+          .select('id')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lookupError) {
+          throw lookupError;
+        }
+
+        configId = latestConfig?.id ?? null;
       }
 
-      toast.success('AI training started! This will take a few minutes...');
+      if (!configId) {
+        throw new Error('No email connection found for this workspace');
+      }
+
+      const { data, error: fnError } = await supabase.functions.invoke('start-email-import', {
+        body: { workspace_id: workspaceId, config_id: configId, mode: 'onboarding' },
+      });
+
+      if (fnError || data?.ok === false || data?.success === false) {
+        logger.error('Edge function error', fnError);
+        throw new Error(
+          await getFunctionErrorMessageAsync(fnError, data, 'Failed to queue email import'),
+        );
+      }
+
+      const isAlreadyRunning = Boolean(data?.already_running);
+      toast.success(
+        isAlreadyRunning
+          ? 'Email import is already running. BizzyBee will keep learning in the background.'
+          : 'Email import queued. BizzyBee will keep learning in the background.',
+      );
       onNext();
     } catch (error) {
-      logger.error('Error triggering n8n workflows', error);
-      toast.error('Failed to start AI training');
+      logger.error('Error starting email import', error);
+      toast.error(await getFunctionErrorMessageAsync(error, null, 'Failed to queue email import'));
       setImportStarted(false);
     }
   };
@@ -377,7 +637,9 @@ export function EmailConnectionStep({
           },
         });
 
-        if (error) throw error;
+        if (error || data?.success === false || data?.ok === false) {
+          throw new Error(getFunctionErrorMessage(error, data, 'Failed to disconnect email'));
+        }
 
         const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
         toast.success(
@@ -391,10 +653,11 @@ export function EmailConnectionStep({
       setProgress(null);
       setImportStarted(false);
       toastedEmailRef.current = null;
+      setEmailConfigId(null);
       onEmailConnected('');
     } catch (error) {
       logger.error('Failed to disconnect email connection', error);
-      toast.error('Failed to disconnect');
+      toast.error(getFunctionErrorMessage(error, null, 'Failed to disconnect'));
     }
   };
 
@@ -417,8 +680,21 @@ export function EmailConnectionStep({
       setProgress(null);
       await startImport();
     } catch (error) {
-      toast.error('Failed to retry import');
+      toast.error(getFunctionErrorMessage(error, null, 'Failed to retry import'));
     }
+  };
+
+  const handleContinue = () => {
+    if (!connectedEmail) return;
+
+    const progressStatus = progress?.status ?? 'idle';
+    const shouldKickImport = progressStatus === 'idle' || progressStatus === 'error';
+
+    if (shouldKickImport) {
+      void startImport();
+    }
+
+    onNext();
   };
 
   // Loading state
@@ -428,7 +704,9 @@ export function EmailConnectionStep({
         <div className="text-center">
           <CardTitle className="text-xl">Connect Your Email</CardTitle>
           <CardDescription className="mt-2">
-            BizzyBee will learn from your inbox to handle emails just like you would.
+            {aiInboxEnabled
+              ? 'BizzyBee will learn from your inbox to handle emails just like you would.'
+              : 'BizzyBee will sync this inbox into one place. AI learning unlocks on Starter and above.'}
           </CardDescription>
         </div>
         <div className="flex items-center justify-center py-8">
@@ -446,7 +724,9 @@ export function EmailConnectionStep({
       <div className="text-center">
         <CardTitle className="text-xl">Connect Your Email</CardTitle>
         <CardDescription className="mt-2">
-          BizzyBee will learn from your inbox to handle emails just like you would.
+          {aiInboxEnabled
+            ? 'BizzyBee will learn from your inbox to handle emails just like you would.'
+            : 'BizzyBee will sync this inbox into one place. AI learning unlocks on Starter and above.'}
         </CardDescription>
       </div>
 
@@ -496,9 +776,32 @@ export function EmailConnectionStep({
             </Button>
           </div>
 
-          {/* Fix B: simple Continue — email import is triggered automatically by aurinko-auth-callback */}
+          {progress && getConnectionProgressCopy(progress) && (
+            <div
+              className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${getConnectionProgressCopy(progress)!.className}`}
+            >
+              {(() => {
+                const copy = getConnectionProgressCopy(progress)!;
+                const Icon = copy.icon;
+                return (
+                  <>
+                    <div className="shrink-0 pt-0.5">
+                      <Icon
+                        className={`h-4 w-4 ${progress.status === 'queued' ? 'animate-pulse' : progress.status === 'importing' ? 'animate-spin' : ''}`}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium">{copy.title}</p>
+                      <p className="text-xs opacity-80">{copy.description}</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           <div className="space-y-3">
-            <Button onClick={onNext} className="w-full gap-2">
+            <Button onClick={handleContinue} className="w-full gap-2">
               Continue
               <CheckCircle2 className="h-4 w-4" />
             </Button>
@@ -512,14 +815,21 @@ export function EmailConnectionStep({
           {/* Import Mode Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">
-              How much email history should we learn from?
+              {aiInboxEnabled
+                ? 'How much email history should we learn from?'
+                : 'How should we start your inbox?'}
             </Label>
+            <p className="text-sm text-muted-foreground">
+              {aiInboxEnabled
+                ? `Your current plan includes up to ${importLimitLabel} of email history for AI learning.`
+                : 'Connect includes the unified inbox only. You can start receiving new emails now, and upgrade later to train BizzyBee on history.'}
+            </p>
             <RadioGroup
               value={importMode}
               onValueChange={(v) => setImportMode(v as ImportMode)}
               className="space-y-2"
             >
-              {importModes.map((mode) => (
+              {allowedImportModes.map((mode) => (
                 <div
                   key={mode.value}
                   className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
@@ -557,7 +867,7 @@ export function EmailConnectionStep({
                 <Button
                   key={provider.id}
                   variant="outline"
-                  className="h-auto py-4 flex flex-col items-center gap-2 relative"
+                  className="relative flex h-auto min-h-[112px] flex-col items-center gap-2 px-3 py-4 text-center whitespace-normal"
                   onClick={() => handleConnect(provider.id)}
                   disabled={!provider.available || isConnecting}
                 >
@@ -574,7 +884,7 @@ export function EmailConnectionStep({
                   )}
                   <span className="text-sm font-medium">{provider.name}</span>
                   {'subtitle' in provider && provider.subtitle && (
-                    <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                    <span className="max-w-full break-words px-1 text-center text-[10px] leading-tight text-muted-foreground whitespace-normal">
                       {provider.subtitle}
                     </span>
                   )}
