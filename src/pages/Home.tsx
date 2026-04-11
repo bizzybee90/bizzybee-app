@@ -167,6 +167,10 @@ export const Home = () => {
 
     fetchStats();
 
+    if (workspaceLoading || needsOnboarding || !workspace?.id || workspace.id === 'preview-workspace') {
+      return;
+    }
+
     const channel = supabase
       .channel('home-realtime')
       .on(

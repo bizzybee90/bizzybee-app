@@ -20,32 +20,95 @@ export const QuickActionsBar = ({ emailId, workspaceId }: QuickActionsBarProps) 
     queryClient.invalidateQueries({ queryKey: ['inbox-email-detail'] });
   };
 
-  const markHandled = async () => {
-    const { error } = await supabase
+  const updateConversation = async (updates: Record<string, unknown>) => {
+    const { data, error } = await supabase
+      .from('conversations')
+      .update(updates)
+      .eq('id', emailId)
+      .eq('workspace_id', workspaceId)
+      .select('id');
+
+    if (error) {
+      return false;
+    }
+
+    return (data?.length ?? 0) > 0;
+  };
+
+  const updateEmailQueue = async (updates: Record<string, unknown>) => {
+    const { data, error } = await supabase
       .from('email_import_queue')
-      .update({ requires_reply: false, status: 'processed' })
-      .eq('id', emailId);
-    if (error) { toast.error('Failed to update'); return; }
+      .update(updates)
+      .eq('id', emailId)
+      .eq('workspace_id', workspaceId)
+      .select('id');
+
+    if (error) {
+      return false;
+    }
+
+    return (data?.length ?? 0) > 0;
+  };
+
+  const updateHandledState = async () => {
+    const handledAt = new Date().toISOString();
+    const conversationUpdates = {
+      status: 'resolved',
+      resolved_at: handledAt,
+      decision_bucket: 'auto_handled',
+      auto_handled_at: handledAt,
+      requires_reply: false,
+    };
+
+    return (
+      (await updateConversation(conversationUpdates)) ||
+      (await updateEmailQueue({
+        status: 'processed',
+        processed_at: handledAt,
+      }))
+    );
+  };
+
+  const markHandled = async () => {
+    const success = await updateHandledState();
+    if (!success) {
+      toast.error('Failed to update');
+      return;
+    }
     toast.success('Marked as handled');
     invalidate();
   };
 
   const markSpam = async () => {
-    const { error } = await supabase
-      .from('email_import_queue')
-      .update({ category: 'spam', is_noise: true })
-      .eq('id', emailId);
-    if (error) { toast.error('Failed to update'); return; }
+    const markedAt = new Date().toISOString();
+    const success =
+      (await updateConversation({
+        email_classification: 'spam',
+        decision_bucket: 'auto_handled',
+        auto_handled_at: markedAt,
+        status: 'resolved',
+        resolved_at: markedAt,
+        requires_reply: false,
+      })) ||
+      (await updateEmailQueue({ category: 'spam', is_noise: true, processed_at: markedAt }));
+
+    if (!success) {
+      toast.error('Failed to update');
+      return;
+    }
     toast.success('Marked as spam');
     invalidate();
   };
 
   const changeCategory = async (category: string) => {
-    const { error } = await supabase
-      .from('email_import_queue')
-      .update({ category })
-      .eq('id', emailId);
-    if (error) { toast.error('Failed to update'); return; }
+    const success =
+      (await updateConversation({ email_classification: category })) ||
+      (await updateEmailQueue({ category }));
+
+    if (!success) {
+      toast.error('Failed to update');
+      return;
+    }
     toast.success(`Category changed to ${category}`);
     invalidate();
   };
