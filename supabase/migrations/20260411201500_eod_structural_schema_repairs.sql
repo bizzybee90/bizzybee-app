@@ -128,14 +128,14 @@ $$;
 
 grant execute on function public.bb_user_in_workspace(uuid) to authenticated, service_role;
 
-create or replace function public.user_has_workspace_access(_workspace_id uuid)
+create or replace function public.user_has_workspace_access(check_workspace_id uuid)
 returns boolean
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select public.bb_user_in_workspace(_workspace_id)
+  select public.bb_user_in_workspace(check_workspace_id)
 $$;
 
 grant execute on function public.user_has_workspace_access(uuid) to authenticated, service_role;
