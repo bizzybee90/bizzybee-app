@@ -194,6 +194,9 @@ describe('critical route smoke checks', () => {
   });
 
   it('renders the knowledge base lock state', () => {
+    testState.workspace.workspace = { id: 'workspace-123' };
+    testState.workspace.needsOnboarding = false;
+    testState.workspace.onboardingComplete = true;
     testState.workspace.entitlements = {
       features: {
         knowledge_base: false,
@@ -214,6 +217,9 @@ describe('critical route smoke checks', () => {
   });
 
   it('renders the AI Phone lock state', () => {
+    testState.workspace.workspace = { id: 'workspace-123' };
+    testState.workspace.needsOnboarding = false;
+    testState.workspace.onboardingComplete = true;
     testState.workspace.entitlements = {
       features: {
         knowledge_base: true,
