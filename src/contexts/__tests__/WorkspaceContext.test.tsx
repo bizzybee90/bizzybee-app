@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { WorkspaceProvider } from '../WorkspaceContext';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { renderWithProviders } from '../../test/helpers/renderWithProviders';
 const { mockSupabase } = vi.hoisted(() => ({
   mockSupabase: {
     auth: {
@@ -31,7 +32,7 @@ const Probe = () => {
 
 describe('WorkspaceProvider', () => {
   it('clears loading when there is no authenticated user', async () => {
-    render(
+    renderWithProviders(
       <WorkspaceProvider>
         <Probe />
       </WorkspaceProvider>,

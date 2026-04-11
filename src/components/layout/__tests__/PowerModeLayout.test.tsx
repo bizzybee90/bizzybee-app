@@ -5,6 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 import { PowerModeLayout } from '../PowerModeLayout';
 
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    from: vi.fn(),
+  },
+}));
+
 vi.mock('@/components/sidebar/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
