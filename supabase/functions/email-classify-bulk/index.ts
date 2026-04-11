@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 import {
   fetchBusinessContext,
   fetchSenderRules,
@@ -51,6 +52,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    const auth = await validateAuth(req, workspace_id);
+    const workspaceId = auth.workspaceId;
+
     const isPartitioned = partition_id !== undefined && total_partitions !== undefined;
     const workerTag = isPartitioned ? `[Worker ${partition_id}/${total_partitions}]` : '[legacy]';
 
@@ -68,12 +72,12 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const startTime = Date.now();
 
-    console.log(`${workerTag} Starting batch ${_batch_number} for workspace ${workspace_id}`);
+    console.log(`${workerTag} Starting batch ${_batch_number} for workspace ${workspaceId}`);
 
     // Update progress
     await supabase.from('email_import_progress').upsert(
       {
-        workspace_id,
+        workspace_id: workspaceId,
         current_phase: 'classifying',
         updated_at: new Date().toISOString(),
       },
@@ -84,10 +88,10 @@ Deno.serve(async (req) => {
     // STEP 1: Fetch context (business profile, sender rules, corrections, FAQs)
     // ==========================================================================
     const [bizCtx, senderRules, corrections, faqs] = await Promise.all([
-      fetchBusinessContext(supabase, workspace_id),
-      fetchSenderRules(supabase, workspace_id),
-      fetchCorrections(supabase, workspace_id),
-      fetchFAQs(supabase, workspace_id),
+      fetchBusinessContext(supabase, workspaceId),
+      fetchSenderRules(supabase, workspaceId),
+      fetchCorrections(supabase, workspaceId),
+      fetchFAQs(supabase, workspaceId),
     ]);
 
     console.log(
@@ -102,7 +106,7 @@ Deno.serve(async (req) => {
 
     if (isPartitioned) {
       const result = await supabase.rpc('get_partitioned_unclassified_batch', {
-        p_workspace_id: workspace_id,
+        p_workspace_id: workspaceId,
         p_partition_id: partition_id,
         p_total_partitions: total_partitions,
         p_batch_size: BATCH_SIZE,
@@ -113,7 +117,7 @@ Deno.serve(async (req) => {
       const result = await supabase
         .from('email_import_queue')
         .select('id, from_email, subject, body, direction')
-        .eq('workspace_id', workspace_id)
+        .eq('workspace_id', workspaceId)
         .is('category', null)
         .order('id', { ascending: true })
         .range(0, BATCH_SIZE - 1);
@@ -129,7 +133,7 @@ Deno.serve(async (req) => {
         supabase,
         supabaseUrl,
         supabaseServiceKey,
-        workspace_id,
+        workspaceId,
         workerTag,
         callback_url,
         isPartitioned,
@@ -329,7 +333,7 @@ Deno.serve(async (req) => {
     let moreInPartition = false;
     if (isPartitioned) {
       const { data: nextBatch } = await supabase.rpc('get_partitioned_unclassified_batch', {
-        p_workspace_id: workspace_id,
+        p_workspace_id: workspaceId,
         p_partition_id: partition_id,
         p_total_partitions: total_partitions,
         p_batch_size: 1,
@@ -339,7 +343,7 @@ Deno.serve(async (req) => {
       const { count } = await supabase
         .from('email_import_queue')
         .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspace_id)
+        .eq('workspace_id', workspaceId)
         .is('category', null);
       moreInPartition = (count || 0) > 0;
     }
@@ -350,12 +354,12 @@ Deno.serve(async (req) => {
       const { count: totalClassified } = await supabase
         .from('email_import_queue')
         .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspace_id)
+        .eq('workspace_id', workspaceId)
         .not('category', 'is', null);
 
       await supabase.from('email_import_progress').upsert(
         {
-          workspace_id,
+          workspace_id: workspaceId,
           current_phase: 'classifying',
           emails_classified: totalClassified || 0,
           updated_at: new Date().toISOString(),
@@ -370,7 +374,7 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${supabaseServiceKey}`,
         },
         body: JSON.stringify({
-          workspace_id,
+          workspace_id: workspaceId,
           partition_id: isPartitioned ? partition_id : undefined,
           total_partitions: isPartitioned ? total_partitions : undefined,
           callback_url,
@@ -402,7 +406,7 @@ Deno.serve(async (req) => {
       supabase,
       supabaseUrl,
       supabaseServiceKey,
-      workspace_id,
+      workspaceId,
       workerTag,
       callback_url,
       isPartitioned,
@@ -432,6 +436,10 @@ Deno.serve(async (req) => {
       }
     } catch {
       // Ignore
+    }
+
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
     }
 
     return new Response(

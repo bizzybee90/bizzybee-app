@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 import { calculateQualityScore } from '../_shared/quality-scorer.ts';
 
 const corsHeaders = {
@@ -138,17 +139,20 @@ Deno.serve(async (req) => {
       throw new Error('workspace_id is required');
     }
 
+    const auth = await validateAuth(req, workspace_id);
+    const workspaceId = auth.workspaceId;
+
     const { data: competitors, error: fetchError } = await supabase
       .from('competitor_sites')
       .select('id, domain, url, business_name, rating, review_count, distance_miles, status')
-      .eq('workspace_id', workspace_id)
+      .eq('workspace_id', workspaceId)
       .in('status', ['discovered', 'validated']);
 
     if (fetchError) throw fetchError;
 
     if (!competitors || competitors.length === 0) {
       console.log(`[${FUNCTION_NAME}] No competitors to validate`);
-      await setReviewReady(supabase, workspace_id, 0, 0, 0);
+      await setReviewReady(supabase, workspaceId, 0, 0, 0);
       return respond({ success: true, validated: 0, rejected: 0, total: 0 });
     }
 
@@ -247,7 +251,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    await setReviewReady(supabase, workspace_id, competitors.length, validated, rejected);
+    await setReviewReady(supabase, workspaceId, competitors.length, validated, rejected);
 
     const duration = Date.now() - startTime;
     console.log(
@@ -263,6 +267,9 @@ Deno.serve(async (req) => {
       duration_ms: duration,
     });
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
     console.error(`[${FUNCTION_NAME}] Error:`, error);
     return new Response(JSON.stringify({ success: false, error: error.message }), {
       status: 500,

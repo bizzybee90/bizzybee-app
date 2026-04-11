@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,34 +12,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // --- DUAL AUTH CHECK (user JWT or service role) ---
-  const authHeader = req.headers.get('Authorization');
-  const isServiceRole = authHeader?.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  if (!isServiceRole) {
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  }
-  // --- END DUAL AUTH CHECK ---
-
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const AURINKO_CLIENT_ID = Deno.env.get('AURINKO_CLIENT_ID');
@@ -50,30 +23,88 @@ Deno.serve(async (req) => {
     // Parse optional body for single config refresh
     let specificConfigId: string | null = null;
     try {
-      const body = await req.json();
+      const body = await req.clone().json();
       specificConfigId = body?.configId || null;
     } catch {
       // No body or invalid JSON, refresh all
     }
 
+    const authHeader = req.headers.get('Authorization');
+    const serviceBearer = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    const isServiceRole = authHeader === serviceBearer;
+
     console.log('🔄 Starting Aurinko subscription refresh...', { specificConfigId });
 
-    // Fetch all active email configs (or specific one)
-    let query = supabase
-      .from('email_provider_configs')
-      .select('id, email_address, account_id, subscription_id')
-      .not('access_token', 'is', null);
+    let configs: Array<{
+      id: string;
+      email_address: string;
+      account_id: string | null;
+      subscription_id: string | null;
+      workspace_id: string | null;
+    }> | null = null;
 
-    if (specificConfigId) {
-      query = query.eq('id', specificConfigId);
+    if (!isServiceRole && !specificConfigId) {
+      return new Response(
+        JSON.stringify({ error: 'configId is required for user-triggered refreshes' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
     }
 
-    const { data: configs, error: configError } = await query;
+    if (specificConfigId) {
+      const { data: config, error: configError } = await supabase
+        .from('email_provider_configs')
+        .select('id, email_address, account_id, subscription_id, workspace_id')
+        .eq('id', specificConfigId)
+        .not('access_token', 'is', null)
+        .maybeSingle();
 
-    if (configError) {
-      console.error('❌ Error fetching email configs:', configError);
-      return new Response(JSON.stringify({ error: configError.message }), {
-        status: 500,
+      if (configError) {
+        console.error('❌ Error fetching email config:', configError);
+        return new Response(JSON.stringify({ error: configError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!config) {
+        return new Response(JSON.stringify({ error: 'Email config not found' }), {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!config.workspace_id) {
+        return new Response(JSON.stringify({ error: 'Email config is missing workspace_id' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      await validateAuth(req, config.workspace_id);
+      configs = [config];
+    } else {
+      const { data, error: configError } = await supabase
+        .from('email_provider_configs')
+        .select('id, email_address, account_id, subscription_id, workspace_id')
+        .not('access_token', 'is', null);
+
+      if (configError) {
+        console.error('❌ Error fetching email configs:', configError);
+        return new Response(JSON.stringify({ error: configError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      configs = data;
+    }
+
+    if (!configs) {
+      return new Response(JSON.stringify({ error: 'No email configs found' }), {
+        status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -219,6 +250,9 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
     console.error('❌ Error in refresh-aurinko-subscriptions:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,

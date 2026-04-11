@@ -1,4 +1,5 @@
 import { createServiceClient, HttpError, isUuidLike, jsonResponse } from '../_shared/pipeline.ts';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 import type { Channel, Direction, UnifiedMessage } from '../_shared/types.ts';
 
 const VALID_CHANNELS = new Set<Channel>([
@@ -112,6 +113,9 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'channel must be one of: email, whatsapp, sms, facebook, voice');
     }
 
+    const auth = await validateAuth(req, workspaceId);
+    const canonicalWorkspaceId = auth.workspaceId;
+
     if (messages.length === 0) {
       return corsResponse({
         ok: true,
@@ -130,7 +134,7 @@ Deno.serve(async (req) => {
 
     const supabase = createServiceClient();
     const { data, error } = await supabase.rpc('bb_ingest_unified_messages', {
-      p_workspace_id: workspaceId,
+      p_workspace_id: canonicalWorkspaceId,
       p_config_id: configId,
       p_run_id: runId,
       p_channel: channel,
@@ -150,6 +154,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('unified-ingest error', error);
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
     if (error instanceof HttpError) {
       return corsResponse({ ok: false, error: error.message }, error.status);
     }

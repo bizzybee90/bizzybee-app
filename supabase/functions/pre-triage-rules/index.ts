@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -396,38 +397,10 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // --- DUAL AUTH CHECK (user JWT or service role) ---
-  const authHeader = req.headers.get('Authorization');
-  const isServiceRole = authHeader?.includes(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  if (!isServiceRole) {
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-  }
-  // --- END DUAL AUTH CHECK ---
-
   const startTime = Date.now();
 
   try {
-    const { email, workspace_id } = await req.json();
+    const { email, workspace_id } = await req.clone().json();
 
     if (!email?.from_email) {
       return new Response(JSON.stringify({ error: 'Missing email data' }), {
@@ -435,6 +408,9 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const auth = await validateAuth(req, workspace_id);
+    const workspaceId = auth.workspaceId;
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -444,7 +420,7 @@ Deno.serve(async (req) => {
     const { data: senderRules } = await supabase
       .from('sender_rules')
       .select('*')
-      .eq('workspace_id', workspace_id)
+      .eq('workspace_id', workspaceId)
       .eq('is_active', true);
 
     // Fetch sender behaviour stats if available
@@ -452,7 +428,7 @@ Deno.serve(async (req) => {
     const { data: behaviourStats } = await supabase
       .from('sender_behaviour_stats')
       .select('*')
-      .eq('workspace_id', workspace_id)
+      .eq('workspace_id', workspaceId)
       .eq('sender_domain', domain)
       .maybeSingle();
 
@@ -478,6 +454,9 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[PreTriage] Error:', error);
     return new Response(

@@ -19,11 +19,20 @@ Deno.serve(async (req) => {
   try {
     const META_APP_ID = Deno.env.get('META_APP_ID')!;
     const META_APP_SECRET = Deno.env.get('META_APP_SECRET')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const serviceBearer = `Bearer ${serviceRoleKey}`;
+    const workerToken = Deno.env.get('BB_WORKER_TOKEN')?.trim();
+    const authHeader = req.headers.get('Authorization');
+    const providedWorkerToken = req.headers.get('x-bb-worker-token')?.trim();
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    if (authHeader !== serviceBearer && (!workerToken || providedWorkerToken !== workerToken)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey);
 
     // Find tokens expiring within 7 days
     const { data: expiring, error: queryError } = await supabase
