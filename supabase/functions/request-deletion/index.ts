@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,56 +13,12 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // =============================================
-    // SECURITY: Validate JWT authentication
-    // =============================================
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized - missing token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Create client with user's auth to verify JWT
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await userSupabase.auth.getUser();
-
-    if (authError || !user) {
-      console.error('[request-deletion] JWT validation failed:', authError);
-      return new Response(JSON.stringify({ error: 'Unauthorized - invalid token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const userId = user.id;
+    const auth = await validateAuth(req);
+    const userId = auth.userId;
+    const workspaceId = auth.workspaceId;
     console.log(`[request-deletion] Authenticated user: ${userId}`);
-
-    // Get user's workspace
-    const { data: userData, error: userError } = await userSupabase
-      .from('users')
-      .select('workspace_id')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !userData?.workspace_id) {
-      return new Response(JSON.stringify({ error: 'User not associated with a workspace' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const workspaceId = userData.workspace_id;
 
     // Use service role for data operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -141,6 +98,9 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
     console.error('Error creating deletion request:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
