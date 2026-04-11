@@ -10,6 +10,7 @@ export interface WorkspaceContextValue {
   needsOnboarding: boolean;
   entitlements: WorkspaceEntitlements | null;
   entitlementsLoading: boolean;
+  refreshWorkspace: () => Promise<void>;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue>({
@@ -20,4 +21,5 @@ export const WorkspaceContext = createContext<WorkspaceContextValue>({
   needsOnboarding: true,
   entitlements: null,
   entitlementsLoading: true,
+  refreshWorkspace: async () => undefined,
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
@@ -12,11 +12,17 @@ export default function Onboarding() {
   const [searchParams] = useSearchParams();
   const isReset = searchParams.get('reset') === 'true';
   const isRepair = searchParams.get('repair') === 'true' || searchParams.get('repair') === '1';
-  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const {
+    workspace,
+    loading: workspaceLoading,
+    onboardingComplete,
+    refreshWorkspace,
+  } = useWorkspace();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const shouldForceFreshOnboarding = isReset || isRepair;
+  const forcedWorkspaceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -40,7 +46,25 @@ export default function Onboarding() {
       try {
         logger.debug('Initializing for user', { userId: authUser.id });
 
+        if (forcedWorkspaceIdRef.current) {
+          if (isMounted) {
+            clearSafetyTimeout(loadingSafetyTimeout);
+            setWorkspaceId(forcedWorkspaceIdRef.current);
+            setLoading(false);
+          }
+          return;
+        }
+
         if (workspaceLoading && !shouldForceFreshOnboarding) {
+          return;
+        }
+
+        if (workspace?.id && onboardingComplete && !shouldForceFreshOnboarding) {
+          logger.debug('Shared workspace context already marks onboarding complete', {
+            workspaceId: workspace.id,
+          });
+          clearSafetyTimeout(loadingSafetyTimeout);
+          navigate('/', { replace: true });
           return;
         }
 
@@ -82,7 +106,7 @@ export default function Onboarding() {
         if (!shouldForceFreshOnboarding && isOnboardingComplete(userData)) {
           logger.debug('Already completed, going home');
           clearSafetyTimeout(loadingSafetyTimeout);
-          navigate('/');
+          navigate('/', { replace: true });
           return;
         }
 
@@ -119,6 +143,9 @@ export default function Onboarding() {
 
         logger.debug('Workspace bootstrapped', { workspaceId: bootstrapData.workspace_id });
         if (isMounted) {
+          if (shouldForceFreshOnboarding) {
+            forcedWorkspaceIdRef.current = bootstrapData.workspace_id;
+          }
           clearSafetyTimeout(loadingSafetyTimeout);
           setWorkspaceId(bootstrapData.workspace_id);
           setLoading(false);
@@ -153,7 +180,7 @@ export default function Onboarding() {
       if (!session?.user) {
         clearSafetyTimeout(loadingSafetyTimeout);
         setLoading(false);
-        navigate('/auth');
+        navigate('/auth', { replace: true });
         return;
       }
 
@@ -169,7 +196,7 @@ export default function Onboarding() {
       if (event === 'SIGNED_OUT' || !session?.user) {
         clearSafetyTimeout(loadingSafetyTimeout);
         if (isMounted) setLoading(false);
-        navigate('/auth');
+        navigate('/auth', { replace: true });
         return;
       }
 
@@ -183,7 +210,7 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [navigate, shouldForceFreshOnboarding, workspace?.id, workspaceLoading]);
+  }, [navigate, onboardingComplete, shouldForceFreshOnboarding, workspace?.id, workspaceLoading]);
 
   const handleComplete = async () => {
     if (isPreviewModeEnabled()) {
@@ -230,14 +257,15 @@ export default function Onboarding() {
                   mode: 'backfill',
                 },
               })
-              .catch((err) => logger.error('Deep backfill trigger failed (non-blocking)', err));
+            .catch((err) => logger.error('Deep backfill trigger failed (non-blocking)', err));
           }
         }
       }
-      navigate('/');
+      await refreshWorkspace();
+      navigate('/', { replace: true });
     } catch (err) {
       logger.error('Error completing onboarding', err);
-      navigate('/');
+      navigate('/', { replace: true });
     }
   };
 

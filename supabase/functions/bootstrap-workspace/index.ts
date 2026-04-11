@@ -106,6 +106,29 @@ Deno.serve(async (req) => {
       throw upsertError;
     }
 
+    const { error: deleteWorkspaceMembershipsError } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('user_id', user.id);
+
+    if (deleteWorkspaceMembershipsError) {
+      throw deleteWorkspaceMembershipsError;
+    }
+
+    const { error: insertWorkspaceMembershipError } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: workspace.id,
+        user_id: user.id,
+        role: 'admin',
+        joined_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+    if (insertWorkspaceMembershipError) {
+      throw insertWorkspaceMembershipError;
+    }
+
     return json(200, {
       workspace_id: workspace.id,
       reused: false,

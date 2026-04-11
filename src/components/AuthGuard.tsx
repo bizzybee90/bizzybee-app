@@ -1,19 +1,17 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
-import { isOnboardingComplete } from '@/lib/onboardingStatus';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { workspace, loading: workspaceLoading, needsOnboarding } = useWorkspace();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const checkingOnboardingRef = useRef(false);
-  const hasCheckedOnboarding = useRef(false);
-  const lastCheckedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isPreviewModeEnabled()) {
@@ -21,17 +19,31 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
+    let cancelled = false;
+
     // Set up auth state listener first
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
     // Then check for existing session
-    supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
+    supabase.auth.getSession().then(({ data: { session: existingSession }, error }) => {
+      if (cancelled) return;
+
+      if (error) {
+        console.error('Error checking auth session:', error);
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        navigate('/auth', { replace: true });
+        return;
+      }
+
       if (existingSession) {
         setSession(existingSession);
         setUser(existingSession.user);
@@ -40,69 +52,47 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       }
 
       setLoading(false);
-      navigate('/auth');
+      navigate('/auth', { replace: true });
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
-  // Check onboarding status ONCE after user is loaded
   useEffect(() => {
     if (isPreviewModeEnabled()) {
       return;
     }
 
-    const checkOnboarding = async () => {
-      if (!user || checkingOnboardingRef.current || hasCheckedOnboarding.current) return;
+    if (loading) {
+      return;
+    }
 
-      // If user changes (sign out/in), allow a new check.
-      if (lastCheckedUserIdRef.current && lastCheckedUserIdRef.current !== user.id) {
-        hasCheckedOnboarding.current = false;
-      }
+    if (!user || !session) {
+      navigate('/auth', { replace: true });
+      return;
+    }
 
-      // Skip onboarding check if already on onboarding page
-      if (location.pathname === '/onboarding') return;
+    if (workspaceLoading) {
+      return;
+    }
 
-      checkingOnboardingRef.current = true;
-      try {
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('onboarding_completed, onboarding_step')
-          .eq('id', user.id)
-          .maybeSingle();
+    if (location.pathname === '/onboarding') {
+      return;
+    }
 
-        if (error) {
-          console.error('Error checking onboarding status:', error);
-          return;
-        }
-
-        if (!userData) {
-          navigate('/onboarding');
-          return;
-        }
-
-        hasCheckedOnboarding.current = true;
-        lastCheckedUserIdRef.current = user.id;
-
-        // Redirect to onboarding if not completed
-        if (!isOnboardingComplete(userData)) {
-          navigate('/onboarding');
-        }
-      } catch (error) {
-        console.error('Error in onboarding check:', error);
-      } finally {
-        checkingOnboardingRef.current = false;
-      }
-    };
-
-    checkOnboarding();
-  }, [user, navigate, location.pathname]);
+    if (!workspace?.id || needsOnboarding) {
+      navigate('/onboarding', { replace: true });
+    }
+  }, [loading, location.pathname, navigate, needsOnboarding, session, user, workspace?.id, workspaceLoading]);
 
   if (isPreviewModeEnabled()) {
     return <>{children}</>;
   }
 
-  if (loading) {
+  if (loading || workspaceLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">

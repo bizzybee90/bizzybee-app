@@ -154,6 +154,7 @@ function FAQCard({
 export default function KnowledgeBase() {
   const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
+  const knowledgeBaseLocked = Boolean(entitlements && !entitlements.features.knowledge_base);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -167,7 +168,34 @@ export default function KnowledgeBase() {
   const [editAnswer, setEditAnswer] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  if (entitlements && !entitlements.features.knowledge_base) {
+  const fetchFaqs = useCallback(async () => {
+    if (!workspace?.id || knowledgeBaseLocked) return;
+    setFetchError(null);
+
+    const { data, error } = await supabase
+      .from('faq_database')
+      .select('*')
+      .eq('workspace_id', workspace.id)
+      .order('priority', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching FAQs:', error);
+      setFetchError('Failed to load FAQs. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    setFaqs(data || []);
+    setLoading(false);
+  }, [knowledgeBaseLocked, workspace?.id]);
+
+  useEffect(() => {
+    if (workspace?.id && !knowledgeBaseLocked) {
+      void fetchFaqs();
+    }
+  }, [fetchFaqs, knowledgeBaseLocked, workspace?.id]);
+
+  if (knowledgeBaseLocked) {
     const lockedContent = (
       <div className="flex h-full items-center justify-center p-6">
         <Card className="max-w-xl border-[0.5px] border-bb-border bg-bb-white">
@@ -206,33 +234,6 @@ export default function KnowledgeBase() {
       </div>
     );
   }
-
-  const fetchFaqs = useCallback(async () => {
-    if (!workspace?.id) return;
-    setFetchError(null);
-
-    const { data, error } = await supabase
-      .from('faq_database')
-      .select('*')
-      .eq('workspace_id', workspace.id)
-      .order('priority', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching FAQs:', error);
-      setFetchError('Failed to load FAQs. Please try again.');
-      setLoading(false);
-      return;
-    }
-
-    setFaqs(data || []);
-    setLoading(false);
-  }, [workspace?.id]);
-
-  useEffect(() => {
-    if (workspace?.id) {
-      void fetchFaqs();
-    }
-  }, [fetchFaqs, workspace?.id]);
 
   const handleEditFaq = (faq: FAQ) => {
     setEditingFaq(faq);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Workspace } from '@/lib/types';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
@@ -18,144 +18,160 @@ const PREVIEW_WORKSPACE: Workspace = {
   created_at: new Date('2026-01-01T09:00:00.000Z').toISOString(),
 };
 
+function isPlaceholderWorkspace(nextWorkspace: Workspace | null) {
+  if (!nextWorkspace) return true;
+  const normalizedName = nextWorkspace.name.trim().toLowerCase();
+  const normalizedSlug = nextWorkspace.slug.trim().toLowerCase();
+
+  return (
+    normalizedName === 'my workspace' ||
+    normalizedName === 'bizzybee test' ||
+    normalizedSlug.startsWith('workspace-')
+  );
+}
+
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const mountedRef = useRef(true);
   const { data: entitlements, isLoading: entitlementsLoading } = useEntitlements(
     workspace?.id ?? null,
   );
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshWorkspace = useCallback(async () => {
+    if (!mountedRef.current) {
+      return;
+    }
 
-    const isPlaceholderWorkspace = (nextWorkspace: Workspace | null) => {
-      if (!nextWorkspace) return true;
-      const normalizedName = nextWorkspace.name.trim().toLowerCase();
-      const normalizedSlug = nextWorkspace.slug.trim().toLowerCase();
+    if (isPreviewModeEnabled()) {
+      setWorkspace(PREVIEW_WORKSPACE);
+      setOnboardingStep('complete');
+      setOnboardingComplete(true);
+      setLoading(false);
+      return;
+    }
 
-      return (
-        normalizedName === 'my workspace' ||
-        normalizedName === 'bizzybee test' ||
-        normalizedSlug.startsWith('workspace-')
-      );
-    };
+    setLoading(true);
 
-    const fetchWorkspace = async () => {
-      if (isPreviewModeEnabled()) {
-        if (!cancelled) {
-          setWorkspace(PREVIEW_WORKSPACE);
-          setOnboardingStep('complete');
-          setOnboardingComplete(true);
-          setLoading(false);
-        }
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (!mountedRef.current) return;
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        setWorkspace(null);
+        setOnboardingStep(null);
+        setOnboardingComplete(false);
         return;
       }
 
-      if (!cancelled) {
-        setLoading(true);
+      const { data: userData, error: profileError } = await supabase
+        .from('users')
+        .select('workspace_id, onboarding_completed, onboarding_step')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!mountedRef.current) return;
+
+      if (profileError) {
+        throw profileError;
       }
 
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-        if (cancelled) return;
+      setOnboardingStep(userData?.onboarding_step ?? null);
 
-        if (userError) {
-          throw userError;
-        }
-
-        if (!user) {
-          setWorkspace(null);
-          setOnboardingStep(null);
-          setOnboardingComplete(false);
-          return;
-        }
-
-        const { data: userData, error: profileError } = await supabase
-          .from('users')
-          .select('workspace_id, onboarding_completed, onboarding_step')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (profileError) {
-          throw profileError;
-        }
-
-        setOnboardingStep(userData?.onboarding_step ?? null);
-
-        if (!userData?.workspace_id) {
-          setOnboardingComplete(false);
-          setWorkspace(null);
-          return;
-        }
-
-        const [
-          { data: workspaceData, error: workspaceError },
-          { data: businessContextData, error: businessContextError },
-        ] = await Promise.all([
-          supabase.from('workspaces').select('*').eq('id', userData.workspace_id).maybeSingle(),
-          supabase
-            .from('business_context')
-            .select('company_name')
-            .eq('workspace_id', userData.workspace_id)
-            .maybeSingle(),
-        ]);
-
-        if (cancelled) return;
-
-        if (workspaceError) {
-          throw workspaceError;
-        }
-
-        if (businessContextError) {
-          throw businessContextError;
-        }
-
-        const nextWorkspace = workspaceData ?? null;
-        const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
-        const nextOnboardingComplete =
-          isOnboardingComplete(userData) &&
-          hasBusinessIdentity &&
-          !isPlaceholderWorkspace(nextWorkspace);
-
-        setOnboardingComplete(nextOnboardingComplete);
-        setWorkspace(nextWorkspace);
-      } catch (error) {
-        if (!cancelled) {
-          logger.error('Failed to load workspace context', error);
-          setWorkspace(null);
-          setOnboardingStep(null);
-          setOnboardingComplete(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      if (!userData?.workspace_id) {
+        setOnboardingComplete(false);
+        setWorkspace(null);
+        return;
       }
+
+      const [
+        { data: workspaceData, error: workspaceError },
+        { data: businessContextData, error: businessContextError },
+      ] = await Promise.all([
+        supabase.from('workspaces').select('*').eq('id', userData.workspace_id).maybeSingle(),
+        supabase
+          .from('business_context')
+          .select('company_name')
+          .eq('workspace_id', userData.workspace_id)
+          .maybeSingle(),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      if (workspaceError) {
+        throw workspaceError;
+      }
+
+      if (businessContextError) {
+        throw businessContextError;
+      }
+
+      const nextWorkspace = workspaceData ?? null;
+      const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
+      const nextOnboardingComplete =
+        isOnboardingComplete(userData) &&
+        hasBusinessIdentity &&
+        !isPlaceholderWorkspace(nextWorkspace);
+
+      setOnboardingComplete(nextOnboardingComplete);
+      setWorkspace(nextWorkspace);
+    } catch (error) {
+      if (mountedRef.current) {
+        logger.error('Failed to load workspace context', error);
+        setWorkspace(null);
+        setOnboardingStep(null);
+        setOnboardingComplete(false);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const fetchWorkspace = async () => {
+      if (isPreviewModeEnabled()) {
+        await refreshWorkspace();
+        return;
+      }
+
+      await refreshWorkspace();
     };
 
-    fetchWorkspace();
+    void fetchWorkspace();
 
     // Re-fetch if auth state changes (sign in/out)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-        fetchWorkspace();
+        void refreshWorkspace();
       }
     });
 
     return () => {
-      cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [refreshWorkspace]);
 
   return (
     <WorkspaceContext.Provider
@@ -167,6 +183,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         needsOnboarding: !onboardingComplete,
         entitlements: entitlements ?? null,
         entitlementsLoading,
+        refreshWorkspace,
       }}
     >
       {children}
