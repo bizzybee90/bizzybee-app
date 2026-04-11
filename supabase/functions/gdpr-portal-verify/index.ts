@@ -67,6 +67,29 @@ async function verifySignedToken(
   }
 }
 
+interface CustomerRecord {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  workspace_id: string | null;
+}
+
+function normalizeEmail(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.trim().toLowerCase();
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -91,6 +114,13 @@ Deno.serve(async (req) => {
 
     if (!token || !action) {
       return new Response(JSON.stringify({ error: 'Token and action are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action !== 'export' && action !== 'deletion') {
+      return new Response(JSON.stringify({ error: 'Invalid action' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -123,14 +153,127 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log('Verified GDPR request:', { email: requestData.email, action });
+    const tokenVersionRaw = Number(requestData.token_version ?? 1);
+    const tokenVersion = Number.isFinite(tokenVersionRaw) ? tokenVersionRaw : 1;
+    const tokenEmail = normalizeEmail(requestData.email);
+    const tokenCustomerId = normalizeOptionalString(requestData.customer_id);
+    const tokenWorkspaceId = normalizeOptionalString(requestData.workspace_id);
+    const tokenBindingState = normalizeOptionalString(requestData.binding_state);
+    const tokenReason = normalizeOptionalString(requestData.reason);
 
-    // Find customer by email
-    const { data: customer } = await supabase
-      .from('customers')
-      .select('id, name, email, phone, workspace_id')
-      .eq('email', requestData.email as string)
-      .maybeSingle();
+    if (!tokenEmail) {
+      return new Response(JSON.stringify({ error: 'Invalid token payload' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Verified GDPR request:', {
+      email: tokenEmail,
+      action,
+      tokenVersion,
+      bindingState: tokenBindingState,
+      workspaceBound: !!tokenWorkspaceId,
+      customerBound: !!tokenCustomerId,
+    });
+
+    let customer: CustomerRecord | null = null;
+
+    if (tokenCustomerId) {
+      let boundCustomerQuery = supabase
+        .from('customers')
+        .select('id, name, email, phone, workspace_id')
+        .eq('id', tokenCustomerId)
+        .eq('email', tokenEmail);
+
+      if (tokenWorkspaceId) {
+        boundCustomerQuery = boundCustomerQuery.eq('workspace_id', tokenWorkspaceId);
+      }
+
+      const { data: boundCustomer, error: boundCustomerError } =
+        await boundCustomerQuery.maybeSingle();
+      if (boundCustomerError || !boundCustomer) {
+        return new Response(JSON.stringify({ error: 'Invalid or stale token binding' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      customer = boundCustomer as CustomerRecord;
+    } else if (tokenVersion >= 2) {
+      // For v2 tokens, never do an unscoped global email lookup when identity was ambiguous.
+      if (tokenBindingState === 'ambiguous' && !tokenWorkspaceId) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'Multiple accounts found for this email. Please restart from your workspace GDPR portal link.',
+          }),
+          {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      if (tokenWorkspaceId) {
+        const { data: scopedCustomers, error: scopedCustomersError } = await supabase
+          .from('customers')
+          .select('id, name, email, phone, workspace_id')
+          .eq('email', tokenEmail)
+          .eq('workspace_id', tokenWorkspaceId)
+          .limit(2);
+
+        if (scopedCustomersError) {
+          throw scopedCustomersError;
+        }
+
+        if ((scopedCustomers || []).length > 1) {
+          return new Response(
+            JSON.stringify({
+              error:
+                'Multiple records matched this request in the selected workspace. Please contact support.',
+            }),
+            {
+              status: 409,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            },
+          );
+        }
+
+        customer = ((scopedCustomers || [])[0] as CustomerRecord | undefined) || null;
+      }
+    } else {
+      // Legacy token fallback: keep compatibility but block ambiguous duplicate-email matches.
+      let legacyCustomerQuery = supabase
+        .from('customers')
+        .select('id, name, email, phone, workspace_id')
+        .eq('email', tokenEmail)
+        .limit(2);
+
+      if (tokenWorkspaceId) {
+        legacyCustomerQuery = legacyCustomerQuery.eq('workspace_id', tokenWorkspaceId);
+      }
+
+      const { data: legacyCustomers, error: legacyCustomersError } = await legacyCustomerQuery;
+      if (legacyCustomersError) {
+        throw legacyCustomersError;
+      }
+
+      if ((legacyCustomers || []).length > 1) {
+        return new Response(
+          JSON.stringify({
+            error:
+              'Multiple records matched this request. Please restart from your workspace GDPR portal link.',
+          }),
+          {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      customer = ((legacyCustomers || [])[0] as CustomerRecord | undefined) || null;
+    }
 
     if (action === 'export') {
       // Process data export
@@ -140,7 +283,7 @@ Deno.serve(async (req) => {
           'export-customer-data',
           {
             body: {
-              customer_identifier: requestData.email,
+              customer_identifier: tokenEmail,
               delivery_method: 'email',
             },
           },
@@ -164,7 +307,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
-              To: requestData.email,
+              To: tokenEmail,
               Subject: 'Your Data Export',
               HtmlBody: `
                 <h2>Your Data Export</h2>
@@ -197,7 +340,7 @@ Deno.serve(async (req) => {
           action: 'gdpr_export_completed',
           customer_id: customer.id,
           metadata: {
-            email: requestData.email,
+            email: tokenEmail,
             export_size: JSON.stringify(exportData?.data || {}).length,
           },
         });
@@ -213,7 +356,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
-              To: requestData.email,
+              To: tokenEmail,
               Subject: 'Your Data Export Request',
               HtmlBody: `
                 <h2>Data Export Request</h2>
@@ -232,7 +375,7 @@ Deno.serve(async (req) => {
         // Create deletion request
         const { error: insertError } = await supabase.from('data_deletion_requests').insert({
           customer_id: customer.id,
-          reason: (requestData.reason as string) || 'Customer portal request',
+          reason: tokenReason || 'Customer portal request',
           deletion_type: 'full',
           status: 'pending',
         });
@@ -255,7 +398,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
-              To: requestData.email,
+              To: tokenEmail,
               Subject: 'Data Deletion Request Confirmed',
               HtmlBody: `
                 <h2>Data Deletion Request Confirmed</h2>
@@ -278,8 +421,8 @@ Deno.serve(async (req) => {
           action: 'gdpr_deletion_requested',
           customer_id: customer.id,
           metadata: {
-            email: requestData.email,
-            reason: requestData.reason,
+            email: tokenEmail,
+            reason: tokenReason,
           },
         });
       } else {
@@ -294,7 +437,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               From: 'noreply@bizzybee.ai',
-              To: requestData.email,
+              To: tokenEmail,
               Subject: 'Data Deletion Request',
               HtmlBody: `
                 <h2>Data Deletion Request</h2>

@@ -6,52 +6,88 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+class WebhookAuthError extends Error {
+  status: number;
+
+  constructor(message: string, status = 403) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+
+  return diff === 0;
+}
+
+async function verifyTwilioSignature(rawBody: string, req: Request): Promise<void> {
+  const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN')?.trim();
+  if (!twilioAuthToken) {
+    console.warn('[whatsapp-webhook] TWILIO_AUTH_TOKEN not set - skipping signature verification');
+    return;
+  }
+
+  const twilioSignature = req.headers.get('X-Twilio-Signature')?.trim();
+  if (!twilioSignature) {
+    console.error('[whatsapp-webhook] Missing X-Twilio-Signature header');
+    throw new WebhookAuthError('Invalid signature');
+  }
+
+  try {
+    const webhookUrl = new URL(req.url).toString();
+    const params = new URLSearchParams(rawBody);
+    const sortedKeys = [...params.keys()].sort();
+    let dataString = webhookUrl;
+    for (const key of sortedKeys) {
+      dataString += key + params.get(key);
+    }
+
+    const encoder = new TextEncoder();
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(twilioAuthToken),
+      { name: 'HMAC', hash: 'SHA-1' },
+      false,
+      ['sign'],
+    );
+    const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
+    const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+    if (!timingSafeEqual(expectedSig, twilioSignature)) {
+      console.error('[whatsapp-webhook] Twilio signature mismatch');
+      throw new WebhookAuthError('Invalid signature');
+    }
+  } catch (error) {
+    if (error instanceof WebhookAuthError) {
+      throw error;
+    }
+
+    console.error('[whatsapp-webhook] Signature verification failed:', error);
+    throw new WebhookAuthError('Invalid signature');
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
   try {
     // Read raw body for signature verification, then parse form data
     const rawBody = await req.text();
-
-    // --- Twilio signature verification ---
-    const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
-    const twilioSignature = req.headers.get('X-Twilio-Signature');
-    if (twilioAuthToken) {
-      if (!twilioSignature) {
-        console.error('[whatsapp-webhook] Missing X-Twilio-Signature header');
-        return new Response('Invalid signature', { status: 403 });
-      }
-      // Build the validation URL + sorted POST params string
-      const webhookUrl = new URL(req.url).toString();
-      const params = new URLSearchParams(rawBody);
-      const sortedKeys = [...params.keys()].sort();
-      let dataString = webhookUrl;
-      for (const key of sortedKeys) {
-        dataString += key + params.get(key);
-      }
-      // Compute HMAC-SHA1
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(twilioAuthToken);
-      const cryptoKey = await crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'HMAC', hash: 'SHA-1' },
-        false,
-        ['sign'],
-      );
-      const sigBytes = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(dataString));
-      const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
-      if (expectedSig !== twilioSignature) {
-        console.error('[whatsapp-webhook] Twilio signature mismatch');
-        return new Response('Invalid signature', { status: 403 });
-      }
-    } else {
-      console.warn(
-        '[whatsapp-webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification',
-      );
-    }
+    await verifyTwilioSignature(rawBody, req);
 
     // Parse form-urlencoded data from the raw body
     const formParams = new URLSearchParams(rawBody);
@@ -222,6 +258,10 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'text/xml' },
     });
   } catch (error: unknown) {
+    if (error instanceof WebhookAuthError) {
+      return new Response(error.message, { status: error.status });
+    }
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[whatsapp-webhook] Error:', errorMessage);
 

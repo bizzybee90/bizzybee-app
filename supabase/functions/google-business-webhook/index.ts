@@ -6,28 +6,58 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+class WebhookAuthError extends Error {
+  status: number;
+
+  constructor(message: string, status = 403) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+
+  return diff === 0;
+}
+
+function verifyGoogleBusinessToken(req: Request): void {
+  const expectedToken = Deno.env.get('GOOGLE_BUSINESS_WEBHOOK_TOKEN')?.trim();
+  if (!expectedToken) {
+    console.warn(
+      '[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set - skipping token verification',
+    );
+    return;
+  }
+
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  const bearerToken = match?.[1]?.trim() ?? '';
+
+  if (!bearerToken || !timingSafeEqual(expectedToken, bearerToken)) {
+    console.error('[google-business-webhook] Invalid or missing bearer token');
+    throw new WebhookAuthError('Forbidden');
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
   try {
-    // --- Bearer token verification ---
-    const expectedToken = Deno.env.get('GOOGLE_BUSINESS_WEBHOOK_TOKEN');
-    if (expectedToken) {
-      const authHeader = req.headers.get('Authorization') || '';
-      const bearerToken = authHeader.startsWith('Bearer ')
-        ? authHeader.slice('Bearer '.length)
-        : '';
-      if (bearerToken !== expectedToken) {
-        console.error('[google-business-webhook] Invalid or missing bearer token');
-        return new Response('Forbidden', { status: 403 });
-      }
-    } else {
-      console.warn(
-        '[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set — skipping token verification',
-      );
-    }
+    verifyGoogleBusinessToken(req);
 
     const payload = await req.json();
 
@@ -186,6 +216,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: unknown) {
+    if (error instanceof WebhookAuthError) {
+      return new Response(error.message, { status: error.status });
+    }
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[google-business-webhook] Error:', errorMessage);
 

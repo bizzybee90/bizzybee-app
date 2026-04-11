@@ -9,8 +9,16 @@ interface GDPRRequest {
   email: string;
   request_type: 'export' | 'deletion';
   reason?: string;
-  workspace_slug: string;
+  workspace_slug?: string;
 }
+
+interface CustomerCandidate {
+  id: string;
+  name: string | null;
+  workspace_id: string | null;
+}
+
+type BindingState = 'bound' | 'no_customer' | 'ambiguous' | 'workspace_not_found';
 
 // Create HMAC signature for token verification
 async function createHmacSignature(payload: string, secret: string): Promise<string> {
@@ -38,6 +46,25 @@ async function createSignedToken(data: Record<string, unknown>, secret: string):
   const payload = btoa(JSON.stringify(data));
   const signature = await createHmacSignature(payload, secret);
   return `${payload}.${signature}`;
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function normalizeWorkspaceSlug(workspaceSlug: string | undefined): string | null {
+  const normalized = (workspaceSlug || '').trim().toLowerCase();
+  if (!normalized || normalized === 'default') {
+    return null;
+  }
+  return normalized;
+}
+
+function maskEmail(email: string): string {
+  return email.replace(
+    /^(.)(.*)(@.*)$/,
+    (_, first, middle, domain) => `${first}${'*'.repeat(Math.min(middle.length, 5))}${domain}`,
+  );
 }
 
 Deno.serve(async (req) => {
@@ -69,49 +96,92 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (request_type !== 'export' && request_type !== 'deletion') {
+      return new Response(JSON.stringify({ error: 'Invalid request_type' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(normalizedEmail)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const maskedEmail = email.replace(
-      /^(.)(.*)(@.*)$/,
-      (_, first, middle, domain) => `${first}${'*'.repeat(Math.min(middle.length, 5))}${domain}`,
-    );
+    const maskedEmail = maskEmail(normalizedEmail);
     console.log('GDPR request received:', { email: maskedEmail, request_type, workspace_slug });
 
-    // Find workspace by slug (optional - for multi-tenant)
+    // Resolve workspace scope first to prevent cross-workspace email ambiguity.
+    const normalizedWorkspaceSlug = normalizeWorkspaceSlug(workspace_slug);
     let workspaceId: string | null = null;
-    if (workspace_slug && workspace_slug !== 'default') {
-      const { data: workspace } = await supabase
+    let bindingState: BindingState = 'no_customer';
+    if (normalizedWorkspaceSlug) {
+      const { data: workspace, error: workspaceError } = await supabase
         .from('workspaces')
         .select('id')
-        .eq('slug', workspace_slug)
-        .single();
-      workspaceId = workspace?.id || null;
+        .eq('slug', normalizedWorkspaceSlug)
+        .maybeSingle();
+
+      if (workspaceError) {
+        throw workspaceError;
+      }
+
+      if (!workspace?.id) {
+        bindingState = 'workspace_not_found';
+      } else {
+        workspaceId = workspace.id;
+      }
     }
 
-    // Find customer by email
-    const { data: customer } = await supabase
-      .from('customers')
-      .select('id, name, workspace_id')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
+    // Resolve customer deterministically; never use global maybeSingle() by email.
+    let customerCandidates: CustomerCandidate[] = [];
+    if (bindingState !== 'workspace_not_found') {
+      let customerQuery = supabase
+        .from('customers')
+        .select('id, name, workspace_id')
+        .eq('email', normalizedEmail)
+        .limit(5);
+
+      if (workspaceId) {
+        customerQuery = customerQuery.eq('workspace_id', workspaceId);
+      }
+
+      const { data: customers, error: customerError } = await customerQuery;
+      if (customerError) {
+        throw customerError;
+      }
+
+      customerCandidates = (customers || []) as CustomerCandidate[];
+      if (customerCandidates.length > 1) {
+        bindingState = 'ambiguous';
+      } else if (customerCandidates.length === 1) {
+        bindingState = 'bound';
+      }
+    }
+
+    const boundCustomer = bindingState === 'bound' ? customerCandidates[0] : null;
+    const boundWorkspaceId = workspaceId || boundCustomer?.workspace_id || null;
 
     // Generate verification token with expiration
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     // Create token data to be signed
     const requestData = {
-      email: email.toLowerCase(),
+      token_version: 2,
+      email: normalizedEmail,
       request_type,
       reason,
-      customer_id: customer?.id || null,
-      workspace_id: workspaceId || customer?.workspace_id || null,
+      customer_id: boundCustomer?.id || null,
+      workspace_id: boundWorkspaceId,
+      workspace_slug: normalizedWorkspaceSlug,
+      binding_state: bindingState,
+      binding_candidates: customerCandidates.length,
       created_at: new Date().toISOString(),
       expires_at: expiresAt.toISOString(),
     };
@@ -132,7 +202,7 @@ Deno.serve(async (req) => {
 
       const emailBody = `
         <h2>Verify Your GDPR Request</h2>
-        <p>Hello${customer?.name ? ` ${customer.name}` : ''},</p>
+        <p>Hello${boundCustomer?.name ? ` ${boundCustomer.name}` : ''},</p>
         <p>We received a request to ${request_type === 'export' ? 'export your personal data' : 'delete your personal data'}.</p>
         <p>To confirm this request, please click the button below:</p>
         <p style="margin: 30px 0;">
@@ -181,11 +251,15 @@ Deno.serve(async (req) => {
     // Log the request for audit
     await supabase.from('data_access_logs').insert({
       action: `gdpr_${request_type}_request`,
-      customer_id: customer?.id || null,
+      customer_id: boundCustomer?.id || null,
       metadata: {
-        email,
+        email: normalizedEmail,
         request_type,
         reason,
+        workspace_id: boundWorkspaceId,
+        workspace_slug: normalizedWorkspaceSlug,
+        binding_state: bindingState,
+        binding_candidates: customerCandidates.length,
         verification_pending: true,
       },
     });
