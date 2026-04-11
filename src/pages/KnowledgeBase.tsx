@@ -154,6 +154,7 @@ function FAQCard({
 export default function KnowledgeBase() {
   const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
+  const hasWorkspace = Boolean(workspace?.id);
   const knowledgeBaseLocked = Boolean(entitlements && !entitlements.features.knowledge_base);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +170,12 @@ export default function KnowledgeBase() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchFaqs = useCallback(async () => {
-    if (!workspace?.id || knowledgeBaseLocked) return;
+    if (!hasWorkspace || knowledgeBaseLocked) {
+      setLoading(false);
+      setFetchError(null);
+      return;
+    }
+
     setFetchError(null);
 
     const { data, error } = await supabase
@@ -187,33 +193,42 @@ export default function KnowledgeBase() {
 
     setFaqs(data || []);
     setLoading(false);
-  }, [knowledgeBaseLocked, workspace?.id]);
+  }, [hasWorkspace, knowledgeBaseLocked, workspace?.id]);
 
   useEffect(() => {
-    if (workspace?.id && !knowledgeBaseLocked) {
+    if (hasWorkspace && !knowledgeBaseLocked) {
       void fetchFaqs();
+      return;
     }
-  }, [fetchFaqs, knowledgeBaseLocked, workspace?.id]);
 
-  if (knowledgeBaseLocked) {
-    const lockedContent = (
+    setLoading(false);
+    setFetchError(null);
+  }, [fetchFaqs, hasWorkspace, knowledgeBaseLocked]);
+
+  if (!hasWorkspace || knowledgeBaseLocked) {
+    const isWorkspaceMissing = !hasWorkspace;
+    const lockTitle = isWorkspaceMissing
+      ? 'Finish workspace setup first'
+      : 'Knowledge Base is on paid AI plans';
+    const lockDescription = isWorkspaceMissing
+      ? 'BizzyBee needs an active workspace before the Knowledge Base can load FAQs, website learning, and business context.'
+      : 'This workspace does not currently include the Knowledge Base. Upgrade to Starter or above to unlock FAQs, website learning, and business context that BizzyBee can use in replies.';
+    const lockActionLabel = isWorkspaceMissing ? 'Open onboarding' : 'Review plan';
+    const lockActionTo = isWorkspaceMissing ? '/onboarding?reset=true' : '/settings?category=ai';
+    const LockIcon = isWorkspaceMissing ? Brain : BookOpen;
+
+    const lockContent = (
       <div className="flex h-full items-center justify-center p-6">
         <Card className="max-w-xl border-[0.5px] border-bb-border bg-bb-white">
           <CardContent className="p-8 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bb-gold/10 text-bb-gold">
-              <BookOpen className="h-5 w-5" />
+              <LockIcon className="h-5 w-5" />
             </div>
-            <h1 className="mt-4 text-2xl font-medium text-bb-text">
-              Knowledge Base is on paid AI plans
-            </h1>
-            <p className="mt-3 text-sm text-bb-warm-gray">
-              This workspace does not currently include the Knowledge Base. Upgrade to Starter or
-              above to unlock FAQs, website learning, and business context that BizzyBee can use in
-              replies.
-            </p>
+            <h1 className="mt-4 text-2xl font-medium text-bb-text">{lockTitle}</h1>
+            <p className="mt-3 text-sm text-bb-warm-gray">{lockDescription}</p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Button asChild>
-                <Link to="/settings">Review plan</Link>
+                <Link to={lockActionTo}>{lockActionLabel}</Link>
               </Button>
               <Button variant="outline" asChild>
                 <Link to="/">Back to inbox</Link>
@@ -225,12 +240,12 @@ export default function KnowledgeBase() {
     );
 
     if (isMobile) {
-      return <MobilePageLayout title="Knowledge Base">{lockedContent}</MobilePageLayout>;
+      return <MobilePageLayout title="Knowledge Base">{lockContent}</MobilePageLayout>;
     }
 
     return (
       <div className="min-h-screen bg-bb-cream flex">
-        <Sidebar /> <div className="flex-1">{lockedContent}</div>
+        <Sidebar /> <div className="flex-1">{lockContent}</div>
       </div>
     );
   }

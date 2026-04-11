@@ -223,7 +223,13 @@ export default function ChannelsDashboard() {
     // Load hidden channels from localStorage
     const saved = localStorage.getItem('hiddenChannels');
     if (saved) {
-      setHiddenChannels(JSON.parse(saved));
+      try {
+        setHiddenChannels(JSON.parse(saved));
+      } catch (error) {
+        console.warn('Failed to parse hidden channel preferences', error);
+        setHiddenChannels({});
+        localStorage.removeItem('hiddenChannels');
+      }
     }
 
     fetchChannelStats();

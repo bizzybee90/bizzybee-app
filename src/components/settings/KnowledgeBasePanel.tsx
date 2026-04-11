@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PanelNotice } from './PanelNotice';
 import { FAQManager } from './knowledge-base/FAQManager';
 import { BusinessFactsManager } from './knowledge-base/BusinessFactsManager';
 import { PricingManager } from './knowledge-base/PricingManager';
@@ -20,12 +21,41 @@ import {
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { Settings } from 'lucide-react';
 
 export function KnowledgeBasePanel() {
-  const { workspace } = useWorkspace();
+  const { workspace, entitlements } = useWorkspace();
   const [downloading, setDownloading] = useState(false);
   const [downloadingCompetitor, setDownloadingCompetitor] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const knowledgeBaseLocked = Boolean(entitlements && !entitlements.features.knowledge_base);
+
+  if (!workspace?.id || knowledgeBaseLocked) {
+    const isWorkspaceMissing = !workspace?.id;
+    const helperMessage = isWorkspaceMissing
+      ? 'Knowledge source management is unavailable until the workspace is ready.'
+      : 'Knowledge source management is unavailable until the Knowledge Base is unlocked on this plan.';
+    return (
+      <div className="space-y-4">
+        <PanelNotice
+          icon={isWorkspaceMissing ? BookOpen : Settings}
+          title={
+            isWorkspaceMissing ? 'Finish workspace setup first' : 'Knowledge Base is locked on this plan'
+          }
+          description={
+            isWorkspaceMissing
+              ? 'BizzyBee needs an active workspace before the Knowledge Base can load FAQs, business facts, pricing, and documents.'
+              : 'Upgrade to Starter or above to unlock FAQs, website learning, and business context in this module.'
+          }
+          actionLabel={isWorkspaceMissing ? 'Open onboarding' : 'Review plan'}
+          actionTo={isWorkspaceMissing ? '/onboarding?reset=true' : '/settings?category=ai'}
+        />
+        <Card className="p-6 text-sm text-muted-foreground">
+          {helperMessage}
+        </Card>
+      </div>
+    );
+  }
 
   const handleDownloadPDF = async () => {
     if (!workspace?.id) return;

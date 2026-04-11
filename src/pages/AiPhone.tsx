@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
+import { PanelNotice } from '@/components/settings/PanelNotice';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAiPhoneConfig } from '@/hooks/useAiPhoneConfig';
@@ -28,6 +29,24 @@ const AiPhone = () => {
   const isMobile = useIsMobile();
   const { config, isLoading } = useAiPhoneConfig();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+
+  if (!workspace?.id) {
+    const lockedContent = (
+      <PanelNotice
+        icon={Settings}
+        title="Finish workspace setup first"
+        description="BizzyBee needs an active workspace before the AI Phone module can provision a number, load call logs, or manage the voice knowledge base."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
+
+    if (isMobile) {
+      return <MobilePageLayout title="AI Phone">{lockedContent}</MobilePageLayout>;
+    }
+
+    return <ThreeColumnLayout sidebar={<Sidebar />} main={lockedContent} />;
+  }
 
   if (entitlements && !entitlements.canUseAiPhone) {
     const lockedContent = (
