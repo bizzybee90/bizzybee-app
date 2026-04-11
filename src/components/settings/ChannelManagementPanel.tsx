@@ -11,6 +11,11 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useChannelSetup } from '@/hooks/useChannelSetup';
 import {
+  ModuleLockBadge,
+  resolveModuleLockState,
+  type ModuleLockResolution,
+} from '@/components/ProtectedRoute';
+import {
   MessageSquare,
   Phone,
   Mail,
@@ -297,6 +302,20 @@ export const ChannelManagementPanel = ({
     }
   };
 
+  const getChannelAvailabilityState = (channelKey: ChannelKey): ModuleLockResolution =>
+    resolveModuleLockState({
+      isAllowed: getChannelEntitlement(channelKey).available,
+      workspaceId: activeWorkspaceId ?? null,
+      entitlements: activeEntitlements,
+    });
+
+  const getChannelAutomationState = (channelKey: ChannelKey): ModuleLockResolution =>
+    resolveModuleLockState({
+      isAllowed: getChannelEntitlement(channelKey).aiAutomation,
+      workspaceId: activeWorkspaceId ?? null,
+      entitlements: activeEntitlements,
+    });
+
   const getConfigValue = (config: unknown, key: string) => {
     if (!config || typeof config !== 'object' || Array.isArray(config)) {
       return '';
@@ -498,14 +517,25 @@ export const ChannelManagementPanel = ({
 
     const definition = getChannelDefinition(channel.channel);
     const entitlement = definition ? getChannelEntitlement(definition.key) : null;
+    const availabilityState = definition ? getChannelAvailabilityState(definition.key) : null;
+    const automationState = definition ? getChannelAutomationState(definition.key) : null;
 
-    if (definition && entitlement && !entitlement.available) {
+    if (definition && entitlement && availabilityState?.state === 'locked') {
       toast({
         title: `${definition.label} needs a plan upgrade`,
         description: entitlement.message ?? 'This channel is not included on the current plan.',
         variant: 'destructive',
       });
       return;
+    }
+
+    if (definition && availabilityState?.state === 'shadow-preview') {
+      toast({
+        title: `${definition.label} is in shadow preview`,
+        description:
+          entitlement?.message ??
+          'This channel is outside the current plan and would be blocked once hard enforcement is enabled.',
+      });
     }
 
     try {
@@ -515,7 +545,7 @@ export const ChannelManagementPanel = ({
           .update({
             enabled: !channel.enabled,
             automation_level:
-              !channel.enabled && entitlement && !entitlement.aiAutomation
+              !channel.enabled && automationState?.state === 'locked'
                 ? 'disabled'
                 : channel.automation_level,
           })
@@ -538,7 +568,7 @@ export const ChannelManagementPanel = ({
             channel: channel.channel,
             enabled: true,
             automation_level:
-              entitlement && !entitlement.aiAutomation
+              automationState?.state === 'locked'
                 ? 'disabled'
                 : channel.automation_level || 'draft_only',
             config: channel.config ?? null,
@@ -568,21 +598,31 @@ export const ChannelManagementPanel = ({
     try {
       const definition = getChannelDefinition(channel.channel);
       const entitlement = definition ? getChannelEntitlement(definition.key) : null;
+      const availabilityState = definition ? getChannelAvailabilityState(definition.key) : null;
+      const automationState = definition ? getChannelAutomationState(definition.key) : null;
 
-      if (definition && entitlement && !entitlement.available) {
+      if (definition && entitlement && availabilityState?.state === 'locked') {
         throw new Error(entitlement.message ?? `${definition.label} is not included on this plan`);
       }
 
-      if (
-        definition &&
-        entitlement &&
-        !entitlement.aiAutomation &&
-        automationLevel !== 'disabled'
-      ) {
+      if (definition && automationState?.state === 'locked' && automationLevel !== 'disabled') {
         throw new Error(
           entitlement.message ??
             `${definition.label} needs AI access before automation can be enabled`,
         );
+      }
+
+      if (
+        definition &&
+        availabilityState?.state === 'shadow-preview' &&
+        automationLevel !== 'disabled'
+      ) {
+        toast({
+          title: `${definition.label} automation in shadow preview`,
+          description:
+            entitlement?.message ??
+            'This automation setting is in preview and would be blocked with hard billing enforcement.',
+        });
       }
 
       if (!activeWorkspaceId) {
@@ -611,8 +651,7 @@ export const ChannelManagementPanel = ({
             workspace_id: activeWorkspaceId,
             channel: channel.channel,
             enabled: true,
-            automation_level:
-              entitlement && !entitlement.aiAutomation ? 'disabled' : automationLevel,
+            automation_level: automationState?.state === 'locked' ? 'disabled' : automationLevel,
             config: channel.config ?? null,
           })
           .select('id, channel, enabled, automation_level, config')
@@ -1215,6 +1254,8 @@ export const ChannelManagementPanel = ({
             const draftProgress = getChannelSetupProgress(definition.key, draftConfig);
             const isSavingConfig = savingChannelKey === definition.key;
             const entitlement = getChannelEntitlement(definition.key);
+            const availabilityState = getChannelAvailabilityState(definition.key);
+            const automationState = getChannelAutomationState(definition.key);
             const missingRoutingSummary =
               draftProgress.missingLabels.length > 0
                 ? `${draftProgress.missingLabels.length} required ${
@@ -1268,14 +1309,7 @@ export const ChannelManagementPanel = ({
                               Not configured yet
                             </Badge>
                           )}
-                          {!entitlement.available && (
-                            <Badge
-                              variant="outline"
-                              className="border-rose-200 bg-rose-50 text-rose-700"
-                            >
-                              Upgrade required
-                            </Badge>
-                          )}
+                          <ModuleLockBadge state={availabilityState.state} />
                           <Badge
                             variant="outline"
                             className={`text-xs ${getConnectionBadgeClasses(connectionState)}`}
@@ -1312,7 +1346,7 @@ export const ChannelManagementPanel = ({
                           disabled={
                             definition.key === 'webchat' ||
                             !canManageChannels ||
-                            !entitlement.available
+                            availabilityState.state === 'locked'
                           }
                           aria-label={`Toggle ${definition.label}`}
                         />
@@ -1329,12 +1363,21 @@ export const ChannelManagementPanel = ({
                   {/* Automation level selector */}
                   {expanded && channel.enabled && definition.key !== 'webchat' && (
                     <div className="pl-11 pt-2 border-t space-y-3">
-                      {entitlement.aiAutomation ? (
+                      {automationState.state !== 'locked' ? (
                         <>
                           <div className="flex items-center gap-2 mb-2">
                             <ModeIcon className={`h-3.5 w-3.5 ${currentMode?.color}`} />
                             <span className="text-xs font-medium">AI Automation Mode</span>
                           </div>
+                          {automationState.state === 'shadow-preview' ? (
+                            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
+                              <p className="font-medium">Shadow preview</p>
+                              <p className="mt-1">
+                                {entitlement.message ??
+                                  `${definition.label} automation would be blocked under hard billing enforcement.`}
+                              </p>
+                            </div>
+                          ) : null}
                           <Select
                             value={channel.automation_level || 'draft_only'}
                             onValueChange={(value) => updateChannelAutomation(channel, value)}
@@ -1385,6 +1428,16 @@ export const ChannelManagementPanel = ({
                           {renderConnectionAction(definition, connectionState)}
                         </div>
                       </div>
+
+                      {availabilityState.state === 'shadow-preview' ? (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
+                          <p className="font-medium">Channel access in shadow preview</p>
+                          <p className="mt-1">
+                            {entitlement.message ??
+                              `${definition.label} is currently open for internal testing but would block with hard enforcement.`}
+                          </p>
+                        </div>
+                      ) : null}
 
                       {CHANNEL_ROUTING_FIELDS[definition.key]?.length ? (
                         <div className="rounded-xl border border-bb-border bg-bb-white p-3 space-y-3">

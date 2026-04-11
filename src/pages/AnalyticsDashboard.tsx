@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
@@ -34,6 +33,7 @@ import { MobileSidebarSheet } from '@/components/sidebar/MobileSidebarSheet';
 import { BackButton } from '@/components/shared/BackButton';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { PanelNotice } from '@/components/settings/PanelNotice';
+import { ModuleGateNotice, resolveModuleLockState } from '@/components/ProtectedRoute';
 
 type TimeRange = 'today' | '7days' | '30days';
 
@@ -224,6 +224,11 @@ export default function AnalyticsDashboard() {
 
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const analyticsLockState = resolveModuleLockState({
+    isAllowed: entitlements ? entitlements.features.analytics : true,
+    workspaceId: workspace?.id ?? null,
+    entitlements,
+  });
 
   const renderLoadingContent = () => (
     <div className="space-y-6">
@@ -278,32 +283,19 @@ export default function AnalyticsDashboard() {
     </div>
   );
 
-  if (entitlements && !entitlements.features.analytics) {
+  if (analyticsLockState.state === 'locked') {
     const lockedContent = (
-      <div className="flex h-full items-center justify-center p-6">
-        <Card className="max-w-xl border-[0.5px] border-bb-border bg-bb-white">
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bb-gold/10 text-bb-gold">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <h1 className="mt-4 text-2xl font-medium text-bb-text">
-              Analytics unlocks on Growth and above
-            </h1>
-            <p className="mt-3 text-sm text-bb-warm-gray">
-              This workspace is not on a plan that includes analytics yet. Upgrade to Growth or Pro
-              to unlock conversation trends, containment, response times, and channel performance.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button asChild>
-                <Link to="/settings">Review plan</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/">Back to inbox</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <ModuleGateNotice
+        icon={TrendingUp}
+        moduleName="Analytics"
+        lockState={analyticsLockState}
+        lockedDescription="Analytics is available on Growth and Pro plans. Upgrade this workspace to unlock trends, containment metrics, response times, and channel performance."
+        shadowDescription="Analytics would be blocked for this workspace once billing enforcement reaches hard mode."
+        primaryActionLabel="Review plan"
+        primaryActionTo="/settings"
+        secondaryActionLabel="Back to inbox"
+        secondaryActionTo="/"
+      />
     );
 
     if (isMobile) {
@@ -378,6 +370,18 @@ export default function AnalyticsDashboard() {
   function renderContent() {
     return (
       <div className="space-y-6">
+        {analyticsLockState.state === 'shadow-preview' ? (
+          <ModuleGateNotice
+            icon={TrendingUp}
+            moduleName="Analytics"
+            lockState={analyticsLockState}
+            lockedDescription=""
+            shadowDescription="This workspace is currently outside the Analytics plan tier. Shadow mode keeps this module visible for testing, but it would lock under hard enforcement."
+            primaryActionLabel=""
+            primaryActionTo="/settings"
+          />
+        ) : null}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>

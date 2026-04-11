@@ -20,6 +20,7 @@ import {
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PanelNotice } from '@/components/settings/PanelNotice';
+import { ModuleGateNotice, resolveModuleLockState } from '@/components/ProtectedRoute';
 import {
   Search,
   Globe,
@@ -185,7 +186,11 @@ export default function KnowledgeBase() {
   const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
   const hasWorkspace = Boolean(workspace?.id);
-  const knowledgeBaseLocked = Boolean(entitlements && !entitlements.features.knowledge_base);
+  const knowledgeBaseLockState = resolveModuleLockState({
+    isAllowed: entitlements ? entitlements.features.knowledge_base : true,
+    workspaceId: workspace?.id ?? null,
+    entitlements,
+  });
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -200,7 +205,7 @@ export default function KnowledgeBase() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchFaqs = useCallback(async () => {
-    if (!hasWorkspace || knowledgeBaseLocked) {
+    if (!hasWorkspace || knowledgeBaseLockState.state === 'locked') {
       setLoading(false);
       setFetchError(null);
       return;
@@ -223,50 +228,53 @@ export default function KnowledgeBase() {
 
     setFaqs(data || []);
     setLoading(false);
-  }, [hasWorkspace, knowledgeBaseLocked, workspace?.id]);
+  }, [hasWorkspace, knowledgeBaseLockState.state, workspace?.id]);
 
   useEffect(() => {
-    if (hasWorkspace && !knowledgeBaseLocked) {
+    if (hasWorkspace && knowledgeBaseLockState.state !== 'locked') {
       void fetchFaqs();
       return;
     }
 
     setLoading(false);
     setFetchError(null);
-  }, [fetchFaqs, hasWorkspace, knowledgeBaseLocked]);
+  }, [fetchFaqs, hasWorkspace, knowledgeBaseLockState.state]);
 
-  if (!hasWorkspace || knowledgeBaseLocked) {
-    const isWorkspaceMissing = !hasWorkspace;
-    const lockTitle = isWorkspaceMissing
-      ? 'Finish workspace setup first'
-      : 'Knowledge Base is on paid AI plans';
-    const lockDescription = isWorkspaceMissing
-      ? 'BizzyBee needs an active workspace before the Knowledge Base can load FAQs, website learning, and business context.'
-      : 'This workspace does not currently include the Knowledge Base. Upgrade to Starter or above to unlock FAQs, website learning, and business context that BizzyBee can use in replies.';
-    const lockActionLabel = isWorkspaceMissing ? 'Open onboarding' : 'Review plan';
-    const lockActionTo = isWorkspaceMissing ? '/onboarding?reset=true' : '/settings?category=ai';
-    const LockIcon = isWorkspaceMissing ? Brain : BookOpen;
-
+  if (!hasWorkspace) {
     const lockContent = (
-      <div className="flex h-full items-center justify-center p-6">
-        <Card className="max-w-xl border-[0.5px] border-bb-border bg-bb-white">
-          <CardContent className="p-8 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bb-gold/10 text-bb-gold">
-              <LockIcon className="h-5 w-5" />
-            </div>
-            <h1 className="mt-4 text-2xl font-medium text-bb-text">{lockTitle}</h1>
-            <p className="mt-3 text-sm text-bb-warm-gray">{lockDescription}</p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button asChild>
-                <Link to={lockActionTo}>{lockActionLabel}</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/">Back to inbox</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      <PanelNotice
+        icon={Brain}
+        title="Finish workspace setup first"
+        description="BizzyBee needs an active workspace before the Knowledge Base can load FAQs, website learning, and business context."
+        actionLabel="Open onboarding"
+        actionTo="/onboarding?reset=true"
+      />
+    );
+    if (isMobile) {
+      return <MobilePageLayout>{lockContent}</MobilePageLayout>;
+    }
+
+    return (
+      <div className="min-h-screen bg-bb-cream flex">
+        <Sidebar /> <div className="flex-1">{lockContent}</div>
       </div>
+    );
+  }
+
+  if (knowledgeBaseLockState.state === 'locked') {
+    const lockContent = (
+      <ModuleGateNotice
+        icon={BookOpen}
+        moduleName="Knowledge Base"
+        lockState={knowledgeBaseLockState}
+        lockedTitle="Knowledge Base is on paid AI plans"
+        lockedDescription="Knowledge Base is included on Starter, Growth, and Pro plans. Upgrade to unlock FAQs, website learning, and business context for AI replies."
+        shadowDescription="Knowledge Base would be blocked for this workspace once hard billing enforcement is active."
+        primaryActionLabel="Review plan"
+        primaryActionTo="/settings?category=ai"
+        secondaryActionLabel="Back to inbox"
+        secondaryActionTo="/"
+      />
     );
 
     if (isMobile) {
@@ -487,6 +495,18 @@ export default function KnowledgeBase() {
                 Add FAQ
               </Button>
             </div>
+            {knowledgeBaseLockState.state === 'shadow-preview' ? (
+              <ModuleGateNotice
+                icon={BookOpen}
+                moduleName="Knowledge Base"
+                lockState={knowledgeBaseLockState}
+                lockedDescription=""
+                shadowTitle="Knowledge Base is on paid AI plans"
+                shadowDescription="This workspace is outside the Knowledge Base plan tier. Shadow mode keeps the module open for testing, but it would lock in hard enforcement."
+                primaryActionLabel=""
+                primaryActionTo="/settings?category=ai"
+              />
+            ) : null}
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-bb-cream rounded-lg border-[0.5px] border-bb-border p-4">
@@ -709,6 +729,19 @@ export default function KnowledgeBase() {
               </div>
             </div>
           </div>
+
+          {knowledgeBaseLockState.state === 'shadow-preview' ? (
+            <ModuleGateNotice
+              icon={BookOpen}
+              moduleName="Knowledge Base"
+              lockState={knowledgeBaseLockState}
+              lockedDescription=""
+              shadowTitle="Knowledge Base is on paid AI plans"
+              shadowDescription="This workspace is outside the Knowledge Base plan tier. Shadow mode keeps the module open for testing, but it would lock in hard enforcement."
+              primaryActionLabel=""
+              primaryActionTo="/settings?category=ai"
+            />
+          ) : null}
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
             <Card className="border-[0.5px] border-bb-border bg-bb-white p-5">
@@ -1064,101 +1097,101 @@ export default function KnowledgeBase() {
               <TabsTrigger value="documents">Documents ({groupedFaqs.document.length})</TabsTrigger>
             </TabsList>
 
-              <TabsContent value="all" className="space-y-3">
-                {loading ? (
-                  <FaqListSkeleton />
-                ) : filteredFaqs.length > 0 ? (
-                  filteredFaqs.map((faq) => (
-                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                  ))
-                ) : (
-                  <PanelNotice
-                    icon={BookOpen}
-                    title={searchQuery ? 'No matching knowledge entries' : 'No knowledge yet'}
-                    description={
-                      searchQuery
-                        ? `BizzyBee couldn’t find anything matching "${searchQuery}". Try a different keyword or clear the search.`
-                        : 'Complete onboarding to scrape your website and build the first set of answers BizzyBee can use.'
-                    }
-                    action={
-                      !searchQuery ? (
-                        <Button asChild>
-                          <Link to="/onboarding?reset=true">Open onboarding</Link>
-                        </Button>
-                      ) : (
-                        <Button variant="outline" onClick={() => setSearchQuery('')}>
-                          Clear search
-                        </Button>
-                      )
-                    }
-                    className="bg-bb-white"
-                  />
-                )}
-              </TabsContent>
+            <TabsContent value="all" className="space-y-3">
+              {loading ? (
+                <FaqListSkeleton />
+              ) : filteredFaqs.length > 0 ? (
+                filteredFaqs.map((faq) => (
+                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                ))
+              ) : (
+                <PanelNotice
+                  icon={BookOpen}
+                  title={searchQuery ? 'No matching knowledge entries' : 'No knowledge yet'}
+                  description={
+                    searchQuery
+                      ? `BizzyBee couldn’t find anything matching "${searchQuery}". Try a different keyword or clear the search.`
+                      : 'Complete onboarding to scrape your website and build the first set of answers BizzyBee can use.'
+                  }
+                  action={
+                    !searchQuery ? (
+                      <Button asChild>
+                        <Link to="/onboarding?reset=true">Open onboarding</Link>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" onClick={() => setSearchQuery('')}>
+                        Clear search
+                      </Button>
+                    )
+                  }
+                  className="bg-bb-white"
+                />
+              )}
+            </TabsContent>
 
-              <TabsContent value="website" className="space-y-3">
-                {loading ? (
-                  <FaqListSkeleton />
-                ) : filterByTab(groupedFaqs.website).length > 0 ? (
-                  filterByTab(groupedFaqs.website).map((faq) => (
-                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                  ))
-                ) : (
-                  <PanelNotice
-                    icon={Globe}
-                    title="No website knowledge yet"
-                    description="Onboarding will pull in public website details once it runs against this workspace."
-                    className="bg-bb-white"
-                  />
-                )}
-              </TabsContent>
+            <TabsContent value="website" className="space-y-3">
+              {loading ? (
+                <FaqListSkeleton />
+              ) : filterByTab(groupedFaqs.website).length > 0 ? (
+                filterByTab(groupedFaqs.website).map((faq) => (
+                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                ))
+              ) : (
+                <PanelNotice
+                  icon={Globe}
+                  title="No website knowledge yet"
+                  description="Onboarding will pull in public website details once it runs against this workspace."
+                  className="bg-bb-white"
+                />
+              )}
+            </TabsContent>
 
-              <TabsContent value="competitors" className="space-y-3">
-                {loading ? (
-                  <FaqListSkeleton />
-                ) : filterByTab(groupedFaqs.competitor).length > 0 ? (
-                  filterByTab(groupedFaqs.competitor).map((faq) => (
-                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                  ))
-                ) : (
-                  <PanelNotice
-                    icon={Users}
-                    title="No competitor knowledge yet"
-                    description="BizzyBee has not loaded any competitor comparisons for this workspace yet."
-                    className="bg-bb-white"
-                  />
-                )}
-              </TabsContent>
+            <TabsContent value="competitors" className="space-y-3">
+              {loading ? (
+                <FaqListSkeleton />
+              ) : filterByTab(groupedFaqs.competitor).length > 0 ? (
+                filterByTab(groupedFaqs.competitor).map((faq) => (
+                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                ))
+              ) : (
+                <PanelNotice
+                  icon={Users}
+                  title="No competitor knowledge yet"
+                  description="BizzyBee has not loaded any competitor comparisons for this workspace yet."
+                  className="bg-bb-white"
+                />
+              )}
+            </TabsContent>
 
-              <TabsContent value="documents" className="space-y-3">
-                {loading ? (
-                  <FaqListSkeleton />
-                ) : filterByTab(groupedFaqs.document).length > 0 ? (
-                  filterByTab(groupedFaqs.document).map((faq) => (
-                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                  ))
-                ) : (
-                  <PanelNotice
-                    icon={FileText}
-                    title="No document knowledge yet"
-                    description="Upload product sheets, policies, or reference docs to give BizzyBee more context."
-                    className="bg-bb-white"
-                  />
-                )}
-              </TabsContent>
-            </Tabs>
+            <TabsContent value="documents" className="space-y-3">
+              {loading ? (
+                <FaqListSkeleton />
+              ) : filterByTab(groupedFaqs.document).length > 0 ? (
+                filterByTab(groupedFaqs.document).map((faq) => (
+                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                ))
+              ) : (
+                <PanelNotice
+                  icon={FileText}
+                  title="No document knowledge yet"
+                  description="Upload product sheets, policies, or reference docs to give BizzyBee more context."
+                  className="bg-bb-white"
+                />
+              )}
+            </TabsContent>
+          </Tabs>
 
-            {/* Empty State */}
-            {faqs.length === 0 && !loading && (
-              <PanelNotice
-                icon={BookOpen}
-                title="No knowledge loaded yet"
-                description="Complete onboarding to scrape your website and build the first version of the knowledge base."
-                actionLabel="Open onboarding"
-                actionTo="/onboarding?reset=true"
-                className="bg-bb-white"
-              />
-            )}
+          {/* Empty State */}
+          {faqs.length === 0 && !loading && (
+            <PanelNotice
+              icon={BookOpen}
+              title="No knowledge loaded yet"
+              description="Complete onboarding to scrape your website and build the first version of the knowledge base."
+              actionLabel="Open onboarding"
+              actionTo="/onboarding?reset=true"
+              className="bg-bb-white"
+            />
+          )}
         </div>
       </div>
 

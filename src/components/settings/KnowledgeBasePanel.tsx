@@ -17,30 +17,37 @@ import {
   Loader2,
   FileSearch,
   Trash2,
+  Settings,
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings } from 'lucide-react';
+import { resolveModuleLockState } from '@/components/ProtectedRoute';
 
 export function KnowledgeBasePanel() {
   const { workspace, entitlements } = useWorkspace();
   const [downloading, setDownloading] = useState(false);
   const [downloadingCompetitor, setDownloadingCompetitor] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const knowledgeBaseLocked = Boolean(entitlements && !entitlements.features.knowledge_base);
+  const knowledgeBaseLockState = resolveModuleLockState({
+    isAllowed: entitlements ? entitlements.features.knowledge_base : true,
+    workspaceId: workspace?.id ?? null,
+    entitlements,
+  });
 
-  if (!workspace?.id || knowledgeBaseLocked) {
+  if (!workspace?.id || knowledgeBaseLockState.state === 'locked') {
     const isWorkspaceMissing = !workspace?.id;
     const helperMessage = isWorkspaceMissing
       ? 'Knowledge source management is unavailable until the workspace is ready.'
-      : 'Knowledge source management is unavailable until the Knowledge Base is unlocked on this plan.';
+      : 'Knowledge source management is locked on this plan. Upgrade to Starter or above to unlock editing, scraping, and document uploads.';
     return (
       <div className="space-y-4">
         <PanelNotice
           icon={isWorkspaceMissing ? BookOpen : Settings}
           title={
-            isWorkspaceMissing ? 'Finish workspace setup first' : 'Knowledge Base is locked on this plan'
+            isWorkspaceMissing
+              ? 'Finish workspace setup first'
+              : 'Knowledge Base is locked on this plan'
           }
           description={
             isWorkspaceMissing
@@ -50,9 +57,7 @@ export function KnowledgeBasePanel() {
           actionLabel={isWorkspaceMissing ? 'Open onboarding' : 'Review plan'}
           actionTo={isWorkspaceMissing ? '/onboarding?reset=true' : '/settings?category=ai'}
         />
-        <Card className="p-6 text-sm text-muted-foreground">
-          {helperMessage}
-        </Card>
+        <Card className="p-6 text-sm text-muted-foreground">{helperMessage}</Card>
       </div>
     );
   }
@@ -127,6 +132,17 @@ export function KnowledgeBasePanel() {
 
   return (
     <Card className="p-6">
+      {knowledgeBaseLockState.state === 'shadow-preview' ? (
+        <PanelNotice
+          icon={BookOpen}
+          title="Knowledge Base in shadow preview"
+          description="This workspace is outside the Knowledge Base tier. Shadow mode keeps this panel open for testing, but it would lock under hard enforcement."
+          actionLabel="Review plan"
+          actionTo="/settings?category=ai"
+          className="mb-6 bg-bb-white"
+        />
+      ) : null}
+
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold mb-2">Knowledge Base</h2>

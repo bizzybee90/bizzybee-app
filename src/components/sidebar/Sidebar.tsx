@@ -25,6 +25,8 @@ import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 import { cn } from '@/lib/utils';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { resolveWorkspaceEntitlements } from '@/lib/billing/entitlements';
+import { resolveModuleLockState, type ModuleLockState } from '@/components/ProtectedRoute';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
@@ -39,6 +41,7 @@ interface NavItem {
   label: string;
   count?: number;
   end?: boolean;
+  gateState?: ModuleLockState;
 }
 
 export const Sidebar = ({
@@ -50,6 +53,22 @@ export const Sidebar = ({
   const isCollapsed = !isMobileDrawer && forceCollapsed;
   const isPreviewMode = isPreviewModeEnabled();
   const { workspace, needsOnboarding, loading: workspaceLoading, entitlements } = useWorkspace();
+  const activeEntitlements = entitlements ?? resolveWorkspaceEntitlements(null, []);
+  const aiPhoneState = resolveModuleLockState({
+    isAllowed: activeEntitlements.canUseAiPhone,
+    workspaceId: workspace?.id ?? null,
+    entitlements: activeEntitlements,
+  });
+  const analyticsState = resolveModuleLockState({
+    isAllowed: activeEntitlements.features.analytics,
+    workspaceId: workspace?.id ?? null,
+    entitlements: activeEntitlements,
+  });
+  const knowledgeBaseState = resolveModuleLockState({
+    isAllowed: activeEntitlements.features.knowledge_base,
+    workspaceId: workspace?.id ?? null,
+    entitlements: activeEntitlements,
+  });
 
   const { data: viewData } = useQuery({
     queryKey: ['sidebar-view-counts'],
@@ -185,20 +204,53 @@ export const Sidebar = ({
     { to: '/snoozed', icon: Clock, label: 'Snoozed', count: viewCounts?.snoozed },
     { to: '/done', icon: Archive, label: 'Cleared', count: viewCounts?.done },
     { to: '/sent', icon: Send, label: 'Sent' },
-    ...(entitlements?.canUseAiPhone ? [{ to: '/ai-phone', icon: Phone, label: 'AI phone' }] : []),
+    { to: '/ai-phone', icon: Phone, label: 'AI phone', gateState: aiPhoneState.state },
   ];
 
   const secondaryItems: NavItem[] = [
     { to: '/channels', icon: MessageSquare, label: 'Channels' },
     { to: '/reviews', icon: Star, label: 'Reviews' },
-    ...(entitlements?.features.analytics
-      ? [{ to: '/analytics', icon: BarChart3, label: 'Analytics' }]
-      : []),
-    ...(entitlements?.features.knowledge_base
-      ? [{ to: '/knowledge-base', icon: BookOpen, label: 'Knowledge base' }]
-      : []),
+    { to: '/analytics', icon: BarChart3, label: 'Analytics', gateState: analyticsState.state },
+    {
+      to: '/knowledge-base',
+      icon: BookOpen,
+      label: 'Knowledge base',
+      gateState: knowledgeBaseState.state,
+    },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
+
+  const getGatePill = (state: ModuleLockState) => {
+    if (state === 'shadow-preview') {
+      return (
+        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-700">
+          Shadow
+        </span>
+      );
+    }
+
+    if (state === 'locked') {
+      return (
+        <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-700">
+          Locked
+        </span>
+      );
+    }
+
+    return null;
+  };
+
+  const getGateDotClass = (state: ModuleLockState) => {
+    if (state === 'shadow-preview') {
+      return 'bg-sky-400';
+    }
+
+    if (state === 'locked') {
+      return 'bg-rose-400';
+    }
+
+    return '';
+  };
 
   const SidebarItem = ({ item, compact = false }: { item: NavItem; compact?: boolean }) => {
     const sharedClassName = compact
@@ -225,6 +277,11 @@ export const Sidebar = ({
                 {item.count > 99 ? '99+' : item.count}
               </span>
             ) : null}
+            {item.gateState && item.gateState !== 'available' ? (
+              <span
+                className={`absolute -bottom-0.5 -left-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bb-espresso)] ${getGateDotClass(item.gateState)}`}
+              />
+            ) : null}
           </NavLink>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>
@@ -232,6 +289,10 @@ export const Sidebar = ({
             {item.label}
             {item.count ? ` (${item.count})` : ''}
           </p>
+          {item.gateState === 'shadow-preview' ? (
+            <p className="text-xs text-sky-700">Shadow preview</p>
+          ) : null}
+          {item.gateState === 'locked' ? <p className="text-xs text-rose-700">Locked</p> : null}
         </TooltipContent>
       </Tooltip>
     ) : (
@@ -245,11 +306,14 @@ export const Sidebar = ({
         <item.icon className="h-[16px] w-[16px] flex-shrink-0" strokeWidth={1.7} />
         <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
           <span className="truncate">{item.label}</span>
-          {item.count ? (
-            <span className="rounded-full bg-bb-gold px-2 py-0.5 text-[10px] font-medium leading-none text-bb-espresso">
-              {item.count > 99 ? '99+' : item.count}
-            </span>
-          ) : null}
+          <span className="flex items-center gap-1.5">
+            {item.gateState && item.gateState !== 'available' ? getGatePill(item.gateState) : null}
+            {item.count ? (
+              <span className="rounded-full bg-bb-gold px-2 py-0.5 text-[10px] font-medium leading-none text-bb-espresso">
+                {item.count > 99 ? '99+' : item.count}
+              </span>
+            ) : null}
+          </span>
         </span>
       </NavLink>
     );
