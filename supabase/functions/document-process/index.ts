@@ -1,4 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
+import {
+  FeatureGuardError,
+  featureGuardErrorResponse,
+  requireFeature,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +12,7 @@ const corsHeaders = {
 };
 
 interface ProcessRequest {
-  workspace_id: string;
+  workspace_id?: string;
   document_id?: string;
   action: 'process' | 'extract_faqs' | 'delete' | 'list';
 }
@@ -46,31 +52,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // --- AUTH CHECK ---
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const supabaseAuth = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseAuth.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  // --- END AUTH CHECK ---
-
   const startTime = Date.now();
   const functionName = 'document-process';
 
@@ -80,20 +61,35 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const body: ProcessRequest = await req.json();
-    console.log(`[${functionName}] Starting:`, body);
+    const body: ProcessRequest = await req.clone().json();
+    console.log(`[${functionName}] Starting:`, {
+      action: body.action,
+      workspace_hint: body.workspace_id ?? null,
+      document_id: body.document_id ?? null,
+    });
 
-    if (!body.workspace_id) throw new Error('workspace_id is required');
     if (!body.action) throw new Error('action is required');
 
     let result: any;
 
     switch (body.action) {
       case 'list': {
+        const auth = await validateAuth(req, body.workspace_id);
+        const workspaceId = auth.workspaceId;
+
+        await requireFeature({
+          supabase,
+          workspaceId,
+          featureKey: 'knowledge_base',
+          functionName,
+          action: 'list_documents',
+          context: { authUserId: auth.userId },
+        });
+
         const { data: documents, error } = await supabase
           .from('documents')
           .select('id, name, file_type, file_size, status, page_count, processed_at, created_at')
-          .eq('workspace_id', body.workspace_id)
+          .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -109,10 +105,20 @@ Deno.serve(async (req) => {
           .from('documents')
           .select('*')
           .eq('id', body.document_id)
-          .eq('workspace_id', body.workspace_id)
-          .single();
+          .maybeSingle();
 
-        if (docError || !document) throw new Error('Document not found');
+        if (docError || !document?.workspace_id) throw new Error('Document not found');
+        const workspaceId = document.workspace_id;
+        const auth = await validateAuth(req, workspaceId);
+
+        await requireFeature({
+          supabase,
+          workspaceId,
+          featureKey: 'knowledge_base',
+          functionName,
+          action: 'process_document',
+          context: { documentId: body.document_id, authUserId: auth.userId },
+        });
 
         // Update status
         await supabase
@@ -203,7 +209,7 @@ Deno.serve(async (req) => {
           // Store chunk (with or without embedding)
           const { error: insertError } = await supabase.from('document_chunks').insert({
             document_id: body.document_id,
-            workspace_id: body.workspace_id,
+            workspace_id: workspaceId,
             chunk_index: i,
             content: chunk.text,
             page_number: chunk.page,
@@ -243,10 +249,20 @@ Deno.serve(async (req) => {
           .from('documents')
           .select('id, name, workspace_id')
           .eq('id', body.document_id)
-          .eq('workspace_id', body.workspace_id)
-          .single();
+          .maybeSingle();
 
-        if (docError || !document) throw new Error('Document not found');
+        if (docError || !document?.workspace_id) throw new Error('Document not found');
+        const workspaceId = document.workspace_id;
+        const auth = await validateAuth(req, workspaceId);
+
+        await requireFeature({
+          supabase,
+          workspaceId,
+          featureKey: 'knowledge_base',
+          functionName,
+          action: 'extract_document_faqs',
+          context: { documentId: body.document_id, authUserId: auth.userId },
+        });
 
         // Get document chunks
         const { data: chunks } = await supabase
@@ -314,7 +330,7 @@ Extract 10-20 meaningful FAQs. Only use information actually in the document.`;
 
         // Insert FAQs into faq_database
         const faqRecords = faqs.map((faq: any) => ({
-          workspace_id: body.workspace_id,
+          workspace_id: workspaceId,
           question: faq.question,
           answer: faq.answer,
           category: faq.category || 'General',
@@ -341,12 +357,22 @@ Extract 10-20 meaningful FAQs. Only use information actually in the document.`;
         // Fetch document
         const { data: document, error: docError } = await supabase
           .from('documents')
-          .select('file_path')
+          .select('file_path, workspace_id')
           .eq('id', body.document_id)
-          .eq('workspace_id', body.workspace_id)
-          .single();
+          .maybeSingle();
 
-        if (docError || !document) throw new Error('Document not found');
+        if (docError || !document?.workspace_id) throw new Error('Document not found');
+        const workspaceId = document.workspace_id;
+        const auth = await validateAuth(req, workspaceId);
+
+        await requireFeature({
+          supabase,
+          workspaceId,
+          featureKey: 'knowledge_base',
+          functionName,
+          action: 'delete_document',
+          context: { documentId: body.document_id, authUserId: auth.userId },
+        });
 
         // Delete chunks first
         await supabase.from('document_chunks').delete().eq('document_id', body.document_id);
@@ -375,6 +401,12 @@ Extract 10-20 meaningful FAQs. Only use information actually in the document.`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
+    if (error instanceof FeatureGuardError) {
+      return featureGuardErrorResponse(error, corsHeaders);
+    }
     console.error(`[${functionName}] Error:`, error);
     return new Response(
       JSON.stringify({ success: false, error: error.message, function: functionName }),

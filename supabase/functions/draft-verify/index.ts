@@ -1,4 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
+import {
+  FeatureGuardError,
+  featureGuardErrorResponse,
+  requireFeature,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || '*',
@@ -6,7 +12,7 @@ const corsHeaders = {
 };
 
 interface VerifyRequest {
-  workspace_id: string;
+  workspace_id?: string;
   conversation_id: string;
   draft_text: string;
   customer_message: string;
@@ -29,44 +35,65 @@ Deno.serve(async (req) => {
   const functionName = 'draft-verify';
 
   try {
-    // Auth validation
-    const { validateAuth, AuthError, authErrorResponse } = await import('../_shared/auth.ts');
-    let bodyRaw: any;
+    let bodyRaw: VerifyRequest;
     try {
       bodyRaw = await req.clone().json();
     } catch {
-      bodyRaw = {};
+      bodyRaw = {} as VerifyRequest;
     }
-    try {
-      await validateAuth(req, bodyRaw.workspace_id);
-    } catch (authErr: any) {
-      if (authErr instanceof AuthError) return authErrorResponse(authErr);
-      throw authErr;
-    }
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const body: VerifyRequest = bodyRaw;
+
+    // Validate required fields
+    if (!body.conversation_id) throw new Error('conversation_id is required');
+    if (!body.draft_text) throw new Error('draft_text is required');
+    if (!body.customer_message) throw new Error('customer_message is required');
+
+    const { data: conversation, error: conversationError } = await supabase
+      .from('conversations')
+      .select('id, workspace_id')
+      .eq('id', body.conversation_id)
+      .maybeSingle();
+
+    if (conversationError) {
+      throw new Error(`Failed to resolve conversation workspace: ${conversationError.message}`);
+    }
+    if (!conversation?.workspace_id) {
+      throw new Error('Conversation not found');
+    }
+
+    const workspaceId = conversation.workspace_id;
+    const auth = await validateAuth(req, workspaceId);
+
+    await requireFeature({
+      supabase,
+      workspaceId,
+      featureKey: 'ai_inbox',
+      functionName,
+      action: 'verify_draft',
+      context: {
+        conversationId: body.conversation_id,
+        draftId: body.draft_id ?? null,
+        authUserId: auth.userId,
+      },
+    });
+
     console.log(`[${functionName}] Starting verification:`, {
-      workspace_id: body.workspace_id,
+      workspace_id: workspaceId,
       conversation_id: body.conversation_id,
       draft_length: body.draft_text?.length,
     });
-
-    // Validate required fields
-    if (!body.workspace_id) throw new Error('workspace_id is required');
-    if (!body.draft_text) throw new Error('draft_text is required');
-    if (!body.customer_message) throw new Error('customer_message is required');
 
     // Fetch FAQs for fact-checking (try both tables)
     let faqs: any[] = [];
     const { data: faqData, error: faqError } = await supabase
       .from('faqs')
       .select('question, answer, source, priority')
-      .eq('workspace_id', body.workspace_id)
+      .eq('workspace_id', workspaceId)
       .order('priority', { ascending: false })
       .limit(30);
 
@@ -75,7 +102,7 @@ Deno.serve(async (req) => {
       const { data: faqDbData } = await supabase
         .from('faq_database')
         .select('question, answer, source, priority')
-        .eq('workspace_id', body.workspace_id)
+        .eq('workspace_id', workspaceId)
         .order('priority', { ascending: false })
         .limit(30);
       faqs = faqDbData || [];
@@ -91,14 +118,14 @@ Deno.serve(async (req) => {
       .select(
         'business_name, industry, services, pricing_model, price_summary, payment_methods, guarantee, cancellation_policy',
       )
-      .eq('workspace_id', body.workspace_id)
+      .eq('workspace_id', workspaceId)
       .single();
 
     // Also fetch business facts
     const { data: businessFacts } = await supabase
       .from('business_facts')
       .select('fact_key, fact_value, category')
-      .eq('workspace_id', body.workspace_id)
+      .eq('workspace_id', workspaceId)
       .limit(20);
 
     // Build knowledge base context
@@ -228,7 +255,7 @@ If the draft is accurate and well-supported by the knowledge base, return status
     const { data: verificationRecord, error: insertError } = await supabase
       .from('draft_verifications')
       .insert({
-        workspace_id: body.workspace_id,
+        workspace_id: workspaceId,
         conversation_id: body.conversation_id,
         draft_id: body.draft_id,
         original_draft: body.draft_text,
@@ -275,6 +302,12 @@ If the draft is accurate and well-supported by the knowledge base, return status
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
+    if (error instanceof FeatureGuardError) {
+      return featureGuardErrorResponse(error, corsHeaders);
+    }
     console.error(`[${functionName}] Error:`, error);
     return new Response(
       JSON.stringify({

@@ -7,6 +7,17 @@ export type BillingAddonKey =
   | 'whatsapp_ai'
   | 'sms_ai'
   | 'ai_phone';
+export type BillingFeatureKey =
+  | 'unified_inbox'
+  | 'ai_inbox'
+  | 'instagram_dm'
+  | 'facebook_messenger'
+  | 'auto_categorisation'
+  | 'brand_rules'
+  | 'knowledge_base'
+  | 'analytics'
+  | 'advanced_analytics'
+  | 'priority_support';
 
 export type BillingStatus = 'trialing' | 'active' | 'past_due' | 'paused' | 'canceled';
 export type BillingEnforcementMode = 'legacy' | 'shadow' | 'soft' | 'hard';
@@ -50,6 +61,21 @@ export interface EntitlementGuardEvaluation {
   overrideReason: string | null;
 }
 
+export interface FeatureGuardEvaluation {
+  workspaceId: string;
+  featureKey: BillingFeatureKey;
+  functionName: string;
+  action: string;
+  rolloutMode: BillingEnforcementMode;
+  source: BillingGuardSource;
+  isAllowed: boolean;
+  wouldBlock: boolean;
+  shouldBlock: boolean;
+  bypassActive: boolean;
+  overrideSource: BillingOverrideSource;
+  overrideReason: string | null;
+}
+
 interface WorkspaceBillingOverrideRecord {
   enforcement_mode?: string | null;
   allow_paid_features?: boolean | null;
@@ -72,6 +98,18 @@ export interface RequireEntitlementInput {
   snapshot?: WorkspaceBillingSnapshot;
 }
 
+export interface RequireFeatureInput {
+  supabase: SupabaseClient;
+  workspaceId: string;
+  featureKey: BillingFeatureKey;
+  functionName: string;
+  action: string;
+  context?: Record<string, unknown>;
+  rolloutMode?: BillingEnforcementMode;
+  blockStatusCode?: number;
+  snapshot?: WorkspaceBillingSnapshot;
+}
+
 const ACTIVE_STATUSES: BillingStatus[] = ['trialing', 'active'];
 const ENFORCEMENT_MODES: BillingEnforcementMode[] = ['legacy', 'shadow', 'soft', 'hard'];
 const DEFAULT_ENFORCEMENT_MODE: BillingEnforcementMode = 'shadow';
@@ -83,6 +121,56 @@ const ENV_BYPASS_WORKSPACE_KEYS = [
   'BILLING_GUARD_BYPASS_WORKSPACE_IDS',
   'BILLING_TEST_BYPASS_WORKSPACES',
 ] as const;
+const PLAN_FEATURES: Record<BillingPlanKey, Record<BillingFeatureKey, boolean>> = {
+  connect: {
+    unified_inbox: true,
+    ai_inbox: false,
+    instagram_dm: true,
+    facebook_messenger: true,
+    auto_categorisation: true,
+    brand_rules: false,
+    knowledge_base: false,
+    analytics: false,
+    advanced_analytics: false,
+    priority_support: false,
+  },
+  starter: {
+    unified_inbox: true,
+    ai_inbox: true,
+    instagram_dm: true,
+    facebook_messenger: true,
+    auto_categorisation: true,
+    brand_rules: true,
+    knowledge_base: true,
+    analytics: false,
+    advanced_analytics: false,
+    priority_support: false,
+  },
+  growth: {
+    unified_inbox: true,
+    ai_inbox: true,
+    instagram_dm: true,
+    facebook_messenger: true,
+    auto_categorisation: true,
+    brand_rules: true,
+    knowledge_base: true,
+    analytics: true,
+    advanced_analytics: false,
+    priority_support: false,
+  },
+  pro: {
+    unified_inbox: true,
+    ai_inbox: true,
+    instagram_dm: true,
+    facebook_messenger: true,
+    auto_categorisation: true,
+    brand_rules: true,
+    knowledge_base: true,
+    analytics: true,
+    advanced_analytics: true,
+    priority_support: true,
+  },
+};
 
 function isBillingStatus(status: string | null | undefined): status is BillingStatus {
   return Boolean(status && ['trialing', 'active', 'past_due', 'paused', 'canceled'].includes(status));
@@ -379,6 +467,38 @@ export function evaluateEntitlementGuard(
   };
 }
 
+export function evaluateFeatureGuard(
+  snapshot: WorkspaceBillingSnapshot,
+  featureKey: BillingFeatureKey,
+  functionName: string,
+  action: string,
+): FeatureGuardEvaluation {
+  const subscriptionActive = isBillingStatusActive(snapshot.status);
+  const featureAllowed = PLAN_FEATURES[snapshot.plan]?.[featureKey] === true;
+  const isAllowed = subscriptionActive && featureAllowed;
+  const wouldBlock = !isAllowed;
+
+  let shouldBlock = false;
+  if (snapshot.rolloutMode === 'soft' || snapshot.rolloutMode === 'hard') {
+    shouldBlock = wouldBlock && !snapshot.bypassActive;
+  }
+
+  return {
+    workspaceId: snapshot.workspaceId,
+    featureKey,
+    functionName,
+    action,
+    rolloutMode: snapshot.rolloutMode,
+    source: snapshot.source,
+    isAllowed,
+    wouldBlock,
+    shouldBlock,
+    bypassActive: snapshot.bypassActive,
+    overrideSource: snapshot.overrideSource,
+    overrideReason: snapshot.overrideReason,
+  };
+}
+
 export function logEntitlementGuardDecision(
   evaluation: EntitlementGuardEvaluation,
   context: Record<string, unknown> = {},
@@ -386,6 +506,20 @@ export function logEntitlementGuardDecision(
   console.log(
     JSON.stringify({
       event: 'billing_guard_evaluated',
+      timestamp: new Date().toISOString(),
+      ...evaluation,
+      context,
+    }),
+  );
+}
+
+export function logFeatureGuardDecision(
+  evaluation: FeatureGuardEvaluation,
+  context: Record<string, unknown> = {},
+) {
+  console.log(
+    JSON.stringify({
+      event: 'billing_feature_guard_evaluated',
       timestamp: new Date().toISOString(),
       ...evaluation,
       context,
@@ -407,6 +541,20 @@ export class EntitlementGuardError extends Error {
   }
 }
 
+export class FeatureGuardError extends Error {
+  statusCode: number;
+  code: string;
+  evaluation: FeatureGuardEvaluation;
+
+  constructor(evaluation: FeatureGuardEvaluation, statusCode = 402) {
+    super(`Blocked by billing feature guard for feature ${evaluation.featureKey}`);
+    this.name = 'FeatureGuardError';
+    this.statusCode = statusCode;
+    this.code = 'billing_feature_blocked';
+    this.evaluation = evaluation;
+  }
+}
+
 export function entitlementGuardErrorResponse(
   error: EntitlementGuardError,
   corsHeaders: Record<string, string>,
@@ -416,6 +564,30 @@ export function entitlementGuardErrorResponse(
       error: 'This action requires an active subscription add-on.',
       code: error.code,
       entitlement_key: error.evaluation.entitlementKey,
+      rollout_mode: error.evaluation.rolloutMode,
+      workspace_id: error.evaluation.workspaceId,
+      function_name: error.evaluation.functionName,
+      action: error.evaluation.action,
+      bypass_active: error.evaluation.bypassActive,
+      override_source: error.evaluation.overrideSource,
+      would_block: error.evaluation.wouldBlock,
+    }),
+    {
+      status: error.statusCode,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+}
+
+export function featureGuardErrorResponse(
+  error: FeatureGuardError,
+  corsHeaders: Record<string, string>,
+) {
+  return new Response(
+    JSON.stringify({
+      error: 'This action requires a higher-tier subscription feature.',
+      code: error.code,
+      feature_key: error.evaluation.featureKey,
       rollout_mode: error.evaluation.rolloutMode,
       workspace_id: error.evaluation.workspaceId,
       function_name: error.evaluation.functionName,
@@ -451,6 +623,26 @@ export async function requireEntitlement(
 
   if (evaluation.shouldBlock) {
     throw new EntitlementGuardError(evaluation, input.blockStatusCode);
+  }
+
+  return { snapshot, evaluation };
+}
+
+export async function requireFeature(
+  input: RequireFeatureInput,
+): Promise<{ snapshot: WorkspaceBillingSnapshot; evaluation: FeatureGuardEvaluation }> {
+  const snapshot =
+    input.snapshot ??
+    (await getWorkspaceBillingSnapshot(input.supabase, input.workspaceId, {
+      rolloutMode: input.rolloutMode,
+    }));
+
+  const evaluation = evaluateFeatureGuard(snapshot, input.featureKey, input.functionName, input.action);
+
+  logFeatureGuardDecision(evaluation, input.context);
+
+  if (evaluation.shouldBlock) {
+    throw new FeatureGuardError(evaluation, input.blockStatusCode);
   }
 
   return { snapshot, evaluation };
