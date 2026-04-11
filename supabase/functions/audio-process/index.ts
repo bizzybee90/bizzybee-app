@@ -1,4 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
+import {
+  FeatureGuardError,
+  featureGuardErrorResponse,
+  requireFeature,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +12,7 @@ const corsHeaders = {
 };
 
 interface AudioRequest {
-  workspace_id: string;
+  workspace_id?: string;
   audio_url: string;
   message_id?: string;
   customer_name?: string;
@@ -17,31 +23,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // --- AUTH CHECK ---
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const supabaseAuth = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseAuth.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  // --- END AUTH CHECK ---
-
   const startTime = Date.now();
   const functionName = 'audio-process';
 
@@ -51,14 +32,67 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const body: AudioRequest = await req.json();
+    const body: AudioRequest = await req.clone().json();
     console.log(`[${functionName}] Request:`, {
-      workspace_id: body.workspace_id,
+      workspace_hint: body.workspace_id ?? null,
+      message_id: body.message_id ?? null,
       has_audio: !!body.audio_url,
     });
 
-    if (!body.workspace_id) throw new Error('workspace_id is required');
     if (!body.audio_url) throw new Error('audio_url is required');
+
+    let workspaceId = body.workspace_id?.trim();
+
+    if (body.message_id) {
+      const { data: message, error: messageError } = await supabase
+        .from('messages')
+        .select('id, conversation_id')
+        .eq('id', body.message_id)
+        .maybeSingle();
+
+      if (messageError) {
+        throw new Error(`Failed to resolve message workspace: ${messageError.message}`);
+      }
+
+      if (!message?.conversation_id) {
+        throw new Error('Message not found');
+      }
+
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id, workspace_id')
+        .eq('id', message.conversation_id)
+        .maybeSingle();
+
+      if (conversationError) {
+        throw new Error(`Failed to resolve conversation workspace: ${conversationError.message}`);
+      }
+
+      if (!conversation?.workspace_id) {
+        throw new Error('Conversation not found');
+      }
+
+      workspaceId = conversation.workspace_id;
+    }
+
+    if (!workspaceId) {
+      throw new Error('workspace_id or message_id is required');
+    }
+
+    const auth = await validateAuth(req, workspaceId);
+    workspaceId = auth.workspaceId;
+
+    await requireFeature({
+      supabase,
+      workspaceId,
+      featureKey: 'ai_inbox',
+      functionName,
+      action: 'process_audio',
+      context: {
+        authUserId: auth.userId,
+        messageId: body.message_id ?? null,
+      },
+    });
 
     // Check for OpenAI API key (needed for Whisper)
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
@@ -140,7 +174,7 @@ Deno.serve(async (req) => {
     const { data: businessProfile } = await supabase
       .from('business_profile')
       .select('business_name, industry, services')
-      .eq('workspace_id', body.workspace_id)
+      .eq('workspace_id', workspaceId)
       .single();
 
     const analysisPrompt = `Analyze this voicemail transcription for a ${businessProfile?.industry || 'business'}.
@@ -229,7 +263,7 @@ Return JSON:
     const { data: storedTranscript, error: insertError } = await supabase
       .from('voicemail_transcripts')
       .insert({
-        workspace_id: body.workspace_id,
+        workspace_id: workspaceId,
         message_id: body.message_id,
         audio_url: body.audio_url,
         duration_seconds: Math.round(duration),
@@ -280,6 +314,12 @@ Return JSON:
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
+    if (error instanceof FeatureGuardError) {
+      return featureGuardErrorResponse(error, corsHeaders);
+    }
     console.error(`[${functionName}] Error:`, error);
     return new Response(
       JSON.stringify({

@@ -1,4 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
+import {
+  FeatureGuardError,
+  featureGuardErrorResponse,
+  requireFeature,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +12,7 @@ const corsHeaders = {
 };
 
 interface AnalyzeRequest {
-  workspace_id: string;
+  workspace_id?: string;
   image_url: string;
   analysis_type: 'quote' | 'damage' | 'receipt' | 'property' | 'general';
   message_id?: string;
@@ -19,31 +25,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // --- AUTH CHECK ---
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const supabaseAuth = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseAuth.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  // --- END AUTH CHECK ---
-
   const startTime = Date.now();
   const functionName = 'image-analyze';
 
@@ -53,15 +34,69 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const body: AnalyzeRequest = await req.json();
+    const body: AnalyzeRequest = await req.clone().json();
     console.log(`[${functionName}] Request:`, {
-      workspace_id: body.workspace_id,
+      workspace_hint: body.workspace_id ?? null,
+      message_id: body.message_id ?? null,
       analysis_type: body.analysis_type,
       has_image: !!body.image_url,
     });
 
-    if (!body.workspace_id) throw new Error('workspace_id is required');
     if (!body.image_url) throw new Error('image_url is required');
+
+    let workspaceId = body.workspace_id?.trim();
+
+    if (body.message_id) {
+      const { data: message, error: messageError } = await supabase
+        .from('messages')
+        .select('id, conversation_id')
+        .eq('id', body.message_id)
+        .maybeSingle();
+
+      if (messageError) {
+        throw new Error(`Failed to resolve message workspace: ${messageError.message}`);
+      }
+
+      if (!message?.conversation_id) {
+        throw new Error('Message not found');
+      }
+
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('id, workspace_id')
+        .eq('id', message.conversation_id)
+        .maybeSingle();
+
+      if (conversationError) {
+        throw new Error(`Failed to resolve conversation workspace: ${conversationError.message}`);
+      }
+
+      if (!conversation?.workspace_id) {
+        throw new Error('Conversation not found');
+      }
+
+      workspaceId = conversation.workspace_id;
+    }
+
+    if (!workspaceId) {
+      throw new Error('workspace_id or message_id is required');
+    }
+
+    const auth = await validateAuth(req, workspaceId);
+    workspaceId = auth.workspaceId;
+
+    await requireFeature({
+      supabase,
+      workspaceId,
+      featureKey: 'ai_inbox',
+      functionName,
+      action: 'analyze_image',
+      context: {
+        analysisType: body.analysis_type,
+        authUserId: auth.userId,
+        messageId: body.message_id ?? null,
+      },
+    });
 
     const analysisType = body.analysis_type || 'general';
 
@@ -69,7 +104,7 @@ Deno.serve(async (req) => {
     const { data: businessProfile } = await supabase
       .from('business_profile')
       .select('business_name, industry, services')
-      .eq('workspace_id', body.workspace_id)
+      .eq('workspace_id', workspaceId)
       .single();
 
     const industry = businessProfile?.industry || 'general services';
@@ -293,7 +328,7 @@ Return JSON:
     const { data: storedAnalysis, error: insertError } = await supabase
       .from('image_analyses')
       .insert({
-        workspace_id: body.workspace_id,
+        workspace_id: workspaceId,
         message_id: body.message_id,
         image_url: body.image_url,
         analysis_type: analysisType,
@@ -332,6 +367,12 @@ Return JSON:
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (error: any) {
+    if (error instanceof AuthError) {
+      return authErrorResponse(error);
+    }
+    if (error instanceof FeatureGuardError) {
+      return featureGuardErrorResponse(error, corsHeaders);
+    }
     console.error(`[${functionName}] Error:`, error);
     return new Response(
       JSON.stringify({
