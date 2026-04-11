@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +27,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    let workspaceId = workspace_id;
+    try {
+      const auth = await validateAuth(req, workspace_id);
+      workspaceId = auth.workspaceId;
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return authErrorResponse(error);
+      }
+      throw error;
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -35,7 +47,7 @@ Deno.serve(async (req) => {
     const { data: config, error: configError } = await supabase
       .from('meta_provider_configs')
       .select('id, page_id, page_name, instagram_account_id, instagram_username')
-      .eq('workspace_id', workspace_id)
+      .eq('workspace_id', workspaceId)
       .eq('status', 'active')
       .maybeSingle();
 
@@ -127,7 +139,7 @@ Deno.serve(async (req) => {
       // Upsert workspace_channels for Instagram
       const { error: channelError } = await supabase.from('workspace_channels').upsert(
         {
-          workspace_id,
+          workspace_id: workspaceId,
           channel: 'instagram',
           enabled: true,
           automation_level: 'draft_only',
