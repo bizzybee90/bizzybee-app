@@ -153,6 +153,26 @@ Live issues still visible in the deployed frontend:
 - Home still triggers a `400` against `email_import_queue`
 - `/ai-phone` showed transient failed `retell-call-stats` requests before succeeding
 
+### Home `email_import_queue` Drift Explained
+
+The Home `400` is now confirmed to be a frontend deployment drift issue, not an unresolved bug in
+`codex/supabase-hardening-control`.
+
+Evidence:
+
+- Reproducing the live flow on `https://bizzybee-app.pages.dev` still issues:
+  - `GET /rest/v1/email_import_queue?select=id,from_name,from_email,subject,body,received_at,category,direction...`
+- That exact query matches the older implementation in:
+  - [ActivityFeed.tsx](/Users/michaelcarbon/Projects/BizzyBee/bizzybee-app/src/components/dashboard/ActivityFeed.tsx)
+- The current hardening branch already replaced that query with a `conversations`-backed inbox lane in:
+  - [ActivityFeed.tsx](/Users/michaelcarbon/Projects/BizzyBee/bizzybee-hardening-control/src/components/dashboard/ActivityFeed.tsx)
+
+Practical implication:
+
+- the backend hardening work is not the thing still breaking Home
+- the deployed Pages bundle is behind the stabilized branch
+- deploying the current hardened frontend should remove this specific `email_import_queue` error
+
 ### Most Important Remaining Gaps
 
 1. Frontend/runtime drift is now the loudest remaining issue.
