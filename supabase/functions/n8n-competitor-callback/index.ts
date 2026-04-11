@@ -158,9 +158,16 @@ Deno.serve(async (req) => {
 
     const rawBody = await req.text();
 
-    // Optional webhook signature verification — only check if both secret and signature are present
+    // If the webhook secret is configured, signature verification is mandatory.
     const signature = req.headers.get('x-n8n-signature') || '';
-    if (n8nSecret && signature) {
+    if (n8nSecret) {
+      if (!signature) {
+        console.error('[n8n-callback] Missing webhook signature');
+        return new Response(JSON.stringify({ error: 'Missing signature' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       if (!(await verifyN8nSignature(rawBody, signature, n8nSecret))) {
         console.error('[n8n-callback] Invalid webhook signature');
         return new Response(JSON.stringify({ error: 'Invalid signature' }), {
