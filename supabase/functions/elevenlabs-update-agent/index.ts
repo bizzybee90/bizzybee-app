@@ -1,5 +1,10 @@
 import { validateAuth, AuthError, authErrorResponse } from "../_shared/auth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  EntitlementGuardError,
+  entitlementGuardErrorResponse,
+  requireEntitlement,
+} from "../_shared/entitlements.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -123,6 +128,14 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    await requireEntitlement({
+      supabase,
+      workspaceId,
+      entitlementKey: 'ai_phone',
+      functionName: 'elevenlabs-update-agent',
+      action: 'update_ai_phone_agent',
+    });
 
     // 4. Fetch current config
     const { data: config, error: fetchError } = await supabase
@@ -258,6 +271,9 @@ Deno.serve(async (req) => {
   } catch (error) {
     if (error instanceof AuthError) {
       return authErrorResponse(error);
+    }
+    if (error instanceof EntitlementGuardError) {
+      return entitlementGuardErrorResponse(error, corsHeaders);
     }
 
     console.error('Unexpected error:', error);

@@ -1,4 +1,5 @@
-import { createServiceClient, jsonResponse } from "../_shared/pipeline.ts";
+import { createServiceClient } from "../_shared/pipeline.ts";
+import { EntitlementGuardError, requireEntitlement } from "../_shared/entitlements.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -181,6 +182,37 @@ Deno.serve(async (req: Request) => {
 
     const workspaceId: string = agentRow.workspace_id;
     const dbAgentId: string = agentRow.id;
+
+    try {
+      await requireEntitlement({
+        supabase,
+        workspaceId,
+        entitlementKey: "ai_phone",
+        functionName: "elevenlabs-webhook",
+        action: "process_ai_phone_call_event",
+        context: {
+          eventType,
+          conversationId,
+          agentId,
+        },
+      });
+    } catch (error) {
+      if (error instanceof EntitlementGuardError) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            skipped: "billing_guard_blocked",
+            entitlement_key: error.evaluation.entitlementKey,
+            rollout_mode: error.evaluation.rolloutMode,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+      throw error;
+    }
 
     // Insert call log
     const { error: insertErr } = await supabase.from("call_logs").insert({

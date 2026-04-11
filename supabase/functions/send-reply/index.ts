@@ -1,4 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
+import {
+  EntitlementGuardError,
+  entitlementGuardErrorResponse,
+  requireEntitlement,
+  type BillingAddonKey,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,6 +22,17 @@ interface SendReplyRequest {
   actor_id?: string | null;
 }
 
+function resolvePremiumAddonGuard(channel: string, actorType: string): BillingAddonKey | null {
+  const normalizedActorType = actorType.trim().toLowerCase();
+  const isAiDrivenActor =
+    normalizedActorType === 'ai_agent' || normalizedActorType === 'ai' || normalizedActorType === 'system';
+
+  if (!isAiDrivenActor) return null;
+  if (channel === 'whatsapp') return 'whatsapp_ai';
+  if (channel === 'sms') return 'sms_ai';
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -24,7 +42,6 @@ Deno.serve(async (req) => {
 
   try {
     // --- Auth validation ---
-    const { validateAuth, AuthError, authErrorResponse } = await import('../_shared/auth.ts');
     let body: SendReplyRequest;
     try {
       body = await req.clone().json();
@@ -90,6 +107,22 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       actorName = user?.name?.trim() || null;
+    }
+
+    const premiumAddonGuard = resolvePremiumAddonGuard(channel, actorType);
+    if (premiumAddonGuard) {
+      await requireEntitlement({
+        supabase,
+        workspaceId,
+        entitlementKey: premiumAddonGuard,
+        functionName: 'send-reply',
+        action: `send_${channel}_message`,
+        context: {
+          conversationId,
+          actorType,
+          channel,
+        },
+      });
     }
 
     const updateConversationAfterSend = async () => {
@@ -540,6 +573,9 @@ Deno.serve(async (req) => {
         );
     }
   } catch (error: unknown) {
+    if (error instanceof EntitlementGuardError) {
+      return entitlementGuardErrorResponse(error, corsHeaders);
+    }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[send-reply] Error:', errorMessage);
     return new Response(

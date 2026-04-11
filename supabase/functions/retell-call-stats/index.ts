@@ -1,5 +1,10 @@
 import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  EntitlementGuardError,
+  entitlementGuardErrorResponse,
+  requireEntitlement,
+} from '../_shared/entitlements.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,6 +30,14 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    await requireEntitlement({
+      supabase,
+      workspaceId,
+      entitlementKey: 'ai_phone',
+      functionName: 'retell-call-stats',
+      action: 'read_ai_phone_usage_stats',
+    });
 
     // Calculate date boundaries
     const now = new Date();
@@ -98,6 +111,9 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
+    if (err instanceof EntitlementGuardError) {
+      return entitlementGuardErrorResponse(err, corsHeaders);
+    }
     console.error('retell-call-stats error:', err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : 'Internal server error' }),

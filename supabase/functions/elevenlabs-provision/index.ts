@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validateAuth, AuthError, authErrorResponse } from "../_shared/auth.ts";
+import {
+  EntitlementGuardError,
+  entitlementGuardErrorResponse,
+  requireEntitlement,
+} from "../_shared/entitlements.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -232,6 +237,25 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const functionName = "elevenlabs-provision";
+
+  try {
+    await requireEntitlement({
+      supabase,
+      workspaceId,
+      entitlementKey: "ai_phone",
+      functionName,
+      action: "provision_ai_phone_agent",
+      context: {
+        userId,
+      },
+    });
+  } catch (error) {
+    if (error instanceof EntitlementGuardError) {
+      return entitlementGuardErrorResponse(error, corsHeaders);
+    }
+    throw error;
+  }
 
   // ── Step 1: Insert initial config row ─────────────────────────────────
   const configRow = {
