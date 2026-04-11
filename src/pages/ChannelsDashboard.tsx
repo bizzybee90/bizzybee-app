@@ -13,6 +13,7 @@ import {
   Settings,
   Eye,
   EyeOff,
+  MapPin,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -25,6 +26,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { MetricPillCard } from '@/components/shared/MetricPillCard';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PanelNotice } from '@/components/settings/PanelNotice';
 import {
   CHANNEL_DEFINITIONS,
@@ -139,6 +141,76 @@ export default function ChannelsDashboard() {
   );
 
   const isPreview = workspace?.id === 'preview-workspace';
+
+  const renderLoadingState = () => {
+    const cardCount = isMobile ? 2 : 4;
+    return (
+      <div className="space-y-6 p-4 md:p-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-9 w-36 rounded-full" />
+        </div>
+
+        <Card className="border-[0.5px] border-bb-border bg-bb-white p-5">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-bb-border/60 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-9 w-9 rounded-xl" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-5 w-10 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {Array.from({ length: cardCount }).map((_, index) => (
+            <Card
+              key={index}
+              className="border-[0.5px] border-bb-border bg-bb-white p-5 shadow-[0_10px_24px_rgba(28,21,16,0.03)]"
+            >
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-28" />
+                    <Skeleton className="h-3 w-36" />
+                  </div>
+                  <Skeleton className="h-8 w-16 rounded-full" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Skeleton className="h-20 rounded-xl" />
+                  <Skeleton className="h-20 rounded-xl" />
+                </div>
+                <Skeleton className="h-4 w-32" />
+                <div className="space-y-2">
+                  <Skeleton className="h-14 rounded-xl" />
+                  <Skeleton className="h-14 rounded-xl" />
+                  <Skeleton className="h-14 rounded-xl" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   const fetchChannelStats = useCallback(async () => {
     if (!workspace?.id || isPreview) {
@@ -293,12 +365,7 @@ export default function ChannelsDashboard() {
   const statsByChannel = new Map(channelStats.map((stat) => [stat.channel, stat]));
   const mainContent =
     workspaceLoading || loading || channelSetupLoading ? (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-bb-warm-gray">Loading channels...</p>
-        </div>
-      </div>
+      renderLoadingState()
     ) : !workspace?.id || isPreview ? (
       <div className="p-4 md:p-8">
         <PanelNotice
@@ -325,7 +392,7 @@ export default function ChannelsDashboard() {
             className="self-start sm:self-auto"
           >
             <Settings className="h-4 w-4 mr-2" />
-            {showSettings ? 'Hide' : 'Show'}
+            {showSettings ? 'Hide setup' : 'Show setup'}
           </Button>
         </div>
 
@@ -393,14 +460,13 @@ export default function ChannelsDashboard() {
         )}
 
         {fetchError && (
-          <Card className="p-4 border-destructive bg-destructive/5">
-            <div className="flex items-center gap-2 text-destructive">
-              <p className="text-sm font-medium">{fetchError}</p>
-              <Button variant="outline" size="sm" onClick={fetchChannelStats}>
-                Retry
-              </Button>
-            </div>
-          </Card>
+          <PanelNotice
+            icon={Settings}
+            title="Channel data could not load"
+            description={fetchError}
+            action={<Button onClick={fetchChannelStats}>Retry</Button>}
+            className="bg-bb-white"
+          />
         )}
 
         {channelsNeedingSetup.length > 0 &&
@@ -584,7 +650,7 @@ export default function ChannelsDashboard() {
           })}
 
           {visibleChannelStats.length === 0 && (
-            <div className="col-span-2">
+            <div className="col-span-full">
               <PanelNotice
                 icon={Settings}
                 title="No channels are enabled yet"

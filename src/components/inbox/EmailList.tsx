@@ -105,7 +105,12 @@ export const EmailList = ({
             ))}
           </div>
         ) : emails.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">No emails found</div>
+          <div className="px-6 py-10 text-center">
+            <p className="text-sm font-medium text-foreground">No messages match these filters</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Try a different folder, clear the search, or wait for new mail to arrive.
+            </p>
+          </div>
         ) : (
           <>
             {emails.map((email) => (

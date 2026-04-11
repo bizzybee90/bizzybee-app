@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import {
@@ -224,6 +225,59 @@ export default function AnalyticsDashboard() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const renderLoadingContent = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-20 rounded-full" />
+          <Skeleton className="h-9 w-20 rounded-full" />
+          <Skeleton className="h-9 w-20 rounded-full" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Card
+            key={index}
+            className="rounded-2xl border-[0.5px] border-bb-border bg-bb-white p-6 shadow-[0_10px_24px_rgba(28,21,16,0.03)]"
+          >
+            <div className="space-y-3">
+              <Skeleton className="h-12 w-12 rounded-2xl" />
+              <Skeleton className="h-7 w-20" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="rounded-2xl border-[0.5px] border-bb-border bg-bb-white p-6">
+          <div className="space-y-4">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-[250px] rounded-2xl" />
+          </div>
+        </Card>
+        <Card className="rounded-2xl border-[0.5px] border-bb-border bg-bb-white p-6">
+          <div className="space-y-4">
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="h-[250px] rounded-2xl" />
+          </div>
+        </Card>
+      </div>
+
+      <Card className="rounded-2xl border-[0.5px] border-bb-border bg-bb-white p-6">
+        <div className="space-y-4">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="h-[300px] rounded-2xl" />
+        </div>
+      </Card>
+    </div>
+  );
+
   if (entitlements && !entitlements.features.analytics) {
     const lockedContent = (
       <div className="flex h-full items-center justify-center p-6">
@@ -357,9 +411,7 @@ export default function AnalyticsDashboard() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
+          renderLoadingContent()
         ) : !workspace?.id ? (
           <PanelNotice
             icon={TrendingUp}
@@ -372,7 +424,8 @@ export default function AnalyticsDashboard() {
           <PanelNotice
             icon={TrendingUp}
             title="Analytics couldn't load right now"
-            description="The page is no longer stuck on a spinner, but the data query still failed. Try refreshing after onboarding or after your first conversations arrive."
+            description="BizzyBee hit a temporary issue while pulling conversation metrics. Try again once the workspace is ready."
+            action={<Button onClick={() => void fetchAnalytics()}>Retry</Button>}
           />
         ) : data ? (
           <>
@@ -600,7 +653,13 @@ export default function AnalyticsDashboard() {
             </div>
           </>
         ) : (
-          <div className="text-center text-bb-warm-gray py-12">No analytics data yet</div>
+          <PanelNotice
+            icon={TrendingUp}
+            title="No analytics yet"
+            description="Connect a channel and let BizzyBee process a few conversations. Once traffic starts moving, this page will fill with response time, containment, and volume trends."
+            actionLabel="Open channels"
+            actionTo="/channels"
+          />
         )}
       </div>
     );

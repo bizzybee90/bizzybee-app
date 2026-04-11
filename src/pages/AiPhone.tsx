@@ -42,7 +42,7 @@ const AiPhone = () => {
     );
 
     if (isMobile) {
-      return <MobilePageLayout title="AI Phone">{lockedContent}</MobilePageLayout>;
+      return <MobilePageLayout>{lockedContent}</MobilePageLayout>;
     }
 
     return <ThreeColumnLayout sidebar={<Sidebar />} main={lockedContent} />;
@@ -71,7 +71,7 @@ const AiPhone = () => {
     );
 
     if (isMobile) {
-      return <MobilePageLayout title="AI Phone">{lockedContent}</MobilePageLayout>;
+      return <MobilePageLayout>{lockedContent}</MobilePageLayout>;
     }
 
     return <ThreeColumnLayout sidebar={<Sidebar />} main={lockedContent} />;
@@ -131,7 +131,7 @@ const AiPhone = () => {
   );
 
   if (isMobile) {
-    return <MobilePageLayout title="AI Phone">{content}</MobilePageLayout>;
+    return <MobilePageLayout>{content}</MobilePageLayout>;
   }
 
   return <ThreeColumnLayout sidebar={<Sidebar />} main={content} />;

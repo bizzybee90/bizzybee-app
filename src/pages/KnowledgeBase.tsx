@@ -18,6 +18,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Sidebar } from '@/components/sidebar/Sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PanelNotice } from '@/components/settings/PanelNotice';
 import {
   Search,
   Globe,
@@ -151,6 +153,34 @@ function FAQCard({
   );
 }
 
+function FaqListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <Card key={index} className="rounded-2xl border-[0.5px] border-bb-border bg-bb-white">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-4 rounded-full" />
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                </div>
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function KnowledgeBase() {
   const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
@@ -240,7 +270,7 @@ export default function KnowledgeBase() {
     );
 
     if (isMobile) {
-      return <MobilePageLayout title="Knowledge Base">{lockContent}</MobilePageLayout>;
+      return <MobilePageLayout>{lockContent}</MobilePageLayout>;
     }
 
     return (
@@ -399,11 +429,33 @@ export default function KnowledgeBase() {
   ];
 
   if (workspaceLoading) {
+    const loadingContent = (
+      <div className="flex h-full items-center justify-center p-6">
+        <Card className="w-full max-w-2xl border-[0.5px] border-bb-border bg-bb-white shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
+          <CardContent className="space-y-5 p-8">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-20 rounded-2xl" />
+              ))}
+            </div>
+            <FaqListSkeleton />
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+    if (isMobile) {
+      return <MobilePageLayout>{loadingContent}</MobilePageLayout>;
+    }
+
     return (
-      <div className="flex h-screen bg-bb-linen">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-pulse text-bb-warm-gray">Loading...</div>
-        </div>
+      <div className="min-h-screen bg-bb-cream flex">
+        <Sidebar /> <div className="flex-1">{loadingContent}</div>
       </div>
     );
   }
@@ -498,17 +550,16 @@ export default function KnowledgeBase() {
               />
             </div>
             {fetchError && (
-              <Card className="border-destructive bg-destructive/5 p-4">
-                <div className="flex items-center gap-2 text-destructive">
-                  <p className="text-sm font-medium">{fetchError}</p>
-                  <Button variant="outline" size="sm" onClick={fetchFaqs}>
-                    Retry
-                  </Button>
-                </div>
-              </Card>
+              <PanelNotice
+                icon={Brain}
+                title="Knowledge Base could not load"
+                description={fetchError}
+                action={<Button onClick={fetchFaqs}>Retry</Button>}
+                className="bg-bb-white"
+              />
             )}
             <Tabs defaultValue="all" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
                 <TabsTrigger value="all">All ({faqs.length})</TabsTrigger>
                 <TabsTrigger value="website">Website ({groupedFaqs.website.length})</TabsTrigger>
                 <TabsTrigger value="competitors">
@@ -1013,64 +1064,101 @@ export default function KnowledgeBase() {
               <TabsTrigger value="documents">Documents ({groupedFaqs.document.length})</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="all" className="space-y-3">
-              {loading ? (
-                <div className="text-center py-8 text-bb-warm-gray">Loading FAQs...</div>
-              ) : filteredFaqs.length > 0 ? (
-                filteredFaqs.map((faq) => (
-                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                ))
-              ) : (
-                <div className="text-center py-8 text-bb-warm-gray">No FAQs found</div>
-              )}
-            </TabsContent>
+              <TabsContent value="all" className="space-y-3">
+                {loading ? (
+                  <FaqListSkeleton />
+                ) : filteredFaqs.length > 0 ? (
+                  filteredFaqs.map((faq) => (
+                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                  ))
+                ) : (
+                  <PanelNotice
+                    icon={BookOpen}
+                    title={searchQuery ? 'No matching knowledge entries' : 'No knowledge yet'}
+                    description={
+                      searchQuery
+                        ? `BizzyBee couldn’t find anything matching "${searchQuery}". Try a different keyword or clear the search.`
+                        : 'Complete onboarding to scrape your website and build the first set of answers BizzyBee can use.'
+                    }
+                    action={
+                      !searchQuery ? (
+                        <Button asChild>
+                          <Link to="/onboarding?reset=true">Open onboarding</Link>
+                        </Button>
+                      ) : (
+                        <Button variant="outline" onClick={() => setSearchQuery('')}>
+                          Clear search
+                        </Button>
+                      )
+                    }
+                    className="bg-bb-white"
+                  />
+                )}
+              </TabsContent>
 
-            <TabsContent value="website" className="space-y-3">
-              {filterByTab(groupedFaqs.website).length > 0 ? (
-                filterByTab(groupedFaqs.website).map((faq) => (
-                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                ))
-              ) : (
-                <div className="text-center py-8 text-bb-warm-gray">No website FAQs yet</div>
-              )}
-            </TabsContent>
+              <TabsContent value="website" className="space-y-3">
+                {loading ? (
+                  <FaqListSkeleton />
+                ) : filterByTab(groupedFaqs.website).length > 0 ? (
+                  filterByTab(groupedFaqs.website).map((faq) => (
+                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                  ))
+                ) : (
+                  <PanelNotice
+                    icon={Globe}
+                    title="No website knowledge yet"
+                    description="Onboarding will pull in public website details once it runs against this workspace."
+                    className="bg-bb-white"
+                  />
+                )}
+              </TabsContent>
 
-            <TabsContent value="competitors" className="space-y-3">
-              {filterByTab(groupedFaqs.competitor).length > 0 ? (
-                filterByTab(groupedFaqs.competitor).map((faq) => (
-                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                ))
-              ) : (
-                <div className="text-center py-8 text-bb-warm-gray">No competitor FAQs yet</div>
-              )}
-            </TabsContent>
+              <TabsContent value="competitors" className="space-y-3">
+                {loading ? (
+                  <FaqListSkeleton />
+                ) : filterByTab(groupedFaqs.competitor).length > 0 ? (
+                  filterByTab(groupedFaqs.competitor).map((faq) => (
+                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                  ))
+                ) : (
+                  <PanelNotice
+                    icon={Users}
+                    title="No competitor knowledge yet"
+                    description="BizzyBee has not loaded any competitor comparisons for this workspace yet."
+                    className="bg-bb-white"
+                  />
+                )}
+              </TabsContent>
 
-            <TabsContent value="documents" className="space-y-3">
-              {filterByTab(groupedFaqs.document).length > 0 ? (
-                filterByTab(groupedFaqs.document).map((faq) => (
-                  <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
-                ))
-              ) : (
-                <div className="text-center py-8 text-bb-warm-gray">No document FAQs yet</div>
-              )}
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="documents" className="space-y-3">
+                {loading ? (
+                  <FaqListSkeleton />
+                ) : filterByTab(groupedFaqs.document).length > 0 ? (
+                  filterByTab(groupedFaqs.document).map((faq) => (
+                    <FAQCard key={faq.id} faq={faq} onDelete={fetchFaqs} onEdit={handleEditFaq} />
+                  ))
+                ) : (
+                  <PanelNotice
+                    icon={FileText}
+                    title="No document knowledge yet"
+                    description="Upload product sheets, policies, or reference docs to give BizzyBee more context."
+                    className="bg-bb-white"
+                  />
+                )}
+              </TabsContent>
+            </Tabs>
 
-          {/* Empty State */}
-          {faqs.length === 0 && !loading && (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <BookOpen className="h-12 w-12 text-bb-muted mb-4" />
-                <h3 className="text-[18px] font-medium text-bb-text mb-2">No knowledge yet</h3>
-                <p className="text-bb-warm-gray text-center mb-4">
-                  Complete onboarding to scrape your website and build your knowledge base.
-                </p>
-                <Button asChild>
-                  <Link to="/onboarding">Go to Onboarding</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+            {/* Empty State */}
+            {faqs.length === 0 && !loading && (
+              <PanelNotice
+                icon={BookOpen}
+                title="No knowledge loaded yet"
+                description="Complete onboarding to scrape your website and build the first version of the knowledge base."
+                actionLabel="Open onboarding"
+                actionTo="/onboarding?reset=true"
+                className="bg-bb-white"
+              />
+            )}
         </div>
       </div>
 

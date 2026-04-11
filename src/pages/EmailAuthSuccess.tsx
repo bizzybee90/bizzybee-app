@@ -4,21 +4,20 @@ import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/c
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Mail, Loader2, Coffee, ArrowRight } from 'lucide-react';
 
-const playfulMessages = [
-  "☕ Go grab a coffee while we build your AI clone!",
-  "🍵 Perfect time for a tea break!",
-  "🚶 Take a quick stretch — we've got this!",
-  "📱 Check your other notifications, we're working away!",
-  "🌟 Sit back and relax, magic is happening!",
+const calmMessages = [
+  'Your inbox is connected. BizzyBee is finishing setup in the background.',
+  'BizzyBee is syncing your mailbox and preparing the next step.',
+  'You can keep this tab open while the connection finishes.',
+  'Setup is in motion. We will bring you back as soon as it is ready.',
 ];
 
 export default function EmailAuthSuccess() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [randomMessage] = useState(() => 
-    playfulMessages[Math.floor(Math.random() * playfulMessages.length)]
+  const [randomMessage] = useState(
+    () => calmMessages[Math.floor(Math.random() * calmMessages.length)],
   );
-  
+
   const status = searchParams.get('aurinko');
   const message = searchParams.get('message');
 
@@ -65,7 +64,7 @@ export default function EmailAuthSuccess() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center space-y-4">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Redirecting...</p>
+            <p className="text-muted-foreground">Checking connection status...</p>
           </CardContent>
         </Card>
       </div>
@@ -86,9 +85,9 @@ export default function EmailAuthSuccess() {
 
           {/* Title */}
           <div className="space-y-2">
-            <CardTitle className="text-2xl">Email Connected!</CardTitle>
+            <CardTitle className="text-2xl">Email connected</CardTitle>
             <CardDescription className="text-base">
-              Your inbox is now linked to BizzyBee
+              BizzyBee can now import your inbox and learn how you work.
             </CardDescription>
           </div>
 
@@ -97,18 +96,18 @@ export default function EmailAuthSuccess() {
             <div className="flex items-start gap-3">
               <Mail className="h-5 w-5 text-primary mt-0.5 shrink-0" />
               <div className="text-sm">
-                <p className="font-medium text-foreground">Importing your emails</p>
+                <p className="font-medium text-foreground">Synchronizing your inbox</p>
                 <p className="text-muted-foreground">
-                  We're scanning your inbox and learning how you write
+                  BizzyBee is bringing in your messages and setup details now.
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Loader2 className="h-5 w-5 text-primary mt-0.5 shrink-0 animate-spin" />
               <div className="text-sm">
-                <p className="font-medium text-foreground">Building your AI clone</p>
+                <p className="font-medium text-foreground">Learning your preferences</p>
                 <p className="text-muted-foreground">
-                  This happens in the background — you can keep going!
+                  The setup continues in the background while you move on.
                 </p>
               </div>
             </div>
@@ -126,12 +125,12 @@ export default function EmailAuthSuccess() {
             size="lg"
             className="w-full gap-2"
           >
-            Continue Setup
+            Continue setup
             <ArrowRight className="h-4 w-4" />
           </Button>
 
           <p className="text-xs text-muted-foreground">
-            You can track import progress on the next screen
+            If this tab stays open, the setup screen is one click away.
           </p>
         </CardContent>
       </Card>
