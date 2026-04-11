@@ -77,8 +77,13 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 function renderSidebarForPersona(persona: BillingPersonaKey) {
-  testState.entitlements = resolvePersonaEntitlements(persona);
+  testState.entitlements = resolvePersonaEntitlements(persona, { rolloutMode: 'shadow' });
   renderWithProviders(<Sidebar />);
+}
+
+function expectShadowPreview(label: string) {
+  expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.getAllByText('Shadow').length).toBeGreaterThan(0);
 }
 
 describe('sidebar route visibility by billing persona', () => {
@@ -88,36 +93,36 @@ describe('sidebar route visibility by billing persona', () => {
     testState.supabase.auth.getUser.mockResolvedValue({ data: { user: null }, error: null });
   });
 
-  it('hides AI phone, analytics, and knowledge base routes for connect', () => {
+  it('shows premium modules as shadow previews for connect', () => {
     renderSidebarForPersona('connect');
 
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
-    expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
-    expect(screen.queryByText('Knowledge base')).not.toBeInTheDocument();
+    expectShadowPreview('AI phone');
+    expectShadowPreview('Analytics');
+    expectShadowPreview('Knowledge base');
   });
 
-  it('shows Knowledge Base on starter while keeping analytics and AI phone hidden', () => {
+  it('shows Knowledge Base on starter while keeping analytics and AI phone in shadow preview', () => {
     renderSidebarForPersona('starter');
 
     expect(screen.getByText('Knowledge base')).toBeInTheDocument();
-    expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
+    expectShadowPreview('Analytics');
+    expectShadowPreview('AI phone');
   });
 
-  it('shows analytics and knowledge base for growth', () => {
+  it('shows analytics and knowledge base for growth while keeping AI phone in shadow preview', () => {
     renderSidebarForPersona('growth');
 
     expect(screen.getByText('Analytics')).toBeInTheDocument();
     expect(screen.getByText('Knowledge base')).toBeInTheDocument();
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
+    expectShadowPreview('AI phone');
   });
 
-  it('shows analytics and knowledge base for pro', () => {
+  it('shows analytics and knowledge base for pro while keeping AI phone in shadow preview', () => {
     renderSidebarForPersona('pro');
 
     expect(screen.getByText('Analytics')).toBeInTheDocument();
     expect(screen.getByText('Knowledge base')).toBeInTheDocument();
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
+    expectShadowPreview('AI phone');
   });
 
   it('shows AI phone when starter includes the AI phone add-on', () => {
@@ -126,19 +131,19 @@ describe('sidebar route visibility by billing persona', () => {
     expect(screen.getByText('AI phone')).toBeInTheDocument();
   });
 
-  it('keeps route visibility stable for starter plus sms_ai add-on', () => {
+  it('keeps starter plus sms_ai route visibility stable with analytics and AI phone in shadow preview', () => {
     renderSidebarForPersona('starter_sms_ai');
 
     expect(screen.getByText('Knowledge base')).toBeInTheDocument();
-    expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
+    expectShadowPreview('Analytics');
+    expectShadowPreview('AI phone');
   });
 
-  it('keeps connect plus sms_routing as routing-only without premium module routes', () => {
+  it('keeps connect plus sms_routing premium modules visible as shadow previews', () => {
     renderSidebarForPersona('connect_sms_routing');
 
-    expect(screen.queryByText('AI phone')).not.toBeInTheDocument();
-    expect(screen.queryByText('Analytics')).not.toBeInTheDocument();
-    expect(screen.queryByText('Knowledge base')).not.toBeInTheDocument();
+    expectShadowPreview('AI phone');
+    expectShadowPreview('Analytics');
+    expectShadowPreview('Knowledge base');
   });
 });

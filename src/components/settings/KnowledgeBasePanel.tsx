@@ -29,8 +29,12 @@ export function KnowledgeBasePanel() {
   const [downloading, setDownloading] = useState(false);
   const [downloadingCompetitor, setDownloadingCompetitor] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const knowledgeBaseDecision = entitlements?.decisions.features.knowledge_base;
   const knowledgeBaseLockState = resolveModuleLockState({
-    isAllowed: entitlements ? entitlements.features.knowledge_base : true,
+    isAllowed:
+      knowledgeBaseDecision?.isAllowed ??
+      (entitlements ? entitlements.features.knowledge_base : true),
+    wouldBlock: knowledgeBaseDecision?.wouldBlock ?? false,
     workspaceId: workspace?.id ?? null,
     entitlements,
   });

@@ -54,18 +54,24 @@ export const Sidebar = ({
   const isPreviewMode = isPreviewModeEnabled();
   const { workspace, needsOnboarding, loading: workspaceLoading, entitlements } = useWorkspace();
   const activeEntitlements = entitlements ?? resolveWorkspaceEntitlements(null, []);
+  const aiPhoneDecision = activeEntitlements.decisions.capabilities.aiPhone;
+  const analyticsDecision = activeEntitlements.decisions.features.analytics;
+  const knowledgeBaseDecision = activeEntitlements.decisions.features.knowledge_base;
   const aiPhoneState = resolveModuleLockState({
-    isAllowed: activeEntitlements.canUseAiPhone,
+    isAllowed: aiPhoneDecision.isAllowed,
+    wouldBlock: aiPhoneDecision.wouldBlock,
     workspaceId: workspace?.id ?? null,
     entitlements: activeEntitlements,
   });
   const analyticsState = resolveModuleLockState({
-    isAllowed: activeEntitlements.features.analytics,
+    isAllowed: analyticsDecision.isAllowed,
+    wouldBlock: analyticsDecision.wouldBlock,
     workspaceId: workspace?.id ?? null,
     entitlements: activeEntitlements,
   });
   const knowledgeBaseState = resolveModuleLockState({
-    isAllowed: activeEntitlements.features.knowledge_base,
+    isAllowed: knowledgeBaseDecision.isAllowed,
+    wouldBlock: knowledgeBaseDecision.wouldBlock,
     workspaceId: workspace?.id ?? null,
     entitlements: activeEntitlements,
   });

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { AuthGuard } from '@/components/AuthGuard';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
+import type { BillingEnforcementMode, WorkspaceEntitlements } from '@/lib/billing/entitlements';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,9 +13,6 @@ interface ProtectedRouteProps {
   children: ReactNode;
 }
 
-const BILLING_MODES = ['legacy', 'shadow', 'soft', 'hard'] as const;
-
-export type BillingEnforcementMode = (typeof BILLING_MODES)[number];
 export type ModuleLockState = 'available' | 'shadow-preview' | 'locked';
 
 const TESTER_ALLOWLIST_ENV_KEYS = [
@@ -27,7 +25,7 @@ const readBillingMode = (): BillingEnforcementMode => {
   const value = (import.meta.env.VITE_BILLING_ENFORCEMENT_MODE ?? 'shadow')
     .toString()
     .toLowerCase();
-  if (BILLING_MODES.includes(value as BillingEnforcementMode)) {
+  if (['legacy', 'shadow', 'soft', 'hard'].includes(value)) {
     return value as BillingEnforcementMode;
   }
   return 'shadow';
@@ -60,22 +58,14 @@ const coerceBoolean = (...values: unknown[]) => {
   return false;
 };
 
-const hasTesterBypass = (workspaceId: string | null | undefined, entitlements: unknown) => {
-  const shape =
-    entitlements && typeof entitlements === 'object'
-      ? (entitlements as Record<string, unknown>)
-      : {};
-  const workspaceOverride =
-    shape.workspaceOverride && typeof shape.workspaceOverride === 'object'
-      ? (shape.workspaceOverride as Record<string, unknown>)
-      : {};
-
+const hasTesterBypass = (
+  workspaceId: string | null | undefined,
+  entitlements?: WorkspaceEntitlements | null,
+) => {
   if (
     coerceBoolean(
-      shape.testerBypass,
-      shape.overrideAllowsAccess,
-      workspaceOverride.testerBypass,
-      workspaceOverride.allowPaidFeatures,
+      entitlements?.override?.allowPaidFeatures,
+      entitlements?.resolution?.intentionalBypass,
     )
   ) {
     return true;
@@ -93,18 +83,20 @@ export interface ModuleLockResolution {
 
 interface ResolveModuleLockOptions {
   isAllowed: boolean;
+  wouldBlock?: boolean;
   workspaceId?: string | null;
-  entitlements?: unknown;
+  entitlements?: WorkspaceEntitlements | null;
   rolloutMode?: BillingEnforcementMode;
 }
 
 export const resolveModuleLockState = ({
   isAllowed,
+  wouldBlock = !isAllowed,
   workspaceId = null,
   entitlements,
-  rolloutMode = readBillingMode(),
+  rolloutMode = entitlements?.rolloutMode ?? readBillingMode(),
 }: ResolveModuleLockOptions): ModuleLockResolution => {
-  if (isAllowed) {
+  if (!wouldBlock && isAllowed) {
     return {
       rolloutMode,
       state: 'available',

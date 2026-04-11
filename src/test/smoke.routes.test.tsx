@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolvePersonaEntitlements } from './helpers/entitlementPersonas';
 import { renderWithProviders } from './helpers/renderWithProviders';
 
 const testState = vi.hoisted(() => ({
@@ -10,13 +11,7 @@ const testState = vi.hoisted(() => ({
     } | null,
     loading: false,
     needsOnboarding: true,
-    entitlements: null as null | {
-      features: {
-        knowledge_base: boolean;
-        analytics: boolean;
-      };
-      canUseAiPhone: boolean;
-    },
+    entitlements: null,
     entitlementsLoading: false,
     onboardingStep: null as string | null,
     onboardingComplete: false,
@@ -55,6 +50,37 @@ const testState = vi.hoisted(() => ({
     },
   },
 }));
+
+function createSupabaseQueryResult(
+  result: { data: unknown; error: unknown } = { data: [], error: null },
+) {
+  const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+  const methods = [
+    'select',
+    'insert',
+    'update',
+    'delete',
+    'eq',
+    'gte',
+    'lte',
+    'order',
+    'limit',
+    'single',
+    'maybeSingle',
+    'in',
+    'not',
+    'or',
+    'is',
+    'gt',
+  ];
+
+  for (const method of methods) {
+    chain[method] = vi.fn().mockReturnValue(chain);
+  }
+
+  chain.then = vi.fn().mockImplementation((resolve) => Promise.resolve(resolve(result)));
+  return chain;
+}
 
 vi.mock('@/hooks/useWorkspace', () => ({
   useWorkspace: () => testState.workspace,
@@ -155,6 +181,7 @@ const resetState = () => {
   testState.supabase.channel.mockClear();
   testState.supabase.removeChannel.mockClear();
   testState.supabase.from.mockClear();
+  testState.supabase.from.mockImplementation(() => createSupabaseQueryResult());
   testState.supabase.auth.getUser.mockClear();
   testState.supabase.auth.onAuthStateChange.mockClear();
 };
@@ -197,13 +224,9 @@ describe('critical route smoke checks', () => {
     testState.workspace.workspace = { id: 'workspace-123' };
     testState.workspace.needsOnboarding = false;
     testState.workspace.onboardingComplete = true;
-    testState.workspace.entitlements = {
-      features: {
-        knowledge_base: false,
-        analytics: false,
-      },
-      canUseAiPhone: false,
-    };
+    testState.workspace.entitlements = resolvePersonaEntitlements('connect', {
+      rolloutMode: 'hard',
+    });
 
     renderWithProviders(<KnowledgeBase />);
 
@@ -220,13 +243,9 @@ describe('critical route smoke checks', () => {
     testState.workspace.workspace = { id: 'workspace-123' };
     testState.workspace.needsOnboarding = false;
     testState.workspace.onboardingComplete = true;
-    testState.workspace.entitlements = {
-      features: {
-        knowledge_base: true,
-        analytics: true,
-      },
-      canUseAiPhone: false,
-    };
+    testState.workspace.entitlements = resolvePersonaEntitlements('starter', {
+      rolloutMode: 'hard',
+    });
 
     renderWithProviders(<AiPhone />);
 

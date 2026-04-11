@@ -1,5 +1,6 @@
 import {
   resolveWorkspaceEntitlements,
+  type ResolveWorkspaceEntitlementsOptions,
   type WorkspaceAddonRow,
   type WorkspaceEntitlements,
   type WorkspaceSubscriptionRow,
@@ -66,10 +67,14 @@ function makeAddon(addon: BizzyBeeAddonKey): WorkspaceAddonRow {
   };
 }
 
-export function resolvePersonaEntitlements(persona: BillingPersonaKey): WorkspaceEntitlements {
+export function resolvePersonaEntitlements(
+  persona: BillingPersonaKey,
+  options?: ResolveWorkspaceEntitlementsOptions,
+): WorkspaceEntitlements {
   const definition = PERSONA_DEFINITIONS[persona];
   return resolveWorkspaceEntitlements(
     makeSubscription(definition.plan),
     definition.addons.map(makeAddon),
+    options,
   );
 }

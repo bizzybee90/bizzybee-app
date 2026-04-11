@@ -152,7 +152,7 @@ describe('module route lock states', () => {
   it('shows the paid-plan lock on the Knowledge Base route when the feature is unavailable', () => {
     renderWithWorkspace(<KnowledgeBase />, {
       workspace: createWorkspace(),
-      entitlements: resolvePersonaEntitlements('connect'),
+      entitlements: resolvePersonaEntitlements('connect', { rolloutMode: 'hard' }),
     });
 
     expect(screen.getByText('Knowledge Base is on paid AI plans')).toBeInTheDocument();
@@ -161,7 +161,7 @@ describe('module route lock states', () => {
   it('shows the paid-plan lock on the Analytics route when the plan does not include analytics', () => {
     renderWithWorkspace(<AnalyticsDashboard />, {
       workspace: createWorkspace(),
-      entitlements: resolvePersonaEntitlements('starter'),
+      entitlements: resolvePersonaEntitlements('starter', { rolloutMode: 'hard' }),
     });
 
     expect(screen.getByText('Analytics unlocks on Growth and above')).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('module route lock states', () => {
   it('shows the add-on lock on the AI Phone route when the add-on is unavailable', () => {
     renderWithWorkspace(<AiPhone />, {
       workspace: createWorkspace(),
-      entitlements: resolvePersonaEntitlements('starter'),
+      entitlements: resolvePersonaEntitlements('starter', { rolloutMode: 'hard' }),
     });
 
     expect(screen.getByText('AI Phone is an add-on')).toBeInTheDocument();

@@ -56,6 +56,16 @@ export default function AnalyticsDashboard() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const analyticsDecision = entitlements?.decisions.features.analytics;
+  const analyticsLockState = resolveModuleLockState({
+    isAllowed:
+      analyticsDecision?.isAllowed ?? (entitlements ? entitlements.features.analytics : true),
+    wouldBlock: analyticsDecision?.wouldBlock ?? false,
+    workspaceId: workspace?.id ?? null,
+    entitlements,
+  });
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -71,6 +81,13 @@ export default function AnalyticsDashboard() {
 
   const fetchAnalytics = useCallback(async () => {
     if (workspaceLoading) {
+      return;
+    }
+
+    if (analyticsLockState.state === 'locked') {
+      setData(null);
+      setFetchError(null);
+      setLoading(false);
       return;
     }
 
@@ -197,7 +214,7 @@ export default function AnalyticsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [getDateRange, workspace?.id, workspaceLoading]);
+  }, [analyticsLockState.state, getDateRange, workspace?.id, workspaceLoading]);
 
   useEffect(() => {
     void fetchAnalytics();
@@ -221,14 +238,6 @@ export default function AnalyticsDashboard() {
     data && data.totalConversations > 0
       ? ((data.aiHandled / data.totalConversations) * 100).toFixed(1)
       : '0';
-
-  const isMobile = useIsMobile();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const analyticsLockState = resolveModuleLockState({
-    isAllowed: entitlements ? entitlements.features.analytics : true,
-    workspaceId: workspace?.id ?? null,
-    entitlements,
-  });
 
   const renderLoadingContent = () => (
     <div className="space-y-6">
@@ -289,6 +298,7 @@ export default function AnalyticsDashboard() {
         icon={TrendingUp}
         moduleName="Analytics"
         lockState={analyticsLockState}
+        lockedTitle="Analytics unlocks on Growth and above"
         lockedDescription="Analytics is available on Growth and Pro plans. Upgrade this workspace to unlock trends, containment metrics, response times, and channel performance."
         shadowDescription="Analytics would be blocked for this workspace once billing enforcement reaches hard mode."
         primaryActionLabel="Review plan"

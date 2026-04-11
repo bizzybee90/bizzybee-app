@@ -186,8 +186,12 @@ export default function KnowledgeBase() {
   const { workspace, loading: workspaceLoading, entitlements } = useWorkspace();
   const isMobile = useIsMobile();
   const hasWorkspace = Boolean(workspace?.id);
+  const knowledgeBaseDecision = entitlements?.decisions.features.knowledge_base;
   const knowledgeBaseLockState = resolveModuleLockState({
-    isAllowed: entitlements ? entitlements.features.knowledge_base : true,
+    isAllowed:
+      knowledgeBaseDecision?.isAllowed ??
+      (entitlements ? entitlements.features.knowledge_base : true),
+    wouldBlock: knowledgeBaseDecision?.wouldBlock ?? false,
     workspaceId: workspace?.id ?? null,
     entitlements,
   });

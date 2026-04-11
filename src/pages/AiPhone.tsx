@@ -28,8 +28,10 @@ const AiPhone = () => {
   const isMobile = useIsMobile();
   const { config, isLoading } = useAiPhoneConfig();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const aiPhoneDecision = entitlements?.decisions.capabilities.aiPhone;
   const aiPhoneLockState = resolveModuleLockState({
-    isAllowed: entitlements ? entitlements.canUseAiPhone : true,
+    isAllowed: aiPhoneDecision?.isAllowed ?? (entitlements ? entitlements.canUseAiPhone : true),
+    wouldBlock: aiPhoneDecision?.wouldBlock ?? false,
     workspaceId: workspace?.id ?? null,
     entitlements,
   });
@@ -58,6 +60,7 @@ const AiPhone = () => {
         icon={Settings}
         moduleName="AI Phone"
         lockState={aiPhoneLockState}
+        lockedTitle="AI Phone is an add-on"
         lockedDescription="AI Phone is billed as an add-on. Upgrade this workspace to unlock number provisioning, call handling, and the voice knowledge base."
         shadowDescription="AI Phone would be blocked for this workspace when hard billing enforcement is enabled."
         primaryActionLabel="Review add-ons"
