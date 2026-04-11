@@ -18,24 +18,13 @@ const PREVIEW_WORKSPACE: Workspace = {
   created_at: new Date('2026-01-01T09:00:00.000Z').toISOString(),
 };
 
-function isPlaceholderWorkspace(nextWorkspace: Workspace | null) {
-  if (!nextWorkspace) return true;
-  const normalizedName = nextWorkspace.name.trim().toLowerCase();
-  const normalizedSlug = nextWorkspace.slug.trim().toLowerCase();
-
-  return (
-    normalizedName === 'my workspace' ||
-    normalizedName === 'bizzybee test' ||
-    normalizedSlug.startsWith('workspace-')
-  );
-}
-
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const mountedRef = useRef(true);
+  const latestRefreshIdRef = useRef(0);
   const { data: entitlements, isLoading: entitlementsLoading } = useEntitlements(
     workspace?.id ?? null,
   );
@@ -45,7 +34,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const refreshId = ++latestRefreshIdRef.current;
+    const isStale = () => !mountedRef.current || refreshId !== latestRefreshIdRef.current;
+
     if (isPreviewModeEnabled()) {
+      if (isStale()) {
+        return;
+      }
       setWorkspace(PREVIEW_WORKSPACE);
       setOnboardingStep('complete');
       setOnboardingComplete(true);
@@ -61,7 +56,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (!mountedRef.current) return;
+      if (isStale()) return;
 
       if (userError) {
         throw userError;
@@ -80,7 +75,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         .eq('id', user.id)
         .maybeSingle();
 
-      if (!mountedRef.current) return;
+      if (isStale()) return;
 
       if (profileError) {
         throw profileError;
@@ -94,46 +89,33 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const [
-        { data: workspaceData, error: workspaceError },
-        { data: businessContextData, error: businessContextError },
-      ] = await Promise.all([
-        supabase.from('workspaces').select('*').eq('id', userData.workspace_id).maybeSingle(),
-        supabase
-          .from('business_context')
-          .select('company_name')
-          .eq('workspace_id', userData.workspace_id)
-          .maybeSingle(),
-      ]);
+      const { data: workspaceData, error: workspaceError } = await supabase
+        .from('workspaces')
+        .select('*')
+        .eq('id', userData.workspace_id)
+        .maybeSingle();
 
-      if (!mountedRef.current) return;
+      if (isStale()) return;
 
       if (workspaceError) {
         throw workspaceError;
       }
 
-      if (businessContextError) {
-        throw businessContextError;
-      }
-
       const nextWorkspace = workspaceData ?? null;
-      const hasBusinessIdentity = Boolean(businessContextData?.company_name?.trim());
       const nextOnboardingComplete =
-        isOnboardingComplete(userData) &&
-        hasBusinessIdentity &&
-        !isPlaceholderWorkspace(nextWorkspace);
+        Boolean(nextWorkspace?.id) && isOnboardingComplete(userData);
 
       setOnboardingComplete(nextOnboardingComplete);
       setWorkspace(nextWorkspace);
     } catch (error) {
-      if (mountedRef.current) {
+      if (!isStale()) {
         logger.error('Failed to load workspace context', error);
         setWorkspace(null);
         setOnboardingStep(null);
         setOnboardingComplete(false);
       }
     } finally {
-      if (mountedRef.current) {
+      if (!isStale()) {
         setLoading(false);
       }
     }

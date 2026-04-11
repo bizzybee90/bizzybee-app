@@ -103,7 +103,11 @@ export default function Onboarding() {
         });
 
         // If already onboarded and NOT a reset, go to home
-        if (!shouldForceFreshOnboarding && isOnboardingComplete(userData)) {
+        if (
+          !shouldForceFreshOnboarding &&
+          userData?.workspace_id &&
+          isOnboardingComplete(userData)
+        ) {
           logger.debug('Already completed, going home');
           clearSafetyTimeout(loadingSafetyTimeout);
           navigate('/', { replace: true });
@@ -149,6 +153,7 @@ export default function Onboarding() {
           clearSafetyTimeout(loadingSafetyTimeout);
           setWorkspaceId(bootstrapData.workspace_id);
           setLoading(false);
+          void refreshWorkspace();
         }
       } catch (err) {
         logger.error('Unexpected error', err);
@@ -210,7 +215,14 @@ export default function Onboarding() {
       clearSafetyTimeout(loadingSafetyTimeout);
       subscription.unsubscribe();
     };
-  }, [navigate, onboardingComplete, shouldForceFreshOnboarding, workspace?.id, workspaceLoading]);
+  }, [
+    navigate,
+    onboardingComplete,
+    refreshWorkspace,
+    shouldForceFreshOnboarding,
+    workspace?.id,
+    workspaceLoading,
+  ]);
 
   const handleComplete = async () => {
     if (isPreviewModeEnabled()) {

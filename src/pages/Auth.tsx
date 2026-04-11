@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { lovable } from '@/integrations/lovable/index';
+import type { Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 import { enablePreviewMode, isLocalhost } from '@/lib/previewMode';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 type AuthMode = 'signin' | 'signup' | 'recovery-request' | 'recovery-confirm';
 
@@ -49,7 +51,10 @@ const GoogleIcon = () => (
 const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { workspace, loading: workspaceLoading, needsOnboarding } = useWorkspace();
   const [mode, setMode] = useState<AuthMode>('signin');
+  const [hasSession, setHasSession] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [magicLinkLoading, setMagicLinkLoading] = useState(false);
@@ -66,19 +71,33 @@ const Auth = () => {
   const isRecoveryConfirm = mode === 'recovery-confirm';
   const isSubmitting = loading || googleLoading || magicLinkLoading || recoveryLoading;
   const authRedirectUrl = `${window.location.origin}/auth`;
+  const signedInDestination = !workspace?.id || needsOnboarding ? '/onboarding' : '/';
 
   useEffect(() => {
     const recovery = isRecoveryFlow();
+    let cancelled = false;
+
+    const applySession = (nextSession: Session | null) => {
+      if (cancelled) {
+        return;
+      }
+
+      setHasSession(Boolean(nextSession));
+      setAuthChecked(true);
+    };
 
     if (recovery) {
       setMode('recovery-confirm');
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session && !recovery) {
-        navigate('/');
-      }
-    });
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        applySession(session);
+      })
+      .catch(() => {
+        applySession(null);
+      });
 
     const {
       data: { subscription },
@@ -88,16 +107,30 @@ const Auth = () => {
         setPassword('');
         setConfirmPassword('');
         window.history.replaceState({}, document.title, window.location.pathname);
+        applySession(session);
         return;
       }
 
-      if (session) {
-        navigate('/');
-      }
+      applySession(session);
     });
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isRecoveryConfirm) {
+      return;
+    }
+
+    if (!authChecked || !hasSession || workspaceLoading) {
+      return;
+    }
+
+    navigate(signedInDestination, { replace: true });
+  }, [authChecked, hasSession, isRecoveryConfirm, navigate, signedInDestination, workspaceLoading]);
 
   const handleAuth = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -275,7 +308,7 @@ const Auth = () => {
         description: 'Your password has been changed successfully.',
       });
 
-      navigate('/');
+      navigate(signedInDestination, { replace: true });
     } catch (error: unknown) {
       toast({
         title: 'Error',

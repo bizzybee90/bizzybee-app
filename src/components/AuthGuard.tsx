@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
@@ -7,7 +7,6 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { workspace, loading: workspaceLoading, needsOnboarding } = useWorkspace();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -20,40 +19,42 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     }
 
     let cancelled = false;
+    const applySession = (nextSession: Session | null) => {
+      if (cancelled) {
+        return;
+      }
 
-    // Set up auth state listener first
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+      setLoading(false);
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return;
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Then check for existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession }, error }) => {
-      if (cancelled) return;
-
-      if (error) {
-        console.error('Error checking auth session:', error);
-        setSession(null);
-        setUser(null);
-        setLoading(false);
-        navigate('/auth', { replace: true });
+      if (event === 'SIGNED_OUT') {
+        applySession(null);
         return;
       }
 
-      if (existingSession) {
-        setSession(existingSession);
-        setUser(existingSession.user);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(false);
-      navigate('/auth', { replace: true });
+      applySession(session);
     });
+
+    void supabase.auth
+      .getSession()
+      .then(({ data: { session: existingSession }, error }) => {
+        if (error) {
+          console.error('Error checking auth session:', error);
+          applySession(null);
+          return;
+        }
+
+        applySession(existingSession);
+      })
+      .catch((error) => {
+        console.error('Unexpected auth session error:', error);
+        applySession(null);
+      });
 
     return () => {
       cancelled = true;
@@ -79,14 +80,10 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    if (location.pathname === '/onboarding') {
-      return;
-    }
-
     if (!workspace?.id || needsOnboarding) {
       navigate('/onboarding', { replace: true });
     }
-  }, [loading, location.pathname, navigate, needsOnboarding, session, user, workspace?.id, workspaceLoading]);
+  }, [loading, navigate, needsOnboarding, session, user, workspace?.id, workspaceLoading]);
 
   if (isPreviewModeEnabled()) {
     return <>{children}</>;
