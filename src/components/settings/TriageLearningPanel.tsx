@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useWorkspace } from '@/hooks/useWorkspace';
 import {
   Brain,
   ArrowRight,
@@ -55,6 +56,7 @@ interface RetriagedResult {
 export function TriageLearningPanel() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { workspace } = useWorkspace();
   const [corrections, setCorrections] = useState<CorrectionGroup[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestedRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,23 +138,46 @@ export function TriageLearningPanel() {
 
   const fetchCorrections = useCallback(async () => {
     try {
-      // Get corrections grouped by sender domain and classification change
+      if (!workspace?.id) {
+        setCorrections([]);
+        return;
+      }
+
+      // Derive repeat reclassification patterns from reviewed conversations.
       const { data, error } = await supabase
-        .from('triage_corrections')
-        .select('sender_domain, original_classification, new_classification')
-        .not('sender_domain', 'is', null);
+        .from('conversations')
+        .select(
+          `
+          id,
+          email_classification,
+          customer:customers(email)
+        `,
+        )
+        .eq('workspace_id', workspace.id)
+        .eq('review_outcome', 'changed')
+        .not('reviewed_at', 'is', null)
+        .not('email_classification', 'is', null)
+        .limit(150);
 
       if (error) throw error;
 
       // Group and count
       const grouped: Record<string, CorrectionGroup> = {};
       (data || []).forEach((c) => {
-        const key = `${c.sender_domain}|${c.original_classification}|${c.new_classification}`;
+        const customerJoin = Array.isArray(c.customer) ? c.customer[0] : c.customer;
+        const senderEmail = customerJoin?.email || null;
+        const senderDomain = senderEmail?.split('@')[1] || null;
+
+        if (!senderDomain || !c.email_classification) {
+          return;
+        }
+
+        const key = `${senderDomain}|${c.email_classification}`;
         if (!grouped[key]) {
           grouped[key] = {
-            sender_domain: c.sender_domain!,
-            original_classification: c.original_classification || 'unknown',
-            new_classification: c.new_classification || 'unknown',
+            sender_domain: senderDomain,
+            original_classification: 'manual_review',
+            new_classification: c.email_classification,
             count: 0,
           };
         }
@@ -167,10 +192,11 @@ export function TriageLearningPanel() {
       setCorrections(sorted);
     } catch (error) {
       logger.error('Error fetching corrections', error);
+      setCorrections([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspace?.id]);
 
   const fetchSuggestions = useCallback(async () => {
     setLoadingSuggestions(true);
@@ -601,7 +627,7 @@ export function TriageLearningPanel() {
             AI Learning from Corrections
           </CardTitle>
           <CardDescription>
-            Based on your corrections, the AI has identified patterns that could become rules.
+            Based on reviewed reclassifications, BizzyBee has identified sender patterns that could become rules.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -91,15 +91,23 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           .order('reviewed_at', { ascending: false })
           .limit(3);
 
-        // Get recent inbox emails
-        const { data: recentEmails } = await supabase
-          .from('email_import_queue')
-          .select('id, from_name, from_email, subject, body, received_at, category, direction')
+        // Get recent inbound conversations for the inbox lane.
+        const { data: recentInbox } = await supabase
+          .from('conversations')
+          .select(
+            `
+            id,
+            title,
+            created_at,
+            email_classification,
+            status,
+            customer:customers(name, email)
+          `,
+          )
           .eq('workspace_id', workspace.id)
-          .eq('direction', 'inbound')
-          .or('is_noise.is.null,is_noise.eq.false')
-          .not('from_email', 'ilike', '%maccleaning%')
-          .order('received_at', { ascending: false })
+          .neq('decision_bucket', 'auto_handled')
+          .in('status', ['new', 'open', 'waiting_internal', 'ai_handling', 'escalated'])
+          .order('created_at', { ascending: false })
           .limit(5);
 
         // Combine into activities
@@ -175,16 +183,21 @@ export function ActivityFeed({ onNavigate, maxItems = 10 }: ActivityFeedProps) {
           );
         });
 
-        recentEmails?.forEach((e) => {
+        recentInbox?.forEach((conversation) => {
+          const customerJoin =
+            Array.isArray(conversation.customer) ? conversation.customer[0] : conversation.customer;
           addActivity(
             {
-              id: `inbox-${e.id}`,
+              id: `inbox-${conversation.id}`,
               type: 'inbox',
-              title: decodeHtmlEntities(e.subject) || 'No subject',
-              description: decodeHtmlEntities(e.from_name || e.from_email || 'Unknown sender'),
-              category: e.category,
+              title: decodeHtmlEntities(conversation.title) || 'Incoming conversation',
+              description: decodeHtmlEntities(
+                customerJoin?.name || customerJoin?.email || 'Unknown sender',
+              ),
+              conversationId: conversation.id,
+              category: conversation.email_classification,
             },
-            e.received_at,
+            conversation.created_at,
           );
         });
 

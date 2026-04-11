@@ -64,7 +64,12 @@ export function LearningSystemPanel() {
       const [rulesRes, statsRes, correctionsRes, confidenceRes, totalRes] = await Promise.all([
         supabase.from('sender_rules').select('sender_pattern', { count: 'exact' }).eq('workspace_id', workspace.id),
         supabase.from('sender_behaviour_stats').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
-        supabase.from('triage_corrections').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
+          .eq('review_outcome', 'changed')
+          .not('reviewed_at', 'is', null),
         supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id).not('triage_confidence', 'is', null),
         supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
       ]);

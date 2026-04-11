@@ -39,13 +39,7 @@ export const RecentLearning = ({ onHighlightRule }: RecentLearningProps) => {
     const fetchData = async () => {
       if (!workspace?.id) return;
 
-      const [corrections, rules, reviews] = await Promise.all([
-        supabase
-          .from('triage_corrections')
-          .select('id, original_classification, new_classification, sender_email, corrected_at, conversation_id')
-          .eq('workspace_id', workspace.id)
-          .order('corrected_at', { ascending: false })
-          .limit(10),
+      const [rules, reviews] = await Promise.all([
         supabase
           .from('sender_rules')
           .select('id, sender_pattern, default_classification, created_at')
@@ -54,25 +48,24 @@ export const RecentLearning = ({ onHighlightRule }: RecentLearningProps) => {
           .limit(10),
         supabase
           .from('conversations')
-          .select('id, title, email_classification, reviewed_at, review_outcome')
+          .select(
+            `
+            id,
+            title,
+            email_classification,
+            reviewed_at,
+            review_outcome,
+            customer:customers(email)
+          `,
+          )
           .eq('workspace_id', workspace.id)
           .eq('training_reviewed', true)
           .not('reviewed_at', 'is', null)
           .order('reviewed_at', { ascending: false })
-          .limit(10),
+          .limit(15),
       ]);
 
       const all: LearningEvent[] = [];
-
-      (corrections.data || []).forEach(c => {
-        all.push({
-          id: `corr-${c.id}`,
-          type: 'correction',
-          description: `Learned that emails from ${c.sender_email || 'unknown'} are ${formatClassification(c.new_classification || 'unknown')}`,
-          timestamp: c.corrected_at || '',
-          conversationId: c.conversation_id || undefined,
-        });
-      });
 
       (rules.data || []).forEach(r => {
         all.push({
@@ -85,7 +78,17 @@ export const RecentLearning = ({ onHighlightRule }: RecentLearningProps) => {
       });
 
       (reviews.data || []).forEach(r => {
-        if (r.review_outcome === 'confirmed') {
+        const customerJoin = Array.isArray(r.customer) ? r.customer[0] : r.customer;
+
+        if (r.review_outcome === 'changed') {
+          all.push({
+            id: `corr-${r.id}`,
+            type: 'correction',
+            description: `Updated ${customerJoin?.email || r.title || 'this conversation'} to ${formatClassification(r.email_classification || 'unknown')}`,
+            timestamp: r.reviewed_at || '',
+            conversationId: r.id,
+          });
+        } else if (r.review_outcome === 'confirmed') {
           all.push({
             id: `rev-${r.id}`,
             type: 'confirmation',

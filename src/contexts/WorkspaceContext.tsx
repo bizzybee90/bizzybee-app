@@ -18,6 +18,13 @@ const PREVIEW_WORKSPACE: Workspace = {
   created_at: new Date('2026-01-01T09:00:00.000Z').toISOString(),
 };
 
+function isMissingAuthSessionError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === 'AuthSessionMissingError' || error.message === 'Auth session missing!')
+  );
+}
+
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +66,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (isStale()) return;
 
       if (userError) {
+        if (isMissingAuthSessionError(userError)) {
+          setWorkspace(null);
+          setOnboardingStep(null);
+          setOnboardingComplete(false);
+          return;
+        }
         throw userError;
       }
 
@@ -109,7 +122,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setWorkspace(nextWorkspace);
     } catch (error) {
       if (!isStale()) {
-        logger.error('Failed to load workspace context', error);
+        if (!isMissingAuthSessionError(error)) {
+          logger.error('Failed to load workspace context', error);
+        }
         setWorkspace(null);
         setOnboardingStep(null);
         setOnboardingComplete(false);

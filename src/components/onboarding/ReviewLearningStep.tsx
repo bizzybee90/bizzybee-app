@@ -101,6 +101,43 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
       }
 
       // Load learned responses
+      const [{ data: conversationsData }, { count: senderRulesCount }] = await Promise.all([
+        supabase
+          .from('conversations')
+          .select('id, email_classification')
+          .eq('workspace_id', workspaceId)
+          .not('email_classification', 'is', null),
+        supabase
+          .from('sender_rules')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId),
+      ]);
+
+      setLearnedResponses([]);
+
+      if (conversationsData) {
+        const inquiryTypeMap = new Map<string, number>();
+        conversationsData.forEach((conversation) => {
+          if (!conversation.email_classification) return;
+          inquiryTypeMap.set(
+            conversation.email_classification,
+            (inquiryTypeMap.get(conversation.email_classification) || 0) + 1,
+          );
+        });
+
+        const commonInquiryTypes = [...inquiryTypeMap.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([type, count]) => ({ type, count }));
+
+        setInsights({
+          total_emails_analyzed: conversationsData.length,
+          patterns_learned: senderRulesCount || commonInquiryTypes.length,
+          common_inquiry_types: commonInquiryTypes,
+        });
+      }
+
+      /* Load inbox insights
       const { data: responsesData } = await supabase
         .from('learned_responses')
         .select('*')
@@ -120,7 +157,6 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
         );
       }
 
-      // Load inbox insights
       const { data: insightsData } = await supabase
         .from('inbox_insights')
         .select('*')
@@ -137,6 +173,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
           common_inquiry_types: inquiryTypes,
         });
       }
+      */
     } catch (error) {
       logger.error('Error loading learning data', error);
     } finally {
@@ -263,7 +300,7 @@ export function ReviewLearningStep({ workspaceId, onComplete, onBack }: ReviewLe
     );
   }
 
-  const hasData = voiceProfile || learnedResponses.length > 0;
+  const hasData = voiceProfile || learnedResponses.length > 0 || insights;
 
   return (
     <div className="space-y-6">

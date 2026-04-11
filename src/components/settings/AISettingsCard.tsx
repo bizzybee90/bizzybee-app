@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Bot } from 'lucide-react';
+import { Loader2, Bot, AlertCircle } from 'lucide-react';
 
 interface AISettingsCardProps {
   workspaceId: string;
@@ -22,34 +22,37 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [settingsAvailable, setSettingsAvailable] = useState(true);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      const { data, error } = await supabase
-        .from('automation_settings')
-        .select('*')
-        .eq('workspace_id', workspaceId)
-        .maybeSingle();
+    if (!workspaceId) {
+      return;
+    }
 
-      if (data) {
-        setSettings({
-          auto_send_enabled: data.auto_send_enabled ?? false,
-          auto_send_threshold: Number(data.auto_send_threshold),
-          default_to_drafts: data.default_to_drafts ?? true,
-          always_verify: data.always_verify ?? true,
-          notify_on_low_confidence: data.notify_on_low_confidence ?? true,
-          low_confidence_threshold: Number(data.low_confidence_threshold),
-        });
-      }
-      setLoading(false);
-    };
-
-    if (workspaceId) fetchSettings();
+    // The linked production workspace is not exposing automation_settings consistently yet,
+    // so this panel intentionally falls back to workspace defaults instead of probing a table
+    // that would produce noisy 403s for operators.
+    setSettingsAvailable(false);
+    setSettings({
+      auto_send_enabled: false,
+      auto_send_threshold: 0.95,
+      default_to_drafts: true,
+      always_verify: true,
+      notify_on_low_confidence: true,
+      low_confidence_threshold: 0.7,
+    });
+    setLoading(false);
   }, [workspaceId]);
 
   const updateSetting = async (key: string, value: boolean | number) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
+
+    if (!settingsAvailable) {
+      toast.info('Advanced automation settings are unavailable on this workspace right now.');
+      return;
+    }
+
     setSaving(true);
 
     const { error } = await supabase.from('automation_settings').upsert(
@@ -86,6 +89,13 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
         <CardDescription>Configure how BizzyBee's AI handles your emails</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {!settingsAvailable && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>Advanced automation settings are currently using workspace defaults.</p>
+          </div>
+        )}
+
         {/* Default to drafts - RECOMMENDED */}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
@@ -97,6 +107,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
           <Switch
             checked={settings.default_to_drafts}
             onCheckedChange={(v) => updateSetting('default_to_drafts', v)}
+            disabled={!settingsAvailable}
           />
         </div>
 
@@ -111,7 +122,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
           <Switch
             checked={settings.auto_send_enabled}
             onCheckedChange={(v) => updateSetting('auto_send_enabled', v)}
-            disabled={settings.default_to_drafts}
+            disabled={!settingsAvailable || settings.default_to_drafts}
           />
         </div>
 
@@ -130,6 +141,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
               min={0.85}
               max={0.99}
               step={0.01}
+              disabled={!settingsAvailable}
             />
             <p className="text-xs text-muted-foreground">
               Only replies with confidence above this threshold will be sent automatically
@@ -148,6 +160,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
           <Switch
             checked={settings.always_verify}
             onCheckedChange={(v) => updateSetting('always_verify', v)}
+            disabled={!settingsAvailable}
           />
         </div>
 
@@ -162,6 +175,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
           <Switch
             checked={settings.notify_on_low_confidence}
             onCheckedChange={(v) => updateSetting('notify_on_low_confidence', v)}
+            disabled={!settingsAvailable}
           />
         </div>
 
@@ -180,6 +194,7 @@ export const AISettingsCard = ({ workspaceId }: AISettingsCardProps) => {
               min={0.5}
               max={0.85}
               step={0.05}
+              disabled={!settingsAvailable}
             />
             <p className="text-xs text-muted-foreground">
               You'll be notified when AI confidence drops below this level

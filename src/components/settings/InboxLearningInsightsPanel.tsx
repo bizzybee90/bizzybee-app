@@ -45,6 +45,11 @@ interface VoiceProfile {
   common_phrases: string[];
 }
 
+function getSenderDomain(email: string | null | undefined): string | null {
+  if (!email || !email.includes('@')) return null;
+  return email.split('@')[1]?.toLowerCase() || null;
+}
+
 export function InboxLearningInsightsPanel() {
   const { workspace } = useWorkspace();
   const [insights, setInsights] = useState<InboxInsights | null>(null);
@@ -57,40 +62,86 @@ export function InboxLearningInsightsPanel() {
       if (!workspace?.id) return;
 
       try {
-        const [insightsRes, responsesRes, contextRes] = await Promise.all([
+        const [conversationsRes, resolvedRes, rulesRes, contextRes] = await Promise.all([
           supabase
-            .from('inbox_insights')
-            .select('*')
+            .from('conversations')
+            .select(
+              `
+              id,
+              created_at,
+              email_classification,
+              customer:customers(email)
+            `,
+            )
             .eq('workspace_id', workspace.id)
-            .order('analyzed_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
+            .not('email_classification', 'is', null),
           supabase
-            .from('learned_responses')
-            .select('*')
+            .from('conversations')
+            .select('id', { count: 'exact', head: true })
             .eq('workspace_id', workspace.id)
-            .order('times_used', { ascending: false })
+            .eq('status', 'resolved'),
+          supabase
+            .from('sender_rules')
+            .select('id, sender_pattern, default_classification, hit_count, created_at')
+            .eq('workspace_id', workspace.id)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
             .limit(10),
           supabase
             .from('business_context')
             .select('custom_flags')
             .eq('workspace_id', workspace.id)
-            .maybeSingle()
+            .maybeSingle(),
         ]);
 
-        if (insightsRes.data) {
-          // Cast jsonb fields to proper types
-          const data = insightsRes.data;
+        const conversations = conversationsRes.data || [];
+        const senderRules = rulesRes.data || [];
+        const emailsByCategory: Record<string, number> = {};
+        const emailsBySenderDomain: Record<string, number> = {};
+
+        conversations.forEach((conversation) => {
+          const classification = conversation.email_classification || 'other';
+          const customerJoin =
+            Array.isArray(conversation.customer) ? conversation.customer[0] : conversation.customer;
+          const senderDomain = getSenderDomain(customerJoin?.email);
+
+          emailsByCategory[classification] = (emailsByCategory[classification] || 0) + 1;
+          if (senderDomain) {
+            emailsBySenderDomain[senderDomain] = (emailsBySenderDomain[senderDomain] || 0) + 1;
+          }
+        });
+
+        if (conversations.length > 0 || senderRules.length > 0) {
+          const latestConversation = [...conversations]
+            .map((conversation) => conversation.created_at)
+            .filter(Boolean)
+            .sort()
+            .at(-1);
+
           setInsights({
-            ...data,
-            emails_by_category: (data.emails_by_category || {}) as Record<string, number>,
-            emails_by_sender_domain: (data.emails_by_sender_domain || {}) as Record<string, number>,
-          } as InboxInsights);
+            id: 'derived-inbox-insights',
+            total_emails_analyzed: conversations.length,
+            total_outbound_analyzed: resolvedRes.count || 0,
+            emails_by_category: emailsByCategory,
+            emails_by_sender_domain: emailsBySenderDomain,
+            common_inquiry_types: [],
+            avg_response_time_hours: null,
+            response_rate_percent: null,
+            peak_email_hours: [],
+            patterns_learned: senderRules.length,
+            analyzed_at: latestConversation || new Date().toISOString(),
+          });
         }
 
-        if (responsesRes.data) {
-          setLearnedResponses(responsesRes.data as LearnedResponse[]);
-        }
+        setLearnedResponses(
+          senderRules.map((rule) => ({
+            id: rule.id,
+            email_category: rule.default_classification || 'General',
+            trigger_phrases: [rule.sender_pattern],
+            response_pattern: `Messages matching ${rule.sender_pattern} are routed as ${rule.default_classification || 'general'}.`,
+            times_used: rule.hit_count || 0,
+          })),
+        );
 
         // Extract voice profile from business context custom_flags
         if (contextRes.data?.custom_flags) {
@@ -101,6 +152,8 @@ export function InboxLearningInsightsPanel() {
         }
       } catch (error) {
         console.error('Error fetching learning insights:', error);
+        setInsights(null);
+        setLearnedResponses([]);
       } finally {
         setLoading(false);
       }

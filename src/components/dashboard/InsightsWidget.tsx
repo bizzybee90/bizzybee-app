@@ -26,16 +26,125 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
 
   const fetchInsights = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from('inbox_insights')
-        .select(
-          'id, insight_type, title, description, severity, is_actionable, is_read, created_at, metrics',
-        )
-        .eq('workspace_id', workspaceId)
-        .eq('is_read', false)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      setInsights((data as Insight[]) || []);
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const actionableStatuses = ['new', 'open', 'waiting_internal', 'ai_handling', 'escalated'];
+
+      const [urgentResult, reviewResult, draftResult, automatedResult] = await Promise.all([
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('decision_bucket', 'act_now')
+          .in('status', actionableStatuses),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('training_reviewed', false)
+          .not('email_classification', 'is', null),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .not('ai_draft_response', 'is', null)
+          .is('final_response', null)
+          .in('status', ['new', 'open', 'ai_handling'])
+          .eq('requires_reply', true),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+          .eq('decision_bucket', 'auto_handled')
+          .gte('auto_handled_at', weekAgo),
+      ]);
+
+      const nextInsights: Insight[] = [];
+      const createdAt = new Date().toISOString();
+      const urgentCount = urgentResult.count || 0;
+      const reviewCount = reviewResult.count || 0;
+      const draftCount = draftResult.count || 0;
+      const automatedCount = automatedResult.count || 0;
+
+      if (urgentCount > 0) {
+        nextInsights.push({
+          id: 'urgent-follow-up',
+          insight_type: 'opportunity',
+          title: `${urgentCount} urgent conversation${urgentCount === 1 ? '' : 's'} need attention`,
+          description:
+            urgentCount === 1
+              ? 'One conversation is sitting in the act-now queue.'
+              : 'Several conversations are currently flagged as act-now.',
+          severity: 'warning',
+          is_actionable: true,
+          is_read: false,
+          created_at: createdAt,
+          metrics: { urgentCount },
+        });
+      }
+
+      if (reviewCount > 0) {
+        nextInsights.push({
+          id: 'training-queue',
+          insight_type: 'summary',
+          title: `${reviewCount} training example${reviewCount === 1 ? '' : 's'} ready`,
+          description:
+            reviewCount === 1
+              ? 'Confirming one more AI decision will sharpen future classifications.'
+              : 'A short review pass will help BizzyBee learn faster today.',
+          severity: 'info',
+          is_actionable: true,
+          is_read: false,
+          created_at: createdAt,
+          metrics: { reviewCount },
+        });
+      }
+
+      if (draftCount > 0) {
+        nextInsights.push({
+          id: 'drafts-ready',
+          insight_type: 'opportunity',
+          title: `${draftCount} draft${draftCount === 1 ? '' : 's'} ready to send`,
+          description:
+            draftCount === 1
+              ? 'There is an AI draft waiting for a quick check.'
+              : 'There are AI drafts waiting for a quick check before sending.',
+          severity: 'info',
+          is_actionable: true,
+          is_read: false,
+          created_at: createdAt,
+          metrics: { draftCount },
+        });
+      }
+
+      if (automatedCount > 0) {
+        nextInsights.push({
+          id: 'automation-win',
+          insight_type: 'trend',
+          title: `${automatedCount} conversation${automatedCount === 1 ? '' : 's'} auto-handled this week`,
+          description: 'BizzyBee is steadily clearing inbox traffic without manual intervention.',
+          severity: 'info',
+          is_actionable: false,
+          is_read: false,
+          created_at: createdAt,
+          metrics: { automatedCount },
+        });
+      }
+
+      if (nextInsights.length === 0) {
+        nextInsights.push({
+          id: 'steady-state',
+          insight_type: 'summary',
+          title: 'Inbox looks steady',
+          description: 'No urgent issues, training backlog, or draft build-up right now.',
+          severity: 'info',
+          is_actionable: false,
+          is_read: false,
+          created_at: createdAt,
+          metrics: null,
+        });
+      }
+
+      setInsights(nextInsights.slice(0, 4));
     } catch (error) {
       console.error('Error fetching insights:', error);
     } finally {
@@ -45,13 +154,13 @@ export const InsightsWidget = ({ workspaceId }: InsightsWidgetProps) => {
 
   useEffect(() => {
     if (workspaceId) {
+      setLoading(true);
       void fetchInsights();
     }
   }, [fetchInsights, workspaceId]);
 
   const markAsRead = async (id: string) => {
-    await supabase.from('inbox_insights').update({ is_read: true }).eq('id', id);
-    setInsights(insights.filter((i) => i.id !== id));
+    setInsights((current) => current.filter((i) => i.id !== id));
   };
 
   const getIcon = (type: string | null, severity: string | null) => {

@@ -86,7 +86,6 @@ export const LearningInsightsWidget = () => {
           correctionsResult,
           correctionsLastWeekResult,
           conversationsResult,
-          topMisclassResult,
           trainingQueueResult,
           handledCategoriesResult
         ] = await Promise.all([
@@ -118,29 +117,26 @@ export const LearningInsightsWidget = () => {
             .lt('reviewed_at', monthStart.toISOString()),
           // Corrections this month
           supabase
-            .from('triage_corrections')
+            .from('conversations')
             .select('id', { count: 'exact', head: true })
             .eq('workspace_id', workspace.id)
-            .gte('corrected_at', monthStart.toISOString()),
+            .eq('review_outcome', 'changed')
+            .not('reviewed_at', 'is', null)
+            .gte('reviewed_at', monthStart.toISOString()),
           // Corrections last week (for trend)
           supabase
-            .from('triage_corrections')
+            .from('conversations')
             .select('id', { count: 'exact', head: true })
             .eq('workspace_id', workspace.id)
-            .gte('corrected_at', weekAgo.toISOString()),
+            .eq('review_outcome', 'changed')
+            .not('reviewed_at', 'is', null)
+            .gte('reviewed_at', weekAgo.toISOString()),
           // Conversations for automation rate
           supabase
             .from('conversations')
             .select('decision_bucket, triage_confidence')
             .eq('workspace_id', workspace.id)
             .gte('created_at', monthStart.toISOString()),
-          // Top misclassification
-          supabase
-            .from('triage_corrections')
-            .select('original_classification, new_classification')
-            .eq('workspace_id', workspace.id)
-            .gte('corrected_at', monthStart.toISOString())
-            .limit(100),
           // Current training queue count
           supabase
             .from('conversations')
@@ -188,17 +184,6 @@ export const LearningInsightsWidget = () => {
           ? Math.round(confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length)
           : 0;
 
-        // Find top misclassification
-        const corrections = topMisclassResult.data || [];
-        const misclassMap: Record<string, number> = {};
-        corrections.forEach(c => {
-          if (c.original_classification && c.new_classification) {
-            const key = `${c.original_classification}→${c.new_classification}`;
-            misclassMap[key] = (misclassMap[key] || 0) + 1;
-          }
-        });
-        const topMisclass = Object.entries(misclassMap).sort((a, b) => b[1] - a[1])[0];
-
         // Estimate time saved (assume 2 min per auto-handled email)
         const timeSavedMinutes = autoHandled * 2;
 
@@ -219,11 +204,7 @@ export const LearningInsightsWidget = () => {
           correctionsLastWeek: correctionsLastWeekResult.count || 0,
           automationRate,
           avgConfidence,
-          topMisclassification: topMisclass ? {
-            from: topMisclass[0].split('→')[0],
-            to: topMisclass[0].split('→')[1],
-            count: topMisclass[1]
-          } : null,
+          topMisclassification: null,
           timeSavedMinutes,
           trainingQueueCount: trainingQueueResult.count || 0,
           trainingQueueLastWeek: (correctionsLastWeekResult.count || 0) + (trainingQueueResult.count || 0),

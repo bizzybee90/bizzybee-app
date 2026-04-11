@@ -21,34 +21,38 @@ export const HowBizzyBeeIsDoing = () => {
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
 
-      const [convos, corrections, reviewed] = await Promise.all([
+      const [autoHandled, totalEmails, corrections, reviewed] = await Promise.all([
         supabase
           .from('conversations')
-          .select('decision_bucket')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
+          .eq('decision_bucket', 'auto_handled')
+          .gte('created_at', weekAgo.toISOString()),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
           .eq('workspace_id', workspace.id)
           .gte('created_at', weekAgo.toISOString()),
         supabase
-          .from('triage_corrections')
+          .from('conversations')
           .select('id', { count: 'exact', head: true })
           .eq('workspace_id', workspace.id)
-          .gte('corrected_at', weekAgo.toISOString()),
+          .eq('review_outcome', 'changed')
+          .not('reviewed_at', 'is', null)
+          .gte('reviewed_at', weekAgo.toISOString()),
         supabase
           .from('conversations')
-          .select('review_outcome')
+          .select('id', { count: 'exact', head: true })
           .eq('workspace_id', workspace.id)
           .not('reviewed_at', 'is', null)
           .gte('reviewed_at', weekAgo.toISOString()),
       ]);
 
-      const all = convos.data || [];
-      const auto = all.filter(c => c.decision_bucket === 'auto_handled').length;
-      const rev = reviewed.data || [];
-
       setStats({
-        autoHandled: auto,
-        totalEmails: all.length,
+        autoHandled: autoHandled.count || 0,
+        totalEmails: totalEmails.count || 0,
         correctionsCount: corrections.count || 0,
-        totalReviewed: rev.length,
+        totalReviewed: reviewed.count || 0,
       });
       setLoading(false);
     };

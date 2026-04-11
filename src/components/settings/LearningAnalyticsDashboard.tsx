@@ -129,9 +129,13 @@ export function LearningAnalyticsDashboard() {
 
       // Get corrections count
       const { count: correctionCount } = await supabase
-        .from('triage_corrections')
+        .from('conversations')
         .select('id', { count: 'exact', head: true })
         .eq('workspace_id', workspace?.id);
+      const normalizedCorrectionCount =
+        correctionCount && correctionCount >= 0
+          ? correctionCount
+          : 0;
 
       // Get average confidence
       const { data: confidenceData } = await supabase
@@ -153,8 +157,8 @@ export function LearningAnalyticsDashboard() {
         automatedCount: autoCount || 0,
         automationRate: totalCount ? ((autoCount || 0) / totalCount) * 100 : 0,
         avgConfidence: avgConfidence * 100,
-        correctionCount: correctionCount || 0,
-        overrideRate: totalCount ? ((correctionCount || 0) / totalCount) * 100 : 0,
+        correctionCount: normalizedCorrectionCount,
+        overrideRate: totalCount ? (normalizedCorrectionCount / totalCount) * 100 : 0,
         avgResponseTime: 12, // This would need actual calculation from messages
         timeSavedHours: timeSaved,
       });
@@ -239,18 +243,9 @@ export function LearningAnalyticsDashboard() {
 
   const fetchTrendData = useCallback(async () => {
     try {
-      // Get corrections by date
-      const { data: corrections } = await supabase
-        .from('triage_corrections')
-        .select('corrected_at')
-        .eq('workspace_id', workspace?.id)
-        .not('corrected_at', 'is', null)
-        .order('corrected_at', { ascending: true });
-
-      // Get conversations by date
       const { data: conversations } = await supabase
         .from('conversations')
-        .select('created_at, auto_handled_at, triage_confidence')
+        .select('created_at, auto_handled_at, triage_confidence, reviewed_at, review_outcome')
         .eq('workspace_id', workspace?.id)
         .order('created_at', { ascending: true });
 
@@ -263,20 +258,22 @@ export function LearningAnalyticsDashboard() {
         { corrections: number; automated: number; confidences: number[] }
       > = {};
 
-      corrections?.forEach((c) => {
-        const date = new Date(c.corrected_at!).toISOString().split('T')[0];
-        if (new Date(date) >= thirtyDaysAgo) {
-          if (!dailyData[date]) dailyData[date] = { corrections: 0, automated: 0, confidences: [] };
-          dailyData[date].corrections++;
-        }
-      });
-
       conversations?.forEach((c) => {
         const date = new Date(c.created_at!).toISOString().split('T')[0];
         if (new Date(date) >= thirtyDaysAgo) {
           if (!dailyData[date]) dailyData[date] = { corrections: 0, automated: 0, confidences: [] };
           if (c.auto_handled_at) dailyData[date].automated++;
           if (c.triage_confidence) dailyData[date].confidences.push(c.triage_confidence);
+        }
+
+        if (c.review_outcome === 'changed' && c.reviewed_at) {
+          const reviewedDate = new Date(c.reviewed_at).toISOString().split('T')[0];
+          if (new Date(reviewedDate) >= thirtyDaysAgo) {
+            if (!dailyData[reviewedDate]) {
+              dailyData[reviewedDate] = { corrections: 0, automated: 0, confidences: [] };
+            }
+            dailyData[reviewedDate].corrections++;
+          }
         }
       });
 
@@ -300,34 +297,8 @@ export function LearningAnalyticsDashboard() {
   }, [workspace?.id]);
 
   const fetchCorrectionHeatmap = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from('triage_corrections')
-        .select('original_classification, new_classification')
-        .eq('workspace_id', workspace?.id)
-        .not('original_classification', 'is', null)
-        .not('new_classification', 'is', null);
-
-      // Aggregate corrections
-      const heatmapCounts: Record<string, number> = {};
-      data?.forEach((c) => {
-        const key = `${c.original_classification}|${c.new_classification}`;
-        heatmapCounts[key] = (heatmapCounts[key] || 0) + 1;
-      });
-
-      const heatmap = Object.entries(heatmapCounts)
-        .map(([key, count]) => {
-          const [from, to] = key.split('|');
-          return { from, to, count };
-        })
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-
-      setCorrectionHeatmap(heatmap);
-    } catch (error) {
-      logger.error('Error fetching correction heatmap', error);
-    }
-  }, [workspace?.id]);
+    setCorrectionHeatmap([]);
+  }, []);
 
   useEffect(() => {
     if (!workspace?.id) return;
