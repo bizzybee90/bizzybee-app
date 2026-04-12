@@ -88,7 +88,7 @@ export default function Settings() {
     },
     {
       title: 'Reviews',
-      description: 'Google review workflow and alerts',
+      description: 'Google profile & review workflow',
       to: '/reviews',
       icon: Star,
       tone: 'bg-amber-100 text-amber-700',
@@ -209,12 +209,12 @@ export default function Settings() {
           </SettingsSection>
           <SettingsSection
             title="Reviews"
-            description="Google review management lives in its own module"
+            description="Google profile and review management lives in its own module"
           >
             <PanelNotice
               icon={Star}
               title="Open the dedicated Reviews module"
-              description="Google Business Messages stays in Channels. Public reviews, reply workflow, alerts, and reputation analytics now belong to Reviews."
+              description="Any legacy Google message routing stays in Channels. Public reviews, profile identity, reply workflow, alerts, and reputation analytics now belong to Reviews."
               actionLabel="Open Reviews"
               actionTo="/reviews"
             />

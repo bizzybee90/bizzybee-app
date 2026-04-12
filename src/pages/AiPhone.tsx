@@ -8,7 +8,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAiPhoneConfig } from '@/hooks/useAiPhoneConfig';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BarChart3, Settings, BookOpen } from 'lucide-react';
+import { BarChart3, PhoneCall, Settings, BookOpen } from 'lucide-react';
 import { StatsBar } from '@/components/ai-phone/StatsBar';
 import { CallLogTable } from '@/components/ai-phone/CallLogTable';
 import { OnboardingWizard } from '@/components/ai-phone/OnboardingWizard';
@@ -35,6 +35,24 @@ const AiPhone = () => {
     workspaceId: workspace?.id ?? null,
     entitlements,
   });
+  const setupNotice =
+    config?.status === 'provisioning'
+      ? {
+          title: 'Provisioning your managed number',
+          description:
+            'BizzyBee is creating the AI Phone agent and purchasing the managed Twilio number for this workspace. This can take a moment.',
+        }
+      : config?.status === 'error'
+        ? {
+            title: 'Provisioning needs attention',
+            description:
+              'BizzyBee saved the setup history, but this workspace needs another provisioning attempt before AI Phone can go live.',
+          }
+        : {
+            title: 'BizzyBee-managed number by default',
+            description:
+              'BizzyBee provisions a dedicated Twilio number for this workspace. Add a separate transfer line in Setup if callers should reach a human. Porting an existing number is an advanced follow-up, not the default path.',
+          };
 
   if (!workspace?.id) {
     const lockedContent = (
@@ -119,6 +137,15 @@ const AiPhone = () => {
       {/* Tab content */}
       <ScrollArea className="flex-1">
         <div className="p-6">
+          {activeTab === 'setup' && (
+            <div className="mb-5">
+              <PanelNotice
+                icon={PhoneCall}
+                title={setupNotice.title}
+                description={setupNotice.description}
+              />
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <>
               <StatsBar />

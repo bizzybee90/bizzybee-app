@@ -19,7 +19,7 @@ const STEPS = [
   'Opening Hours',
   'Voice Selection',
   'Knowledge Base',
-  'Review & Go Live',
+  'Review & Provision',
 ] as const;
 
 interface KBEntry {
@@ -103,6 +103,15 @@ export const OnboardingWizard = () => {
 
   const renderBusinessDetails = () => (
     <div className="space-y-5">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+        <p className="text-sm font-medium text-foreground">BizzyBee-managed number first</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          We provision a fresh Twilio number for the AI by default. If callers should also reach a
+          human, add a separate transfer line below. You do not need to port an existing number to
+          get started.
+        </p>
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="business_name">
           Business Name <span className="text-red-500">*</span>
@@ -125,7 +134,7 @@ export const OnboardingWizard = () => {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="transfer_number">Transfer Number</Label>
+        <Label htmlFor="transfer_number">Human Transfer Line</Label>
         <Input
           id="transfer_number"
           type="tel"
@@ -134,7 +143,7 @@ export const OnboardingWizard = () => {
           onChange={(e) => update('transfer_number', e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
-          If the caller asks to speak to a human, the AI will transfer to this number.
+          Optional. If the caller asks to speak to a human, the AI will transfer to this number.
         </p>
       </div>
     </div>
@@ -207,7 +216,9 @@ export const OnboardingWizard = () => {
       return (
         <div className="space-y-6 text-center">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">Your AI Phone is Live</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Your BizzyBee-managed AI Phone is Live
+            </h3>
             <p className="text-sm text-muted-foreground">
               Calls to this number will be answered by your AI receptionist.
             </p>
@@ -237,11 +248,19 @@ export const OnboardingWizard = () => {
             )}
             {form.transfer_number && (
               <>
-                <dt className="text-muted-foreground">Transfer No.</dt>
+                <dt className="text-muted-foreground">Human Transfer Line</dt>
                 <dd className="text-foreground">{form.transfer_number}</dd>
               </>
             )}
           </dl>
+        </Card>
+
+        <Card className="border border-amber-200 bg-amber-50/70 p-4">
+          <p className="text-sm font-medium text-foreground">Managed number will be provisioned</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            BizzyBee will create a dedicated Twilio number for the AI. This workspace can still use
+            a separate transfer line for human handoff if needed.
+          </p>
         </Card>
 
         <Card className="p-4 space-y-3">
@@ -365,7 +384,7 @@ export const OnboardingWizard = () => {
               disabled={isProvisioning || !canAdvance()}
               className="bg-amber-600 text-white hover:bg-amber-700"
             >
-              {isProvisioning ? 'Provisioning...' : 'Provision My AI Phone'}
+              {isProvisioning ? 'Provisioning...' : 'Provision BizzyBee-managed Number'}
             </Button>
           )}
         </div>

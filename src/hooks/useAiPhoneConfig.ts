@@ -4,6 +4,11 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { toast } from 'sonner';
 import type { AiPhoneConfig } from '@/lib/types';
 
+type AiPhoneConfigRow = AiPhoneConfig & {
+  retell_phone_number?: string | null;
+  error_message?: string | null;
+};
+
 export function useAiPhoneConfig() {
   const { workspace } = useWorkspace();
   const queryClient = useQueryClient();
@@ -13,7 +18,7 @@ export function useAiPhoneConfig() {
     data: config = null,
     isLoading,
     error,
-  } = useQuery<AiPhoneConfig | null>({
+  } = useQuery<AiPhoneConfigRow | null>({
     queryKey,
     queryFn: async () => {
       if (!workspace?.id) return null;
@@ -25,7 +30,7 @@ export function useAiPhoneConfig() {
         .maybeSingle();
 
       if (error) throw error;
-      return (data as unknown as AiPhoneConfig) ?? null;
+      return (data as unknown as AiPhoneConfigRow) ?? null;
     },
     enabled: !!workspace?.id,
   });
@@ -41,11 +46,11 @@ export function useAiPhoneConfig() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey });
       toast.success(
-        `AI Phone provisioned${data?.phone_number ? `: ${data.phone_number}` : ''}`
+        `BizzyBee-managed AI Phone provisioned${data?.phone_number ? `: ${data.phone_number}` : ''}`,
       );
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to provision AI Phone');
+      toast.error(err.message || 'Failed to provision BizzyBee-managed AI Phone');
     },
   });
 

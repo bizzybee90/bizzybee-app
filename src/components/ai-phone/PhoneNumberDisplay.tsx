@@ -20,7 +20,9 @@ export const PhoneNumberDisplay = ({ phoneNumber, isActive }: PhoneNumberDisplay
   };
 
   if (!phoneNumber) {
-    return <p className="text-sm text-muted-foreground">No number provisioned yet</p>;
+    return (
+      <p className="text-sm text-muted-foreground">No BizzyBee-managed number provisioned yet</p>
+    );
   }
 
   return (

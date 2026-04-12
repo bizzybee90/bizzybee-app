@@ -147,9 +147,11 @@ export interface ReviewActivityPreviewItem {
 export const REVIEW_PROVIDER_DEFINITIONS: Record<ReviewProviderKey, ReviewProviderDefinition> = {
   google: {
     key: 'google',
-    label: 'Google Reviews',
-    description: 'Manage Google Business Profile reviews in a dedicated BizzyBee review inbox.',
-    onboardingNote: 'Ideal for local service businesses where public reviews drive trust.',
+    label: 'Google Reviews & Profile',
+    description:
+      'Manage Google Business Profile reviews and profile identity in a dedicated BizzyBee workspace.',
+    onboardingNote:
+      'Ideal for local service businesses that want reviews and profile details in one place.',
     surfaces: ['onboarding', 'settings', 'dashboard', 'detail', 'notifications'],
     availableNow: false,
   },
@@ -159,14 +161,14 @@ export const REVIEW_CONFIG_FIELDS: Record<ReviewProviderKey, ReviewConfigField[]
   google: [
     {
       key: 'accountRef',
-      label: 'Google Business account reference',
+      label: 'Google Business Profile account reference',
       placeholder: 'accounts/123456789',
-      helpText: 'Used to identify the connected Google Business account.',
+      helpText: 'Used to identify the connected Google Business Profile account.',
       required: true,
     },
     {
       key: 'locationRef',
-      label: 'Google Business location reference',
+      label: 'Google Business Profile location reference',
       placeholder: 'locations/987654321',
       helpText: 'Used to sync reviews for the selected business location.',
       required: true,
@@ -175,7 +177,7 @@ export const REVIEW_CONFIG_FIELDS: Record<ReviewProviderKey, ReviewConfigField[]
       key: 'placeId',
       label: 'Google place ID',
       placeholder: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
-      helpText: 'Optional extra identifier for analytics and cross-surface linking.',
+      helpText: 'Optional extra identifier for analytics and location linking.',
       required: false,
     },
   ],
@@ -379,11 +381,11 @@ export function getReviewSetupDescription(
   const missingLabels = getMissingReviewConfigLabels(definition.key, config);
 
   if (state === 'ready') {
-    return 'Review management is connected and ready to sync live public reviews.';
+    return 'Review management is connected and ready for live review sync when the provider integration goes live.';
   }
 
   if (state === 'syncing') {
-    return 'BizzyBee is syncing reviews and refreshing the connected location state.';
+    return 'BizzyBee is refreshing the connected profile identity and review workspace state.';
   }
 
   if (state === 'attention_required') {
@@ -392,14 +394,14 @@ export function getReviewSetupDescription(
 
   if (state === 'needs_location') {
     if (missingLabels.length > 0) {
-      return `BizzyBee still needs ${missingLabels.join(', ')} before review sync can go live.`;
+      return `BizzyBee still needs ${missingLabels.join(', ')} before the Reviews module can manage this location reliably.`;
     }
 
-    return 'A review location still needs to be selected before the inbox can go live.';
+    return 'A review location still needs to be selected before the inbox can be used.';
   }
 
   if (state === 'disconnected') {
-    return 'Connect a review source to turn BizzyBee into a live review-management workspace.';
+    return 'Connect a review source to use Reviews as the home for Google profile and review work.';
   }
 
   return `${definition.label} is planned, but not yet available as a self-serve review source.`;

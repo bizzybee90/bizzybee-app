@@ -94,8 +94,8 @@ const providerChecklists: Record<string, { title: string; steps: string[] }> = {
   meta: {
     title: 'What BizzyBee needs',
     steps: [
-      'Connect Facebook first, then choose the exact page and Instagram identity for this workspace.',
-      'Save the page, Instagram account, and related routing identifiers BizzyBee should use.',
+      'Connect Facebook first, then let BizzyBee choose the best Page and Instagram asset for this workspace.',
+      'Save the selected page, Instagram account, and related routing identifiers BizzyBee should use.',
       'Finish Meta-side business linking and keep Messenger plus Instagram polished before moving WhatsApp over later.',
     ],
   },
@@ -377,18 +377,29 @@ export const ChannelManagementPanel = ({
   useEffect(() => {
     const metaConnected = searchParams.get('meta_connected');
     const pageName = searchParams.get('page_name');
+    const pageCount = Number.parseInt(searchParams.get('page_count') || '', 10);
+    const selectionSource = searchParams.get('meta_selection_source');
+    const instagram = searchParams.get('instagram');
 
     if (metaConnected === 'true') {
+      const selectionSummary =
+        Number.isFinite(pageCount) && pageCount > 1
+          ? ` Selected ${pageName ?? 'a Page'} from ${pageCount} available Pages.`
+          : '';
       toast({
         title: 'Facebook connected!',
         description: pageName
-          ? `${pageName} is now connected for Messenger and Instagram.`
-          : 'Messenger and Instagram are ready.',
+          ? `${pageName} is now connected for Messenger${instagram ? ` and Instagram @${instagram}` : ''}.${selectionSummary}${selectionSource ? ` Selection source: ${selectionSource.replace(/_/g, ' ')}.` : ''}`
+          : instagram
+            ? `Messenger is ready and Instagram @${instagram} was linked.`
+            : 'Messenger and Instagram are ready.',
       });
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('meta_connected');
       nextParams.delete('meta');
       nextParams.delete('page_name');
+      nextParams.delete('page_count');
+      nextParams.delete('meta_selection_source');
       nextParams.delete('instagram');
       nextParams.delete('step');
       setSearchParams(nextParams, { replace: true });
@@ -969,7 +980,7 @@ export const ChannelManagementPanel = ({
 
     if (
       (definition.key === 'facebook' || definition.key === 'instagram') &&
-      state === 'needs_connection'
+      (state === 'needs_connection' || state === 'provider_setup_required')
     ) {
       return (
         <Button size="sm" variant="outline" onClick={handleConnectMeta} disabled={connecting}>

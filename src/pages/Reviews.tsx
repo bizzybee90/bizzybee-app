@@ -316,7 +316,7 @@ function ReviewsPageContent() {
     ) ?? null;
   const goLiveChecklist = [
     {
-      label: 'Google Business profile foundation connected',
+      label: 'Google profile identity connected',
       complete: googleBusinessMessageState === 'ready',
       actionLabel: 'Open Google profile setup',
       actionTo: getChannelSetupHref('google_business'),
@@ -357,7 +357,7 @@ function ReviewsPageContent() {
               : '--',
         subtitle: reviewConnectionReady
           ? previewReviews.length > 0
-            ? 'Preview inbox average until live sync lands'
+            ? 'Seeded preview inbox average'
             : 'No synced reviews yet'
           : 'Connect reviews to start tracking rating',
       },
@@ -366,9 +366,9 @@ function ReviewsPageContent() {
         value: reviewConnectionReady ? previewReviews.length : 0,
         subtitle: reviewConnectionReady
           ? previewReviews.length > 0
-            ? 'Preview review objects in the module workflow'
+            ? 'Seeded review objects in the module preview'
             : 'No reviews imported yet'
-          : 'Review sync not live yet',
+          : 'Review sync is not connected yet',
       },
       {
         key: 'new_reviews',
@@ -400,7 +400,7 @@ function ReviewsPageContent() {
             : '--',
         subtitle:
           reviewConnectionReady && averageResponseMinutes !== null
-            ? 'Preview average from published reply examples'
+            ? 'Average from seeded reply examples'
             : 'Will populate once replies are published',
       },
       {
@@ -413,7 +413,7 @@ function ReviewsPageContent() {
           ? previewReviews.length > 0
             ? `${lowRatingCount} preview reviews at ${reviewAlertPolicy.lowRatingThreshold} stars and below`
             : `Alerting at ${reviewAlertPolicy.lowRatingThreshold} stars and below`
-          : 'Policy saved before sync goes live',
+          : 'Policy saved before sync is enabled',
       },
     ],
     [
@@ -529,7 +529,7 @@ function ReviewsPageContent() {
     }));
     toast({
       title: 'Preview review archived',
-      description: 'This only changes the seeded workflow preview, not any live Google review.',
+      description: 'This only changes the seeded workflow preview, not any synced Google review.',
     });
   };
 
@@ -724,11 +724,11 @@ function ReviewsPageContent() {
 
   const setupChecklist = [
     {
-      title: 'Google Business profile foundation',
+      title: 'Google Business Profile identity',
       complete: googleBusinessMessageState === 'ready',
       detail:
         googleBusinessMessageState === 'ready'
-          ? 'Google Business identity is already configured and ready to support Reviews.'
+          ? 'Google Business Profile identity is already saved and ready to support Reviews.'
           : `Current status: ${getChannelConnectionLabel(
               googleChannelDefinition,
               googleBusinessMessageState,
@@ -737,12 +737,12 @@ function ReviewsPageContent() {
       actionTo: getChannelSetupHref('google_business'),
     },
     {
-      title: 'Google place identity',
+      title: 'Google place reference',
       complete: hasGooglePlaceId,
       detail: hasGooglePlaceId
         ? 'A Google place ID is already saved in the current channel config.'
-        : 'A Google place ID will help link review analytics and location-level reporting later.',
-      actionLabel: 'Open Google Business setup',
+        : 'A Google place ID will help connect review analytics and location-level reporting later.',
+      actionLabel: 'Open Google profile setup',
       actionTo: getChannelSetupHref('google_business'),
     },
     {
@@ -767,13 +767,13 @@ function ReviewsPageContent() {
               </Badge>
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-[-0.02em] text-bb-text">
-                  Google review management
+                  Google Reviews & Profile
                 </h1>
                 <p className="max-w-3xl text-sm leading-6 text-bb-warm-gray">
-                  Reviews is now a first-class BizzyBee module. This page owns connection, alerts,
-                  inbox workflow, reply state, and reputation analytics for public reviews, with
-                  room for profile operations where the Google integration supports them, instead of
-                  hiding everything inside Channels or Settings.
+                  Reviews is BizzyBee&apos;s home for Google Business Profile identity, public
+                  reviews, reply workflow, alerts, and reputation analytics. It keeps review
+                  operations in one place while leaving any legacy Google message routing in
+                  Channels.
                 </p>
               </div>
             </div>
@@ -781,7 +781,7 @@ function ReviewsPageContent() {
             <div className="flex flex-wrap gap-3">
               <Button asChild variant="outline">
                 <Link to={getChannelSetupHref('google_business')}>
-                  Prepare Google Business
+                  Prepare Google Profile
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
@@ -798,7 +798,7 @@ function ReviewsPageContent() {
         {workspaceLoading || loading ? (
           <PanelNotice
             title="Loading Google profile and review setup"
-            description="BizzyBee is checking your Google Business identity, review connection, and notification setup."
+            description="BizzyBee is checking your Google Business Profile identity, review connection, and notification setup."
             icon={RefreshCw}
           />
         ) : fetchError ? (
@@ -837,7 +837,7 @@ function ReviewsPageContent() {
                       </Badge>
                       {googleBusinessMessageState === 'ready' && (
                         <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-                          Google profile foundation detected
+                          Google profile identity detected
                         </Badge>
                       )}
                     </div>
@@ -917,7 +917,7 @@ function ReviewsPageContent() {
                     description={`The module contract is now defined. ${getReviewSetupActionLabel(
                       googleReviewDefinition,
                       googleReviewState,
-                    )} will become a real provider flow in the next implementation slice.`}
+                    )} will become a provider flow in the next implementation slice.`}
                     icon={Sparkles}
                   />
                 </div>
@@ -932,9 +932,9 @@ function ReviewsPageContent() {
                   </p>
                   <h2 className="text-lg font-semibold text-bb-text">Reviews control center</h2>
                   <p className="max-w-2xl text-sm leading-6 text-bb-warm-gray">
-                    Reviews now owns connection, alerts, inbox ownership, and reply workflow. This
-                    card shows the last blocker before the module is ready for a live provider
-                    handoff.
+                    Reviews now owns Google profile identity, alerts, inbox ownership, and reply
+                    workflow. This card shows the last blocker before the module is ready for a
+                    provider handoff.
                   </p>
                 </div>
                 <Badge
@@ -976,8 +976,8 @@ function ReviewsPageContent() {
                   <p className="text-sm font-medium text-bb-text">Next review step</p>
                   <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
                     {goLiveNextStep
-                      ? `${goLiveNextStep.label} is the last blocker before Reviews is ready for a live provider handoff.`
-                      : 'Reviews has enough structure, ownership, and policy to move from preview workflow into live Google review transport.'}
+                      ? `${goLiveNextStep.label} is the last blocker before Reviews is ready for provider handoff.`
+                      : 'Reviews has enough structure, ownership, and policy to move from preview workflow into Google review sync.'}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     {goLiveNextStep ? (
@@ -1033,15 +1033,17 @@ function ReviewsPageContent() {
                       Save Google review identifiers
                     </h2>
                     <p className="text-sm leading-6 text-bb-warm-gray">
-                      This is the first live Reviews setup slice. BizzyBee can now store the Google
-                      review account and location identifiers it will use when review sync goes
-                      live.
+                      This is the first Reviews setup slice. BizzyBee can now store the Google
+                      review account and location identifiers it will use when review sync is
+                      enabled.
                     </p>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="review-account-ref">Google Business account reference</Label>
+                      <Label htmlFor="review-account-ref">
+                        Google Business Profile account reference
+                      </Label>
                       <Input
                         id="review-account-ref"
                         value={reviewConnectionDraft.accountRef}
@@ -1056,7 +1058,7 @@ function ReviewsPageContent() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="review-location-ref">
-                        Google Business location reference
+                        Google Business Profile location reference
                       </Label>
                       <Input
                         id="review-location-ref"
@@ -1142,7 +1144,7 @@ function ReviewsPageContent() {
                     </Button>
                     <Button asChild variant="outline">
                       <Link to={getChannelSetupHref('google_business')}>
-                        Open Google Business messaging setup
+                        Open Google profile setup
                       </Link>
                     </Button>
                   </div>
@@ -1220,9 +1222,9 @@ function ReviewsPageContent() {
                           <p className="text-sm font-medium text-bb-text">Next live step</p>
                           <p className="text-sm leading-5 text-bb-warm-gray">
                             {reviewModuleReadyForProviderHandoff
-                              ? 'Reviews has the right internal foundation. The next implementation layer is the live Google review sync and publish transport.'
+                              ? 'Reviews has the right internal foundation. The next implementation layer is the Google review sync path.'
                               : goLiveNextStep
-                                ? `${goLiveNextStep.label} is the next blocker before this module can hand off cleanly into a live provider path.`
+                                ? `${goLiveNextStep.label} is the next blocker before this module can hand off cleanly into a provider path.`
                                 : 'BizzyBee is shaping the Reviews launch path step by step.'}
                           </p>
                         </div>
@@ -1242,7 +1244,7 @@ function ReviewsPageContent() {
 
                   <div className="space-y-2">
                     {[
-                      ['Google Business messaging', googleBusinessMessageState === 'ready'],
+                      ['Google profile identity', googleBusinessMessageState === 'ready'],
                       ['Review account reference', reviewConnectionConfig.accountRef.length > 0],
                       ['Review location reference', reviewConnectionConfig.locationRef.length > 0],
                       ['Place ID saved', reviewConnectionConfig.placeId.length > 0],
@@ -1342,10 +1344,10 @@ function ReviewsPageContent() {
                   </div>
 
                   <PanelNotice
-                    title="This will become the live review queue"
+                    title="This will become the review queue"
                     description={
                       reviewConnectionReady
-                        ? 'The list below is a seeded workflow preview so we can shape the review queue honestly before live sync lands. It is clearly preview data, not imported production reviews.'
+                        ? 'The list below is a seeded workflow preview so we can shape the review queue honestly before sync lands. It is clearly preview data, not imported production reviews.'
                         : 'New reviews, unreplied items, low-rating alerts, BizzyBee drafts, and published replies will all land here. The next build slice is the actual synced review inbox.'
                     }
                     icon={MessageSquare}
@@ -1353,7 +1355,7 @@ function ReviewsPageContent() {
                       <div className="flex flex-wrap gap-3">
                         <Button asChild size="sm">
                           <Link to={getChannelSetupHref('google_business')}>
-                            Prepare Google Business
+                            Prepare Google Profile
                           </Link>
                         </Button>
                         <Button asChild variant="outline" size="sm">
@@ -1375,8 +1377,8 @@ function ReviewsPageContent() {
                       </div>
                       <p className="text-sm leading-6 text-bb-warm-gray">
                         Draft generation, publish, archive, and sync actions on this page currently
-                        shape the Reviews workflow only. They do not yet publish to a live Google
-                        listing or import live production reviews.
+                        shape the Reviews workflow only. They do not yet publish to a Google profile
+                        or import production reviews.
                       </p>
                     </div>
                   )}
@@ -1396,7 +1398,7 @@ function ReviewsPageContent() {
                     </div>
                     <p className="text-sm leading-6 text-bb-warm-gray">
                       {reviewConnectionReady
-                        ? 'BizzyBee has the saved connection and policy foundation it needs. The next step is ingesting live reviews into this queue.'
+                        ? 'BizzyBee has the saved profile and policy foundation it needs. The next step is ingesting live reviews into this queue.'
                         : 'The inbox stays empty until the review connection is saved with a Google account and location.'}
                     </p>
                   </div>
@@ -1642,7 +1644,7 @@ function ReviewsPageContent() {
                                 ) === 'critical'
                                   ? 'This review crosses the current alert threshold and should sit near the top of the queue.'
                                   : selectedReview.status === 'archived'
-                                    ? 'This preview review has been cleared from the working queue, which is useful for testing archive behavior before live sync lands.'
+                                    ? 'This preview review has been cleared from the working queue, which is useful for testing archive behavior before sync lands.'
                                     : selectedReview.replyStatus === 'drafted'
                                       ? 'BizzyBee has already prepared a draft, so the next action is review and publish.'
                                       : selectedReview.replyStatus === 'published'
@@ -1657,8 +1659,8 @@ function ReviewsPageContent() {
                               </p>
                               <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
                                 This detail workflow is now structurally correct, but replies still
-                                publish into the Reviews preview state only. The live Google reply
-                                transport is the next implementation layer.
+                                publish into the Reviews preview state only. The Google reply sync
+                                path is the next implementation layer.
                               </p>
                             </div>
                           </div>
@@ -1988,7 +1990,7 @@ function ReviewsPageContent() {
                               : 'border-bb-border bg-bb-white text-bb-warm-gray hover:bg-bb-white'
                           }
                         >
-                          {reviewConnectionReady ? 'Ready for live sync' : 'Waiting on setup'}
+                          {reviewConnectionReady ? 'Ready for sync' : 'Waiting on setup'}
                         </Badge>
                       </div>
                       <p className="text-sm leading-6 text-bb-warm-gray">

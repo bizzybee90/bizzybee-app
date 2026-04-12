@@ -62,6 +62,121 @@ function redirectToApp(
 
 const GRAPH_API = 'https://graph.facebook.com/v19.0';
 
+type MetaPage = {
+  id: string;
+  name: string;
+  access_token: string;
+};
+
+type MetaPageCandidate = MetaPage & {
+  discoveryIndex: number;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+  selectionScore: number;
+  selectionReason: string;
+};
+
+async function discoverPageInstagram(
+  page: MetaPage,
+  discoveryIndex: number,
+): Promise<MetaPageCandidate> {
+  let instagramAccountId: string | null = null;
+  let instagramUsername: string | null = null;
+  let selectionScore = 0;
+  let selectionReason = 'No linked Instagram asset found';
+
+  try {
+    const igRes = await fetch(
+      `${GRAPH_API}/${page.id}?fields=instagram_business_account{id,username}&access_token=${page.access_token}`,
+    );
+    if (igRes.ok) {
+      const igData = await igRes.json();
+      if (igData.instagram_business_account) {
+        instagramAccountId = igData.instagram_business_account.id;
+        instagramUsername = igData.instagram_business_account.username || null;
+        selectionScore = 100;
+        selectionReason = 'Matched via Page query';
+      }
+    }
+  } catch (error) {
+    console.warn('[meta-auth-callback] Page Instagram query failed:', page.id, error);
+  }
+
+  if (!instagramAccountId) {
+    try {
+      const pbiRes = await fetch(
+        `${GRAPH_API}/${page.id}/page_backed_instagram_accounts?access_token=${page.access_token}&fields=id,username`,
+      );
+      if (pbiRes.ok) {
+        const pbiData = await pbiRes.json();
+        if (pbiData?.data?.length > 0) {
+          instagramAccountId = pbiData.data[0].id;
+          instagramUsername = pbiData.data[0].username || null;
+          selectionScore = 80;
+          selectionReason = 'Matched via page_backed_instagram_accounts';
+        }
+      }
+    } catch (error) {
+      console.warn('[meta-auth-callback] Page-backed Instagram query failed:', page.id, error);
+    }
+  }
+
+  return {
+    ...page,
+    discoveryIndex,
+    instagramAccountId,
+    instagramUsername,
+    selectionScore,
+    selectionReason,
+  };
+}
+
+async function discoverWorkspaceInstagram(
+  longLivedUserToken: string,
+): Promise<{ instagramAccountId: string; instagramUsername: string | null } | null> {
+  try {
+    const bizRes = await fetch(
+      `${GRAPH_API}/me/businesses?access_token=${longLivedUserToken}&fields=id,name`,
+    );
+    if (!bizRes.ok) {
+      return null;
+    }
+
+    const bizData = await bizRes.json();
+    for (const biz of bizData?.data || []) {
+      const igAccRes = await fetch(
+        `${GRAPH_API}/${biz.id}/instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
+      );
+      if (igAccRes.ok) {
+        const igAccData = await igAccRes.json();
+        if (igAccData?.data?.length > 0) {
+          return {
+            instagramAccountId: igAccData.data[0].id,
+            instagramUsername: igAccData.data[0].username || null,
+          };
+        }
+      }
+
+      const ownedIgRes = await fetch(
+        `${GRAPH_API}/${biz.id}/owned_instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
+      );
+      if (ownedIgRes.ok) {
+        const ownedIgData = await ownedIgRes.json();
+        if (ownedIgData?.data?.length > 0) {
+          return {
+            instagramAccountId: ownedIgData.data[0].id,
+            instagramUsername: ownedIgData.data[0].username || null,
+          };
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[meta-auth-callback] Business Instagram check failed:', error);
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
@@ -238,111 +353,55 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use the first page (MVP — multi-page selection is a v2 enhancement)
-    const page = pages[0];
-    const pageId = page.id;
-    const pageName = page.name;
-    const pageAccessToken = page.access_token; // Long-lived when user token is long-lived
+    const candidatePages = await Promise.all(
+      pages.map((page, index) => discoverPageInstagram(page, index)),
+    );
+    const selectedPageCandidate = [...candidatePages].sort((left, right) => {
+      if (right.selectionScore !== left.selectionScore) {
+        return right.selectionScore - left.selectionScore;
+      }
 
-    console.log(`[meta-auth-callback] Using Page: ${pageName} (${pageId})`);
+      return left.discoveryIndex - right.discoveryIndex;
+    })[0];
 
-    // --- Step 4: Check for linked Instagram Business account ---
-    // Try multiple discovery methods since different permissions yield different results
-    let instagramAccountId: string | null = null;
-    let instagramUsername: string | null = null;
+    let selectedInstagramAccountId = selectedPageCandidate.instagramAccountId;
+    let selectedInstagramUsername = selectedPageCandidate.instagramUsername;
 
-    // Method A: Query Page for instagram_business_account (needs pages_read_engagement)
-    try {
-      const igRes = await fetch(
-        `${GRAPH_API}/${pageId}?fields=instagram_business_account{id,username}&access_token=${pageAccessToken}`,
+    if (!selectedInstagramAccountId) {
+      const workspaceInstagram = await discoverWorkspaceInstagram(longLivedUserToken);
+      if (workspaceInstagram) {
+        selectedInstagramAccountId = workspaceInstagram.instagramAccountId;
+        selectedInstagramUsername = workspaceInstagram.instagramUsername;
+      }
+    }
+
+    const pageId = selectedPageCandidate.id;
+    const pageName = selectedPageCandidate.name;
+    const pageAccessToken = selectedPageCandidate.access_token;
+
+    console.log(
+      `[meta-auth-callback] Using Page: ${pageName} (${pageId}) from ${candidatePages.length} candidate page(s)`,
+    );
+
+    if (selectedInstagramAccountId) {
+      console.log(
+        `[meta-auth-callback] Selected Instagram asset: @${selectedInstagramUsername ?? 'unknown'} (${selectedInstagramAccountId})`,
       );
-      if (igRes.ok) {
-        const igData = await igRes.json();
-        if (igData.instagram_business_account) {
-          instagramAccountId = igData.instagram_business_account.id;
-          instagramUsername = igData.instagram_business_account.username || null;
-          console.log(
-            `[meta-auth-callback] Found Instagram via Page query: @${instagramUsername} (${instagramAccountId})`,
-          );
-        }
-      } else {
-        console.log('[meta-auth-callback] Page Instagram query failed (trying business route)');
-      }
-    } catch (igErr) {
-      console.warn('[meta-auth-callback] Page Instagram check failed:', igErr);
-    }
-
-    // Method B: Query via Business Portfolio (needs business_management, which we have)
-    if (!instagramAccountId) {
-      try {
-        const bizRes = await fetch(
-          `${GRAPH_API}/me/businesses?access_token=${longLivedUserToken}&fields=id,name`,
-        );
-        if (bizRes.ok) {
-          const bizData = await bizRes.json();
-          for (const biz of bizData?.data || []) {
-            const igAccRes = await fetch(
-              `${GRAPH_API}/${biz.id}/instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
-            );
-            if (igAccRes.ok) {
-              const igAccData = await igAccRes.json();
-              if (igAccData?.data?.length > 0) {
-                instagramAccountId = igAccData.data[0].id;
-                instagramUsername = igAccData.data[0].username || null;
-                console.log(
-                  `[meta-auth-callback] Found Instagram via business route: @${instagramUsername} (${instagramAccountId})`,
-                );
-                break;
-              }
-            }
-            // Also try owned_instagram_accounts endpoint
-            if (!instagramAccountId) {
-              const ownedIgRes = await fetch(
-                `${GRAPH_API}/${biz.id}/owned_instagram_accounts?access_token=${longLivedUserToken}&fields=id,username`,
-              );
-              if (ownedIgRes.ok) {
-                const ownedIgData = await ownedIgRes.json();
-                if (ownedIgData?.data?.length > 0) {
-                  instagramAccountId = ownedIgData.data[0].id;
-                  instagramUsername = ownedIgData.data[0].username || null;
-                  console.log(
-                    `[meta-auth-callback] Found Instagram via owned_instagram_accounts: @${instagramUsername} (${instagramAccountId})`,
-                  );
-                  break;
-                }
-              }
-            }
-          }
-        }
-      } catch (bizIgErr) {
-        console.warn('[meta-auth-callback] Business Instagram check failed (non-fatal):', bizIgErr);
-      }
-    }
-
-    // Method C: page_backed_instagram_accounts on the Page (alternative endpoint)
-    if (!instagramAccountId) {
-      try {
-        const pbiRes = await fetch(
-          `${GRAPH_API}/${pageId}/page_backed_instagram_accounts?access_token=${pageAccessToken}&fields=id,username`,
-        );
-        if (pbiRes.ok) {
-          const pbiData = await pbiRes.json();
-          if (pbiData?.data?.length > 0) {
-            instagramAccountId = pbiData.data[0].id;
-            instagramUsername = pbiData.data[0].username || null;
-            console.log(
-              `[meta-auth-callback] Found Instagram via page_backed: @${instagramUsername} (${instagramAccountId})`,
-            );
-          }
-        }
-      } catch {
-        // non-fatal
-      }
-    }
-
-    if (!instagramAccountId) {
+    } else {
       console.log('[meta-auth-callback] No Instagram Business account found via any method');
     }
+
+    const pageCandidatesForConfig = candidatePages.map(
+      ({ access_token, ...candidate }) => candidate,
+    );
+    const selectedSelectionSource =
+      selectedPageCandidate.selectionReason === 'Matched via Page query'
+        ? 'page_query'
+        : selectedPageCandidate.selectionReason === 'Matched via page_backed_instagram_accounts'
+          ? 'page_backed_instagram_accounts'
+          : selectedInstagramAccountId
+            ? 'business_route'
+            : 'first_page';
 
     // --- Step 5: Subscribe Page to messaging webhook ---
     try {
@@ -389,8 +448,8 @@ Deno.serve(async (req) => {
           workspace_id: workspaceId,
           page_id: pageId,
           page_name: pageName,
-          instagram_account_id: instagramAccountId,
-          instagram_username: instagramUsername,
+          instagram_account_id: selectedInstagramAccountId,
+          instagram_username: selectedInstagramUsername,
           encrypted_page_access_token: '__PENDING_ENCRYPTION__',
           token_expires_at: tokenExpiresAt,
           meta_user_id: metaUserId,
@@ -430,7 +489,19 @@ Deno.serve(async (req) => {
           channel: 'facebook',
           enabled: true,
           automation_level: 'draft_only',
-          config: { pageId, pageName },
+          config: {
+            pageId,
+            pageName,
+            instagramAccountId: selectedInstagramAccountId,
+            instagramUsername: selectedInstagramUsername,
+            metaSelection: {
+              pageCount: candidatePages.length,
+              selectedPageId: pageId,
+              selectedPageName: pageName,
+              selectedSelectionSource,
+              candidates: pageCandidatesForConfig,
+            },
+          },
         },
         { onConflict: 'workspace_id,channel' },
       )
@@ -439,7 +510,7 @@ Deno.serve(async (req) => {
       });
 
     // Instagram channel (if linked)
-    if (instagramAccountId) {
+    if (selectedInstagramAccountId) {
       await supabase
         .from('workspace_channels')
         .upsert(
@@ -448,7 +519,16 @@ Deno.serve(async (req) => {
             channel: 'instagram',
             enabled: true,
             automation_level: 'draft_only',
-            config: { instagramAccountId, username: instagramUsername },
+            config: {
+              instagramAccountId: selectedInstagramAccountId,
+              username: selectedInstagramUsername,
+              metaSelection: {
+                pageId,
+                pageName,
+                pageCount: candidatePages.length,
+                selectedSelectionSource,
+              },
+            },
           },
           { onConflict: 'workspace_id,channel' },
         )
@@ -458,14 +538,16 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      `[meta-auth-callback] Success! Connected Page "${pageName}"${instagramUsername ? ` + Instagram @${instagramUsername}` : ''}`,
+      `[meta-auth-callback] Success! Connected Page "${pageName}"${selectedInstagramUsername ? ` + Instagram @${selectedInstagramUsername}` : ''}`,
     );
 
     // --- Step 8: Redirect back to app ---
     return redirectToApp(appOrigin, 'success', {
       meta_connected: 'true',
       page_name: pageName,
-      ...(instagramUsername ? { instagram: instagramUsername } : {}),
+      page_count: String(candidatePages.length),
+      meta_selection_source: selectedSelectionSource,
+      ...(selectedInstagramUsername ? { instagram: selectedInstagramUsername } : {}),
     });
   } catch (err) {
     console.error('[meta-auth-callback] Unexpected error:', err);

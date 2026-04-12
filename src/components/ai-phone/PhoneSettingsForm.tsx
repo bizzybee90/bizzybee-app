@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import {
   Accordion,
   AccordionContent,
@@ -100,9 +101,47 @@ export const PhoneSettingsForm = () => {
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Phone Number Display + Active Toggle */}
-      <div className="bg-card p-6 rounded-2xl border border-border/40 shadow-sm">
-        <div className="flex items-center justify-between">
-          <PhoneNumberDisplay phoneNumber={config.retell_phone_number} />
+      <div className="bg-card p-6 rounded-2xl border border-border/40 shadow-sm space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Managed line
+            </p>
+            <h2 className="text-[16px] font-semibold text-foreground">
+              BizzyBee-provisioned Twilio number
+            </h2>
+            <p className="text-[13px] text-muted-foreground">
+              This is the number BizzyBee manages for the AI receptionist. Add a separate human
+              transfer line below if callers should be routed elsewhere.
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className={
+              config.status === 'provisioning'
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : config.status === 'active'
+                  ? 'border-green-200 bg-green-50 text-green-700'
+                  : config.status === 'inactive'
+                    ? 'border-slate-200 bg-slate-50 text-slate-700'
+                    : 'border-red-200 bg-red-50 text-red-700'
+            }
+          >
+            {config.status === 'provisioning'
+              ? 'Provisioning managed number'
+              : config.status === 'active'
+                ? 'Managed number active'
+                : config.status === 'inactive'
+                  ? 'Managed number inactive'
+                  : 'Provisioning needs attention'}
+          </Badge>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-bb-cream/60 p-4">
+          <PhoneNumberDisplay
+            phoneNumber={config.retell_phone_number}
+            isActive={config.is_active}
+          />
           <div className="flex items-center gap-3">
             <Label htmlFor="phone-active-toggle" className="text-[13px] text-muted-foreground">
               {config.is_active ? 'Active' : 'Inactive'}
@@ -152,7 +191,7 @@ export const PhoneSettingsForm = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="transfer-number" className="text-[13px]">
-                    Transfer Number
+                    Human Transfer Line
                   </Label>
                   <Input
                     id="transfer-number"
@@ -162,7 +201,7 @@ export const PhoneSettingsForm = () => {
                     placeholder="e.g. +44 7700 900000"
                   />
                   <p className="text-[12px] text-muted-foreground">
-                    Calls can be transferred to this number when a customer requests to speak to a
+                    Optional. Calls can be transferred here when a customer asks to speak to a
                     human.
                   </p>
                 </div>
