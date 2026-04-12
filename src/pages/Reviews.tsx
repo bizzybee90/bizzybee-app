@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -42,7 +42,6 @@ import {
   REVIEW_CONFIG_FIELDS,
   buildReviewActivityFeed,
   buildReviewAlertFeed,
-  buildReviewPreviewData,
   filterReviewInbox,
   getReviewAlertPolicy,
   getReviewAlertSummary,
@@ -79,6 +78,21 @@ interface ReviewSyncPreviewRun {
   startedAt: string;
   completedAt: string;
   detail: string;
+}
+
+interface ReviewLocationRecord {
+  id: string;
+  provider_location_ref: string | null;
+  provider_account_ref: string | null;
+  place_id: string | null;
+  name: string | null;
+  address: string | null;
+  is_primary: boolean | null;
+  avg_rating_cached: number | null;
+  review_count_cached: number | null;
+  last_synced_at: string | null;
+  sync_status: string | null;
+  last_error: string | null;
 }
 
 interface PlacePrediction {
@@ -122,6 +136,8 @@ function ReviewsPageContent() {
   const [selectedFilter, setSelectedFilter] = useState<ReviewInboxFilterKey>('all');
   const [previewReviewState, setPreviewReviewState] = useState<ReviewPreviewRecord[]>([]);
   const [previewSyncRuns, setPreviewSyncRuns] = useState<ReviewSyncPreviewRun[]>([]);
+  const [reviewLocations, setReviewLocations] = useState<ReviewLocationRecord[]>([]);
+  const [reviewDataError, setReviewDataError] = useState<string | null>(null);
   const [reviewConnectionDraft, setReviewConnectionDraft] = useState<ReviewConnectionDraft>({
     accountRef: '',
     locationRef: '',
@@ -139,6 +155,7 @@ function ReviewsPageContent() {
   const [placeSearchError, setPlaceSearchError] = useState<string | null>(null);
   const [placeSearchProvider, setPlaceSearchProvider] = useState<string | null>(null);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
+  const draftSaveTimers = useRef<Record<string, number>>({});
 
   const isPreview = workspace?.id === 'preview-workspace';
 
@@ -327,6 +344,10 @@ function ReviewsPageContent() {
   );
   const allPreviewReviewsAssigned =
     previewReviews.length > 0 && previewReviews.every((review) => Boolean(review.ownerName));
+  const primaryStoredReviewLocation = useMemo(
+    () => reviewLocations.find((location) => location.is_primary) ?? reviewLocations[0] ?? null,
+    [reviewLocations],
+  );
   const selectedLocationPreset =
     REVIEW_LOCATION_PRESETS.find(
       (preset) =>
@@ -334,14 +355,17 @@ function ReviewsPageContent() {
         (reviewConnectionDraft.placeId && preset.placeId === reviewConnectionDraft.placeId),
     ) ?? null;
   const selectedLocationLabel =
-    (selectedLocationPreset?.name ?? reviewConnectionDraft.placeLabel.trim()) ||
+    (selectedLocationPreset?.name ??
+      reviewConnectionDraft.placeLabel.trim() ??
+      primaryStoredReviewLocation?.name) ||
     (reviewConnectionDraft.placeId.trim().length > 0 ? 'Custom Google place' : null);
   const savedLocationLabel =
-    (REVIEW_LOCATION_PRESETS.find(
-      (preset) =>
-        preset.locationRef === reviewConnectionConfig.locationRef ||
-        (reviewConnectionConfig.placeId && preset.placeId === reviewConnectionConfig.placeId),
-    )?.name ??
+    (primaryStoredReviewLocation?.name ??
+      REVIEW_LOCATION_PRESETS.find(
+        (preset) =>
+          preset.locationRef === reviewConnectionConfig.locationRef ||
+          (reviewConnectionConfig.placeId && preset.placeId === reviewConnectionConfig.placeId),
+      )?.name ??
       reviewConnectionConfig.placeLabel.trim()) ||
     (reviewConnectionConfig.placeId.trim().length > 0 ? 'Custom Google place' : null);
   const goLiveChecklist = [
@@ -475,26 +499,47 @@ function ReviewsPageContent() {
     setReviewAlertPolicyDraft(reviewAlertPolicy);
   }, [reviewAlertPolicy]);
 
-  useEffect(() => {
-    setPreviewReviewState(reviewConnectionReady ? buildReviewPreviewData(reviewAlertPolicy) : []);
-  }, [reviewAlertPolicy, reviewConnectionReady]);
-
-  useEffect(() => {
-    if (!reviewConnectionReady) {
+  const fetchPersistedReviewData = useCallback(async () => {
+    if (!workspace?.id || isPreview || !reviewConnectionReady) {
+      setReviewLocations([]);
+      setPreviewReviewState([]);
       setPreviewSyncRuns([]);
+      setReviewDataError(null);
       return;
     }
 
-    setPreviewSyncRuns([
-      {
-        id: 'preview-sync-seed',
-        status: 'success',
-        startedAt: new Date(Date.now() - 1000 * 60 * 22).toISOString(),
-        completedAt: new Date(Date.now() - 1000 * 60 * 21).toISOString(),
-        detail: 'Preview sync seeded 4 Google reviews into the Reviews module shell.',
-      },
-    ]);
-  }, [reviewConnectionReady]);
+    try {
+      const { data, error } = await supabase.functions.invoke('reviews-foundation', {
+        body: { workspace_id: workspace.id },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setReviewLocations((data?.locations as ReviewLocationRecord[] | undefined) ?? []);
+      setPreviewReviewState((data?.reviews as ReviewPreviewRecord[] | undefined) ?? []);
+      setPreviewSyncRuns((data?.syncRuns as ReviewSyncPreviewRun[] | undefined) ?? []);
+      setReviewDataError(null);
+    } catch (error) {
+      console.error('Failed to load stored review data:', error);
+      setReviewDataError('BizzyBee could not load the stored review inbox right now.');
+      setReviewLocations([]);
+      setPreviewReviewState([]);
+      setPreviewSyncRuns([]);
+    }
+  }, [isPreview, reviewConnectionReady, workspace?.id]);
+
+  useEffect(() => {
+    void fetchPersistedReviewData();
+  }, [fetchPersistedReviewData]);
+
+  useEffect(() => {
+    const activeDraftSaveTimers = draftSaveTimers.current;
+    return () => {
+      Object.values(activeDraftSaveTimers).forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
 
   useEffect(() => {
     if (!filteredPreviewReviews.some((review) => review.id === selectedReviewId)) {
@@ -511,6 +556,56 @@ function ReviewsPageContent() {
     );
   };
 
+  const clearDraftSaveTimer = useCallback((reviewId: string) => {
+    const existingTimer = draftSaveTimers.current[reviewId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      delete draftSaveTimers.current[reviewId];
+    }
+  }, []);
+
+  const persistReviewUpdate = useCallback(
+    async (reviewId: string, updates: Record<string, unknown>) => {
+      if (!workspace?.id) {
+        throw new Error('Workspace not ready');
+      }
+
+      const { data, error } = await supabase.functions.invoke('update-review-item', {
+        body: {
+          workspace_id: workspace.id,
+          review_id: reviewId,
+          updates,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.review) {
+        setPreviewReviewState((current) =>
+          current.map((review) =>
+            review.id === reviewId ? (data.review as ReviewPreviewRecord) : review,
+          ),
+        );
+      }
+    },
+    [workspace?.id],
+  );
+
+  const handleReviewMutationError = useCallback(
+    async (title: string, error: unknown) => {
+      console.error(title, error);
+      toast({
+        title,
+        description: 'BizzyBee could not save that review action. Refreshing the stored state.',
+        variant: 'destructive',
+      });
+      await fetchPersistedReviewData();
+    },
+    [fetchPersistedReviewData, toast],
+  );
+
   const createSuggestedReply = (review: ReviewPreviewRecord) => {
     if (review.rating <= reviewAlertPolicy.lowRatingThreshold) {
       return `Thank you for taking the time to share this feedback, ${review.authorName}. We are sorry this visit did not land as it should have. We are reviewing the job internally and would welcome the chance to make things right.`;
@@ -519,42 +614,88 @@ function ReviewsPageContent() {
     return `Thank you, ${review.authorName}. We really appreciate you taking the time to leave a review and are so pleased the experience landed well.`;
   };
 
-  const handleGenerateDraft = (review: ReviewPreviewRecord) => {
+  const handleGenerateDraft = async (review: ReviewPreviewRecord) => {
+    const nextDraft = review.draftReply ?? createSuggestedReply(review);
+    const draftUpdatedAt = new Date().toISOString();
+    clearDraftSaveTimer(review.id);
+
     updatePreviewReview(review.id, (current) => ({
       ...current,
-      draftReply: current.draftReply ?? createSuggestedReply(current),
+      draftReply: nextDraft,
       replyStatus: 'drafted',
       status: 'drafted',
-      draftUpdatedAt: new Date().toISOString(),
+      draftUpdatedAt,
     }));
+
+    try {
+      await persistReviewUpdate(review.id, {
+        draftReply: nextDraft,
+        replyStatus: 'drafted',
+        status: 'drafted',
+        draftUpdatedAt,
+      });
+    } catch (error) {
+      await handleReviewMutationError('Could not generate the review draft', error);
+    }
   };
 
   const handleDraftChange = (reviewId: string, value: string) => {
+    const draftUpdatedAt = value.trim().length > 0 ? new Date().toISOString() : null;
     updatePreviewReview(reviewId, (current) => ({
       ...current,
       draftReply: value,
       replyStatus: value.trim().length > 0 ? 'drafted' : 'none',
       status: value.trim().length > 0 ? 'drafted' : 'unreplied',
-      draftUpdatedAt: value.trim().length > 0 ? new Date().toISOString() : current.draftUpdatedAt,
+      draftUpdatedAt: draftUpdatedAt ?? current.draftUpdatedAt,
     }));
+
+    clearDraftSaveTimer(reviewId);
+
+    draftSaveTimers.current[reviewId] = window.setTimeout(() => {
+      delete draftSaveTimers.current[reviewId];
+      void persistReviewUpdate(reviewId, {
+        draftReply: value,
+        replyStatus: value.trim().length > 0 ? 'drafted' : 'none',
+        status: value.trim().length > 0 ? 'drafted' : 'unreplied',
+        draftUpdatedAt,
+      }).catch((error) => {
+        void handleReviewMutationError('Could not save the draft reply', error);
+      });
+    }, 500);
   };
 
-  const handlePublishDraft = (review: ReviewPreviewRecord) => {
+  const handlePublishDraft = async (review: ReviewPreviewRecord) => {
     const publishedReply =
       review.draftReply?.trim() || review.publishedReply?.trim() || createSuggestedReply(review);
+    const publishedReplyAt = new Date().toISOString();
+    clearDraftSaveTimer(review.id);
 
     updatePreviewReview(review.id, (current) => ({
       ...current,
       draftReply: publishedReply,
       publishedReply,
-      publishedReplyAt: new Date().toISOString(),
+      publishedReplyAt,
       replyStatus: 'published',
       status: 'published',
       publishedByName: current.ownerName ?? 'BizzyBee Ops',
     }));
+
+    try {
+      await persistReviewUpdate(review.id, {
+        draftReply: publishedReply,
+        publishedReply,
+        publishedReplyAt,
+        replyStatus: 'published',
+        status: 'published',
+        publishedByName: review.ownerName ?? 'BizzyBee Ops',
+      });
+    } catch (error) {
+      await handleReviewMutationError('Could not publish the preview reply', error);
+    }
   };
 
-  const handleReopenReview = (reviewId: string) => {
+  const handleReopenReview = async (reviewId: string) => {
+    clearDraftSaveTimer(reviewId);
     updatePreviewReview(reviewId, (current) => ({
       ...current,
       replyStatus: current.draftReply?.trim() ? 'drafted' : 'none',
@@ -562,45 +703,67 @@ function ReviewsPageContent() {
       publishedReply: null,
       publishedReplyAt: null,
     }));
+
+    try {
+      const currentReview = previewReviewState.find((review) => review.id === reviewId);
+      await persistReviewUpdate(reviewId, {
+        replyStatus: currentReview?.draftReply?.trim() ? 'drafted' : 'none',
+        status: currentReview?.draftReply?.trim() ? 'drafted' : 'unreplied',
+        publishedReply: null,
+        publishedReplyAt: null,
+        publishedByName: null,
+      });
+    } catch (error) {
+      await handleReviewMutationError('Could not reopen the review', error);
+    }
   };
 
-  const handleArchivePreview = (reviewId: string) => {
+  const handleArchivePreview = async (reviewId: string) => {
+    clearDraftSaveTimer(reviewId);
     updatePreviewReview(reviewId, (current) => ({
       ...current,
       status: 'archived',
     }));
-    toast({
-      title: 'Preview review archived',
-      description: 'This only changes the seeded workflow preview, not any synced Google review.',
-    });
+
+    try {
+      await persistReviewUpdate(reviewId, { status: 'archived' });
+      toast({
+        title: 'Preview review archived',
+        description: 'This now updates the stored Reviews preview state for this workspace.',
+      });
+    } catch (error) {
+      await handleReviewMutationError('Could not archive the preview review', error);
+    }
   };
 
-  const handleRunPreviewSync = () => {
+  const handleRunPreviewSync = async () => {
     setRunningPreviewSync(true);
 
-    window.setTimeout(() => {
-      const completedAt = new Date().toISOString();
+    try {
+      const { error } = await supabase.functions.invoke('sync-google-reviews-preview', {
+        body: { workspace_id: workspace?.id },
+      });
 
-      setPreviewSyncRuns((current) => [
-        {
-          id: `preview-sync-${completedAt}`,
-          status: previewReviews.length > 0 ? 'success' : 'attention_required',
-          startedAt: new Date(Date.now() - 1000 * 8).toISOString(),
-          completedAt,
-          detail:
-            previewReviews.length > 0
-              ? `Preview sync refreshed ${previewReviews.length} review objects and preserved the current reply workflow state.`
-              : 'Preview sync ran, but there are no review objects yet because the connection is not ready.',
-        },
-        ...current,
-      ]);
-      setRunningPreviewSync(false);
+      if (error) {
+        throw error;
+      }
+
+      await fetchPersistedReviewData();
       toast({
         title: 'Preview sync complete',
         description:
-          'This refreshes the Reviews module preview only, so we can shape sync behavior before live Google ingestion lands.',
+          'The Reviews module now refreshed its stored preview review objects for this workspace.',
       });
-    }, 600);
+    } catch (error) {
+      console.error('Failed to run preview sync:', error);
+      toast({
+        title: 'Preview sync failed',
+        description: 'BizzyBee could not seed the stored Google review preview right now.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRunningPreviewSync(false);
+    }
   };
 
   const handleSelectLocationPreset = (preset: (typeof REVIEW_LOCATION_PRESETS)[number]) => {
@@ -682,7 +845,7 @@ function ReviewsPageContent() {
     setPlaceSearchProvider(null);
   };
 
-  const handleAssignOwner = (
+  const handleAssignOwner = async (
     reviewId: string,
     ownerName: (typeof REVIEW_OWNER_OPTIONS)[number],
   ) => {
@@ -690,6 +853,12 @@ function ReviewsPageContent() {
       ...current,
       ownerName,
     }));
+
+    try {
+      await persistReviewUpdate(reviewId, { ownerName });
+    } catch (error) {
+      await handleReviewMutationError('Could not assign the review owner', error);
+    }
   };
 
   const saveReviewConnection = async () => {
@@ -1420,6 +1589,18 @@ function ReviewsPageContent() {
                         Primary location:{' '}
                         <span className="font-medium text-bb-text">{savedLocationLabel}</span>
                       </p>
+                    )}
+                    {primaryStoredReviewLocation?.last_synced_at && (
+                      <p className="mt-2 text-xs text-bb-warm-gray">
+                        Stored review sync last updated{' '}
+                        {formatDistanceToNow(new Date(primaryStoredReviewLocation.last_synced_at), {
+                          addSuffix: true,
+                        })}
+                        .
+                      </p>
+                    )}
+                    {reviewDataError && (
+                      <p className="mt-3 text-sm text-amber-700">{reviewDataError}</p>
                     )}
                   </div>
 
@@ -2243,6 +2424,9 @@ function ReviewsPageContent() {
                             )}.`
                           : 'No sync history yet. Once Reviews is connected, BizzyBee will show run history, imported counts, and failures here.'}
                       </p>
+                      {reviewDataError && (
+                        <p className="mt-3 text-sm text-amber-700">{reviewDataError}</p>
+                      )}
                     </div>
 
                     {reviewConnectionReady ? (
