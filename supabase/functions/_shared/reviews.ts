@@ -28,7 +28,7 @@ export interface ReviewPreviewRecord {
 
 export interface ReviewSyncPreviewRun {
   id: string;
-  status: 'success' | 'attention_required';
+  status: 'queued' | 'running' | 'success' | 'attention_required';
   startedAt: string;
   completedAt: string;
   detail: string;
@@ -186,12 +186,19 @@ export function mapReviewItemRowToPreview(
 }
 
 export function mapReviewSyncRunRow(row: Record<string, unknown>): ReviewSyncPreviewRun {
+  const rawStatus = typeof row.status === 'string' ? row.status : 'success';
+  const status: ReviewSyncPreviewRun['status'] =
+    rawStatus === 'failed' || rawStatus === 'attention_required'
+      ? 'attention_required'
+      : rawStatus === 'running'
+        ? 'running'
+        : rawStatus === 'queued'
+          ? 'queued'
+          : 'success';
+
   return {
     id: String(row.id),
-    status:
-      row.status === 'attention_required' || row.status === 'failed'
-        ? 'attention_required'
-        : 'success',
+    status,
     startedAt: typeof row.started_at === 'string' ? row.started_at : new Date().toISOString(),
     completedAt:
       typeof row.completed_at === 'string'

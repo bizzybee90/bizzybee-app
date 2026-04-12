@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
   );
 
   let syncRunId: string | null = null;
+  let locationId: string | null = null;
 
   try {
     const { data: channelRecord, error: channelError } = await supabase
@@ -148,6 +149,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (locationError) throw locationError;
+    locationId = location.id as string;
 
     await supabase
       .from('review_locations')
@@ -273,6 +275,17 @@ Deno.serve(async (req) => {
           error_message: error instanceof Error ? error.message : 'Unknown error',
         })
         .eq('id', syncRunId);
+    }
+
+    if (locationId) {
+      await supabase
+        .from('review_locations')
+        .update({
+          sync_status: 'failed',
+          last_error: error instanceof Error ? error.message : 'Unknown error',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', locationId);
     }
 
     return jsonResponse({ error: 'Failed to seed Google review preview data' }, 500);

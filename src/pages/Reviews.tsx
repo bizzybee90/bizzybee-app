@@ -74,7 +74,7 @@ interface ReviewConnectionDraft {
 
 interface ReviewSyncPreviewRun {
   id: string;
-  status: 'success' | 'attention_required';
+  status: 'queued' | 'running' | 'success' | 'attention_required';
   startedAt: string;
   completedAt: string;
   detail: string;
@@ -594,14 +594,22 @@ function ReviewsPageContent() {
   );
 
   const handleReviewMutationError = useCallback(
-    async (title: string, error: unknown) => {
+    async (
+      title: string,
+      error: unknown,
+      options?: { refresh?: boolean; description?: string },
+    ) => {
       console.error(title, error);
       toast({
         title,
-        description: 'BizzyBee could not save that review action. Refreshing the stored state.',
+        description:
+          options?.description ??
+          'BizzyBee could not save that review action. Refreshing the stored state.',
         variant: 'destructive',
       });
-      await fetchPersistedReviewData();
+      if (options?.refresh !== false) {
+        await fetchPersistedReviewData();
+      }
     },
     [fetchPersistedReviewData, toast],
   );
@@ -659,7 +667,11 @@ function ReviewsPageContent() {
         status: value.trim().length > 0 ? 'drafted' : 'unreplied',
         draftUpdatedAt,
       }).catch((error) => {
-        void handleReviewMutationError('Could not save the draft reply', error);
+        void handleReviewMutationError('Could not save the draft reply', error, {
+          refresh: false,
+          description:
+            'BizzyBee kept your draft locally so you can keep editing, but it could not save the latest change yet.',
+        });
       });
     }, 500);
   };
@@ -2418,10 +2430,20 @@ function ReviewsPageContent() {
                       </div>
                       <p className="text-sm leading-6 text-bb-warm-gray">
                         {lastPreviewSyncRun
-                          ? `Last preview sync completed ${formatDistanceToNow(
-                              new Date(lastPreviewSyncRun.completedAt),
-                              { addSuffix: true },
-                            )}.`
+                          ? lastPreviewSyncRun.status === 'running'
+                            ? `A preview sync started ${formatDistanceToNow(
+                                new Date(lastPreviewSyncRun.startedAt),
+                                { addSuffix: true },
+                              )} and is still running.`
+                            : lastPreviewSyncRun.status === 'queued'
+                              ? `A preview sync was queued ${formatDistanceToNow(
+                                  new Date(lastPreviewSyncRun.startedAt),
+                                  { addSuffix: true },
+                                )} and is waiting to run.`
+                              : `Last preview sync completed ${formatDistanceToNow(
+                                  new Date(lastPreviewSyncRun.completedAt),
+                                  { addSuffix: true },
+                                )}.`
                           : 'No sync history yet. Once Reviews is connected, BizzyBee will show run history, imported counts, and failures here.'}
                       </p>
                       {reviewDataError && (
@@ -2440,24 +2462,42 @@ function ReviewsPageContent() {
                               <p className="text-sm font-medium text-bb-text">
                                 {run.status === 'success'
                                   ? 'Sync completed'
-                                  : 'Sync needs attention'}
+                                  : run.status === 'running'
+                                    ? 'Sync in progress'
+                                    : run.status === 'queued'
+                                      ? 'Sync queued'
+                                      : 'Sync needs attention'}
                               </p>
                               <Badge
                                 className={
                                   run.status === 'success'
                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50'
-                                    : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'
+                                    : run.status === 'running' || run.status === 'queued'
+                                      ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50'
+                                      : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-50'
                                 }
                               >
-                                {run.status === 'success' ? 'Success' : 'Attention'}
+                                {run.status === 'success'
+                                  ? 'Success'
+                                  : run.status === 'running'
+                                    ? 'Running'
+                                    : run.status === 'queued'
+                                      ? 'Queued'
+                                      : 'Attention'}
                               </Badge>
                             </div>
                             <p className="text-sm leading-5 text-bb-warm-gray">{run.detail}</p>
                             <p className="mt-2 text-xs text-bb-warm-gray">
-                              Started{' '}
-                              {formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })}{' '}
-                              and finished{' '}
-                              {formatDistanceToNow(new Date(run.completedAt), { addSuffix: true })}.
+                              {run.status === 'running' || run.status === 'queued'
+                                ? `Started ${formatDistanceToNow(new Date(run.startedAt), {
+                                    addSuffix: true,
+                                  })}.`
+                                : `Started ${formatDistanceToNow(new Date(run.startedAt), {
+                                    addSuffix: true,
+                                  })} and finished ${formatDistanceToNow(
+                                    new Date(run.completedAt),
+                                    { addSuffix: true },
+                                  )}.`}
                             </p>
                           </div>
                         ))}
