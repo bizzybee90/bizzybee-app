@@ -298,15 +298,15 @@ export function KnowledgeBaseStep({
 
       const requestBody = {
         workspace_id: workspaceId,
-        workflow_type: 'own_website_scrape',
-        websiteUrl: businessContext.websiteUrl,
+        website_url: businessContext.websiteUrl,
+        trigger_source: 'onboarding_knowledge_base',
       };
 
       let data: { success?: boolean; error?: string; jobId?: string; job_id?: string } | null =
         null;
       let invokeError: Error | null = null;
 
-      const invokeResult = await supabase.functions.invoke('trigger-n8n-workflow', {
+      const invokeResult = await supabase.functions.invoke('start-own-website-analysis', {
         body: requestBody,
       });
 
@@ -319,12 +319,12 @@ export function KnowledgeBaseStep({
         invokeError?.message?.includes('Failed to send a request to the Edge Function') &&
         session?.access_token
       ) {
-        logger.warn('invoke() failed, retrying trigger-n8n-workflow with direct fetch', {
+        logger.warn('invoke() failed, retrying start-own-website-analysis with direct fetch', {
           workspaceId,
         });
 
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/trigger-n8n-workflow`,
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/start-own-website-analysis`,
           {
             method: 'POST',
             headers: {

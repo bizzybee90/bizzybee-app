@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 
 interface ProgressScreenProps {
   workspaceId: string;
@@ -200,6 +201,103 @@ function TrackProgress({
       )}
     </div>
   );
+}
+
+type OnboardingProgressTrack = {
+  run_id: string | null;
+  agent_status: string;
+  current_step: string | null;
+  counts: Record<string, number>;
+  latest_error?: string | null;
+  [key: string]: unknown;
+};
+
+function mapDiscoveryStatus(track: OnboardingProgressTrack | undefined): string {
+  if (!track) return 'pending';
+  if (track.agent_status === 'failed' || track.latest_error) return 'failed';
+  if (track.agent_status === 'succeeded') return 'complete';
+  if (track.agent_status === 'queued') return 'pending';
+
+  switch (track.current_step) {
+    case 'acquire':
+      return 'discovering';
+    case 'qualify':
+      return 'search_complete';
+    case 'persist':
+      return 'health_check_complete';
+    default:
+      return 'starting';
+  }
+}
+
+function mapFaqStatus(
+  discoveryTrack: OnboardingProgressTrack | undefined,
+  faqTrack: OnboardingProgressTrack | undefined,
+): string {
+  if (faqTrack?.agent_status === 'failed' || faqTrack?.latest_error) return 'failed';
+  if (faqTrack?.agent_status === 'succeeded') return 'complete';
+  if (faqTrack?.agent_status === 'queued') return 'pending';
+
+  switch (faqTrack?.current_step) {
+    case 'load_context':
+      return 'validating';
+    case 'fetch_pages':
+      return 'scraping';
+    case 'generate_candidates':
+      return 'extracting';
+    case 'dedupe':
+    case 'finalize':
+    case 'persist':
+      return 'scrape_processing';
+    default:
+      break;
+  }
+
+  if (mapDiscoveryStatus(discoveryTrack) === 'complete') {
+    return 'review_ready';
+  }
+
+  return 'waiting';
+}
+
+function mapEmailImportStatus(track: OnboardingProgressTrack | undefined): string {
+  if (!track) return 'pending';
+  if (track.latest_error && (track.counts?.emails_received || 0) === 0) return 'failed';
+  if ((track.counts?.emails_received || 0) > 0) return 'complete';
+
+  switch (track.current_step) {
+    case 'importing':
+      return 'importing';
+    case 'classifying':
+    case 'learning':
+    case 'converting':
+    case 'complete':
+      return 'complete';
+    default:
+      return track.agent_status === 'running' ? 'importing' : 'pending';
+  }
+}
+
+function mapEmailClassificationStatus(track: OnboardingProgressTrack | undefined): string {
+  if (!track) return 'pending';
+
+  const received = track.counts?.emails_received || 0;
+  const classified = track.counts?.emails_classified || 0;
+
+  if (received > 0 && classified >= received) return 'complete';
+  if (track.latest_error && classified === 0) return 'failed';
+  if (classified > 0) return 'classifying';
+
+  switch (track.current_step) {
+    case 'classifying':
+    case 'learning':
+    case 'converting':
+      return 'classifying';
+    case 'complete':
+      return 'complete';
+    default:
+      return 'pending';
+  }
 }
 
 interface CompetitorItem {
@@ -466,11 +564,20 @@ function InlineCompetitorReview({
     }
     setIsStarting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'faq_generation' },
+      const selectedCompetitorIds = competitors
+        .filter((competitor) => competitor.is_selected)
+        .map((competitor) => competitor.id);
+
+      const { data, error } = await supabase.functions.invoke('start-faq-generation', {
+        body: {
+          workspace_id: workspaceId,
+          selected_competitor_ids: selectedCompetitorIds,
+          target_count: selectedCount,
+          trigger_source: 'onboarding_progress_inline_review',
+        },
       });
       if (error) throw error;
-      toast.success(`Analysis started for ${data.competitors_count} competitors`);
+      toast.success(`Analysis started for ${data?.sitesCount || selectedCount} competitors`);
       onStartAnalysis();
     } catch (err: any) {
       toast.error(err.message || 'Failed to start');
@@ -594,6 +701,10 @@ function InlineCompetitorReview({
 
 export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenProps) {
   const isPreview = workspaceId === 'preview-workspace';
+  const { data: onboardingProgress, loading: progressLoading } = useOnboardingProgress(
+    isPreview ? null : workspaceId,
+    !isPreview,
+  );
   const [discoveryTrack, setDiscoveryTrack] = useState<TrackState>({
     status: 'pending',
     counts: [],
@@ -605,378 +716,83 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   });
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [emailTrack, setEmailTrack] = useState<TrackState>({ status: 'pending', counts: [] });
-  const [isLoading, setIsLoading] = useState(!isPreview);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [liveFaqCount, setLiveFaqCount] = useState(0);
-  const liveFaqCountRef = useRef(0);
   const [reviewDismissed, setReviewDismissed] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
-  const autoTriggeredRef = useRef(false);
 
-  const resetDiscoveryTrack = useCallback(() => {
+  useEffect(() => {
+    if (isPreview || !onboardingProgress?.tracks) return;
+
+    const discovery = onboardingProgress.tracks.discovery as OnboardingProgressTrack;
+    const faq = onboardingProgress.tracks.faq_generation as OnboardingProgressTrack;
+    const email = onboardingProgress.tracks.email_import as OnboardingProgressTrack;
+
+    const mappedDiscoveryStatus = mapDiscoveryStatus(discovery);
+    const mappedFaqStatus = mapFaqStatus(discovery, faq);
+    const mappedEmailImportStatus = mapEmailImportStatus(email);
+    const mappedEmailStatus = mapEmailClassificationStatus(email);
+
+    setLiveFaqCount(
+      Number(onboardingProgress.tracks.faq_counts?.competitor_faqs || faq.counts?.faqs_added || 0),
+    );
+
     setDiscoveryTrack({
-      status: 'starting',
-      counts: [],
-      error: null,
-    });
-  }, []);
-
-  // Auto-trigger n8n workflows on mount (fire-and-forget)
-  useEffect(() => {
-    if (autoTriggeredRef.current || isPreview) return;
-    autoTriggeredRef.current = true;
-
-    const autoTrigger = async () => {
-      try {
-        const STALE_THRESHOLD_MS = 10 * 60 * 1000;
-
-        // Check competitor_discovery status
-        const { data: workflowRecords } = (await supabase
-          .from('n8n_workflow_progress' as 'allowed_webhook_ips')
-          .select('workflow_type, status, details, updated_at')
-          .eq('workspace_id', workspaceId)) as unknown as {
-          data: Array<{
-            workflow_type: string;
-            status: string;
-            details?: Record<string, unknown> | null;
-            updated_at?: string | null;
-          }> | null;
-        };
-
-        const discoveryRecord = workflowRecords?.find(
-          (r) => r.workflow_type === 'competitor_discovery',
-        );
-        const emailRecord = workflowRecords?.find((r) => r.workflow_type === 'email_import');
-        const isDiscoveryStale =
-          !!discoveryRecord?.updated_at &&
-          !['complete', 'failed', 'classification_complete'].includes(discoveryRecord.status) &&
-          Date.now() - new Date(discoveryRecord.updated_at).getTime() > STALE_THRESHOLD_MS;
-        const discoveryFailedWithoutResults =
-          discoveryRecord?.status === 'failed' &&
-          ((discoveryRecord.details?.competitors_found as number | undefined) || 0) === 0;
-
-        // Trigger competitor_discovery if no record, still pending, or failed/timed out with no results
-        if (
-          !discoveryRecord ||
-          discoveryRecord.status === 'pending' ||
-          discoveryFailedWithoutResults ||
-          isDiscoveryStale
-        ) {
-          resetDiscoveryTrack();
-          supabase.functions
-            .invoke('trigger-n8n-workflow', {
-              body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
-            })
-            .catch((err) => logger.error('competitor_discovery trigger failed', err));
-        }
-
-        // Check email import queue count — used for both guards below
-        const { count: emailQueueCount } = (await supabase
-          .from('email_import_queue' as 'allowed_webhook_ips')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', workspaceId)) as unknown as { count: number | null };
-
-        // Guarded email_classification trigger — only if emails exist in the queue
-        if (!emailRecord || emailRecord.status === 'pending') {
-          if ((emailQueueCount ?? 0) > 0) {
-            // Emails already imported — trigger classification
-            supabase.functions
-              .invoke('trigger-n8n-workflow', {
-                body: { workspace_id: workspaceId, workflow_type: 'email_classification' },
-              })
-              .catch((err) => logger.error('email_classification trigger failed', err));
-          }
-        }
-
-        // Email import recovery — fires regardless of email_import status
-        // Handles cases where start-email-import never ran (queue empty but config exists)
-        // Also covers 'dispatched' status where classification ran on empty queue
-        if ((emailQueueCount ?? 0) === 0) {
-          const { data: emailConfig } = (await supabase
-            .from('email_provider_configs' as 'allowed_webhook_ips')
-            .select('id, sync_status')
-            .eq('workspace_id', workspaceId)
-            .maybeSingle()) as unknown as { data: { id: string; sync_status: string } | null };
-
-          if (emailConfig && emailConfig.sync_status === 'pending') {
-            logger.debug('Email queue empty + config pending, triggering start-email-import');
-            supabase.functions
-              .invoke('start-email-import', {
-                body: { config_id: emailConfig.id, workspace_id: workspaceId, mode: 'onboarding' },
-              })
-              .catch((err) => logger.error('start-email-import trigger failed', err));
-          }
-        }
-      } catch (err) {
-        logger.error('Auto-trigger check failed', err);
-      }
-    };
-
-    autoTrigger();
-  }, [workspaceId, isPreview, resetDiscoveryTrack]);
-
-  // Realtime subscription for live FAQ count + keep ref in sync
-  useEffect(() => {
-    liveFaqCountRef.current = liveFaqCount;
-  }, [liveFaqCount]);
-
-  useEffect(() => {
-    if (isPreview) return;
-
-    // Initial count + periodic re-fetch to catch batch inserts
-    const fetchCount = async () => {
-      const { count } = await supabase
-        .from('faq_database')
-        .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspaceId)
-        .eq('is_own_content', false);
-      const newCount = count || 0;
-      setLiveFaqCount(newCount);
-      liveFaqCountRef.current = newCount;
-    };
-    fetchCount();
-
-    // Re-fetch every 15s to catch batch inserts from consolidation
-    const countInterval = window.setInterval(fetchCount, 15000);
-
-    const channel = supabase
-      .channel('faq-progress')
-      .on(
-        'postgres_changes',
+      status: mappedDiscoveryStatus,
+      counts: [
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'faq_database',
-          filter: `workspace_id=eq.${workspaceId}`,
+          label: 'competitors found',
+          value: Number(discovery.counts?.sites_discovered || 0),
         },
-        () => {
-          setLiveFaqCount((prev) => prev + 1);
+      ],
+      error: discovery.latest_error || null,
+    });
+
+    setScrapeTrack({
+      status: mappedFaqStatus,
+      counts: [
+        { label: 'scraped', value: Number(faq.counts?.sites_scraped || 0) },
+        {
+          label: 'FAQs generated',
+          value: Number(
+            onboardingProgress.tracks.faq_counts?.competitor_faqs || faq.counts?.faqs_added || 0,
+          ),
         },
-      )
-      .subscribe();
+      ],
+      error: faq.latest_error || null,
+      current: Number(faq.counts?.sites_scraped || 0) || undefined,
+      total: Number(discovery.counts?.sites_approved || 0) || undefined,
+    });
 
-    return () => {
-      window.clearInterval(countInterval);
-      supabase.removeChannel(channel);
-    };
-  }, [workspaceId, isPreview]);
+    const totalEmails = Number(email.counts?.emails_received || 0);
+    const classifiedEmails = Number(email.counts?.emails_classified || 0);
+    const estimatedTotal = Number(email.counts?.estimated_total_emails || 0);
 
-  useEffect(() => {
-    if (isPreview) return;
+    setEmailImportTrack({
+      status: mappedEmailImportStatus,
+      counts: [
+        { label: 'emails imported', value: totalEmails },
+        ...(estimatedTotal > totalEmails
+          ? [{ label: 'estimated total', value: estimatedTotal }]
+          : []),
+      ],
+      error: email.latest_error || null,
+    });
 
-    const pollProgress = async () => {
-      try {
-        // Bug 5 Fix: Poll n8n_workflow_progress for ALL tracks + email_import_progress for email counts
-        const [workflowRes, emailProgressRes] = await Promise.all([
-          supabase
-            .from('n8n_workflow_progress' as 'allowed_webhook_ips')
-            .select('*')
-            .eq('workspace_id', workspaceId),
-          supabase
-            .from('email_import_progress' as 'allowed_webhook_ips')
-            .select('*')
-            .eq('workspace_id', workspaceId)
-            .maybeSingle(),
-        ]);
-
-        const records = (workflowRes.data || []) as unknown as Array<{
-          workflow_type: string;
-          status: string;
-          details: Record<string, unknown>;
-          updated_at: string;
-        }>;
-
-        // Stale detection: if a non-terminal track hasn't updated in 10 min, mark as failed
-        const STALE_THRESHOLD_MS = 10 * 60 * 1000;
-        const now = Date.now();
-        const isStale = (record: (typeof records)[0] | undefined) => {
-          if (!record?.updated_at) return false;
-          const terminal = ['complete', 'failed', 'classification_complete'];
-          if (terminal.includes(record.status)) return false;
-          return now - new Date(record.updated_at).getTime() > STALE_THRESHOLD_MS;
-        };
-
-        // Bug 4 Fix: Track all three workflow types
-        const discoveryRecord = records.find((r) => r.workflow_type === 'competitor_discovery');
-        const scrapeRecord = records.find((r) => r.workflow_type === 'competitor_scrape');
-        const emailRecord = records.find((r) => r.workflow_type === 'email_import');
-
-        // Discovery track (Workflow 1)
-        const discoveryDetails = (discoveryRecord?.details || {}) as Record<string, unknown>;
-        const discoveryStatus = isStale(discoveryRecord)
-          ? 'failed'
-          : discoveryRecord?.status || 'pending';
-
-        setDiscoveryTrack({
-          status: discoveryStatus,
-          counts: discoveryRecord
-            ? [
-                {
-                  label: 'competitors found',
-                  value: (discoveryDetails.competitors_found as number) || 0,
-                },
-              ]
-            : [],
-          error: isStale(discoveryRecord)
-            ? 'Timed out — the workflow may have failed. Please retry.'
-            : (discoveryDetails.error as string | undefined),
-        });
-
-        // faq_generation is now triggered manually via the InlineCompetitorReview "Start Analysis" button
-        // This ensures users can review, add, and curate competitors before scraping begins
-
-        // Scrape track (Workflow 2) — stays 'waiting' until discovery completes
-        const scrapeDetails = (scrapeRecord?.details || {}) as Record<string, unknown>;
-        const scrapeStatus =
-          scrapeRecord?.status || (discoveryStatus === 'complete' ? 'pending' : 'waiting');
-
-        setScrapeTrack({
-          status: scrapeStatus,
-          counts: scrapeRecord
-            ? [
-                {
-                  label: 'scraped',
-                  value:
-                    (scrapeDetails.current as number) ||
-                    (scrapeDetails.competitors_scraped as number) ||
-                    0,
-                },
-                { label: 'FAQs generated', value: liveFaqCountRef.current },
-              ]
-            : [],
-          error: scrapeDetails.error as string | undefined,
-          currentCompetitor: scrapeDetails.current_competitor as string | undefined,
-          current: scrapeDetails.current as number | undefined,
-          total: scrapeDetails.total as number | undefined,
-        });
-
-        // Email track — use email_import_progress table for accurate counts
-        const emailStatus = emailRecord?.status || 'pending';
-        const emailDetails = (emailRecord?.details || {}) as Record<string, unknown>;
-        const emailProgress = emailProgressRes.data as unknown as Record<string, unknown> | null;
-
-        if (emailProgress || emailRecord) {
-          // Prefer emails_received (live counter) over stale dispatcher snapshot
-          const totalEmails =
-            (emailProgress?.emails_received as number) ||
-            (emailProgress?.estimated_total_emails as number) ||
-            (emailDetails.total_emails as number) ||
-            0;
-          const rawClassified =
-            (emailDetails.emails_classified as number) ||
-            (emailProgress?.emails_classified as number) ||
-            0;
-          // Cap classified to never exceed total (prevents >100% display bugs)
-          const classifiedEmails =
-            totalEmails > 0 ? Math.min(rawClassified, totalEmails) : rawClassified;
-
-          let importStatus: string = 'pending';
-          let effectiveEmailStatus = emailStatus;
-
-          // Detect learning/voice phase as complete for the progress screen
-          const currentPhase = emailProgress?.current_phase as string | undefined;
-          const voiceComplete = emailProgress?.voice_profile_complete as boolean | undefined;
-          const phase1Done = emailProgress?.phase1_status === 'complete';
-          const estimatedTotal =
-            (emailProgress?.estimated_total_emails as number | undefined) || undefined;
-          const remainingEmails = Math.max(totalEmails - classifiedEmails, 0);
-
-          if (currentPhase === 'error') {
-            importStatus = totalEmails > 0 ? 'complete' : 'failed';
-            effectiveEmailStatus = 'failed';
-          } else if (currentPhase === 'importing') {
-            importStatus = 'importing';
-            effectiveEmailStatus = 'pending';
-          } else if (
-            currentPhase === 'classifying' ||
-            currentPhase === 'learning' ||
-            currentPhase === 'complete' ||
-            currentPhase === 'converting'
-          ) {
-            importStatus = 'complete';
-          } else if (totalEmails > 0) {
-            importStatus = 'complete';
-          }
-
-          if (
-            currentPhase === 'learning' ||
-            currentPhase === 'complete' ||
-            voiceComplete ||
-            phase1Done
-          ) {
-            effectiveEmailStatus = 'complete';
-          }
-
-          // Auto-advance from pending if we can see classification is happening
-          if (
-            totalEmails > 0 &&
-            classifiedEmails > 0 &&
-            classifiedEmails < totalEmails &&
-            effectiveEmailStatus === 'pending'
-          ) {
-            effectiveEmailStatus = 'classifying';
-          }
-          // 99% threshold to handle stragglers
-          if (totalEmails > 0 && classifiedEmails >= totalEmails * 0.99) {
-            effectiveEmailStatus = 'complete';
-          }
-
-          // If emails were received but classification never started,
-          // check if the phase is stuck on 'importing' with no classification progress
-          if (
-            effectiveEmailStatus === 'pending' &&
-            totalEmails > 0 &&
-            classifiedEmails === 0 &&
-            currentPhase === 'importing'
-          ) {
-            effectiveEmailStatus = 'pending'; // Keep pending but show the count
-          }
-
-          const percentage =
-            totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : 0;
-
-          setEmailImportTrack({
-            status: importStatus,
-            counts: [
-              { label: 'emails imported', value: totalEmails },
-              ...(estimatedTotal && estimatedTotal > totalEmails
-                ? [{ label: 'estimated total', value: estimatedTotal }]
-                : []),
-            ],
-            error:
-              currentPhase === 'error'
-                ? (emailProgress?.last_error as string | undefined) ||
-                  (emailDetails.error as string | undefined)
-                : undefined,
-          });
-
-          setEmailTrack({
-            status: effectiveEmailStatus,
-            counts:
-              totalEmails > 0
-                ? [
-                    { label: 'emails classified', value: classifiedEmails },
-                    { label: 'remaining', value: remainingEmails },
-                  ]
-                : [],
-            error: emailDetails.error as string | undefined,
-            actualPercent: percentage,
-          });
-        } else {
-          setEmailImportTrack({ status: 'pending', counts: [] });
-          setEmailTrack({ status: 'pending', counts: [] });
-        }
-      } catch (error) {
-        logger.error('Error polling progress', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    pollProgress();
-    const interval = window.setInterval(pollProgress, 10000);
-    return () => window.clearInterval(interval);
-  }, [workspaceId, isPreview]);
+    setEmailTrack({
+      status: mappedEmailStatus,
+      counts:
+        totalEmails > 0
+          ? [
+              { label: 'emails classified', value: classifiedEmails },
+              { label: 'remaining', value: Math.max(totalEmails - classifiedEmails, 0) },
+            ]
+          : [],
+      error: email.latest_error || null,
+      actualPercent:
+        totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : undefined,
+    });
+  }, [isPreview, onboardingProgress]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1041,7 +857,7 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     );
   }
 
-  if (isLoading) {
+  if (progressLoading && !onboardingProgress) {
     return (
       <div className="space-y-6">
         <div className="text-center">

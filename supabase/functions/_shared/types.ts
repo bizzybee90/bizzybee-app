@@ -75,6 +75,33 @@ export interface DraftJob {
   event_id?: string | null;
 }
 
+export interface OnboardingDiscoveryJob {
+  run_id: string;
+  workspace_id: string;
+  step: 'acquire' | 'qualify' | 'persist';
+  attempt: number;
+}
+
+export interface OnboardingWebsiteJob {
+  run_id: string;
+  workspace_id: string;
+  step: 'fetch' | 'extract' | 'persist';
+  attempt: number;
+}
+
+export interface OnboardingFaqJob {
+  run_id: string;
+  workspace_id: string;
+  step: 'load_context' | 'fetch_pages' | 'generate_candidates' | 'dedupe' | 'finalize' | 'persist';
+  attempt: number;
+}
+
+export interface OnboardingSupervisorJob {
+  run_id: string;
+  workflow_key: 'competitor_discovery' | 'own_website_scrape' | 'faq_generation' | 'email_import';
+  action: 'heartbeat_check' | 'retry_stalled' | 'fail_stalled';
+}
+
 export interface ClassificationResult {
   category: string;
   requires_reply: boolean;

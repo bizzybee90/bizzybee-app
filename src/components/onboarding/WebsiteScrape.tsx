@@ -6,7 +6,16 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Globe, Loader2, CheckCircle, FileText, MapPin, Search, Sparkles, AlertCircle } from 'lucide-react';
+import {
+  Globe,
+  Loader2,
+  CheckCircle,
+  FileText,
+  MapPin,
+  Search,
+  Sparkles,
+  AlertCircle,
+} from 'lucide-react';
 
 interface WebsiteScrapeProps {
   workspaceId: string;
@@ -28,14 +37,39 @@ interface ScrapeJob {
 
 type JobStatus = 'pending' | 'mapping' | 'scraping' | 'extracting' | 'completed' | 'failed';
 
-const STATUS_CONFIG: Record<JobStatus, { label: string; icon: React.ReactNode; progress: number }> = {
-  pending: { label: 'Starting...', icon: <Loader2 className="h-4 w-4 animate-spin" />, progress: 5 },
-  mapping: { label: 'Discovering pages...', icon: <Search className="h-4 w-4 animate-pulse" />, progress: 15 },
-  scraping: { label: 'Reading website content...', icon: <Globe className="h-4 w-4 animate-pulse" />, progress: 40 },
-  extracting: { label: 'Extracting FAQs & knowledge...', icon: <Sparkles className="h-4 w-4 animate-pulse" />, progress: 75 },
-  completed: { label: 'Complete!', icon: <CheckCircle className="h-4 w-4 text-primary" />, progress: 100 },
-  failed: { label: 'Failed', icon: <AlertCircle className="h-4 w-4 text-destructive" />, progress: 0 },
-};
+const STATUS_CONFIG: Record<JobStatus, { label: string; icon: React.ReactNode; progress: number }> =
+  {
+    pending: {
+      label: 'Starting...',
+      icon: <Loader2 className="h-4 w-4 animate-spin" />,
+      progress: 5,
+    },
+    mapping: {
+      label: 'Discovering pages...',
+      icon: <Search className="h-4 w-4 animate-pulse" />,
+      progress: 15,
+    },
+    scraping: {
+      label: 'Reading website content...',
+      icon: <Globe className="h-4 w-4 animate-pulse" />,
+      progress: 40,
+    },
+    extracting: {
+      label: 'Extracting FAQs & knowledge...',
+      icon: <Sparkles className="h-4 w-4 animate-pulse" />,
+      progress: 75,
+    },
+    completed: {
+      label: 'Complete!',
+      icon: <CheckCircle className="h-4 w-4 text-primary" />,
+      progress: 100,
+    },
+    failed: {
+      label: 'Failed',
+      icon: <AlertCircle className="h-4 w-4 text-destructive" />,
+      progress: 0,
+    },
+  };
 
 export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) => {
   const [websiteUrl, setWebsiteUrl] = useState('');
@@ -53,13 +87,13 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'website_scrape_jobs',
-          filter: `id=eq.${job.id}`
+          table: 'scraping_jobs',
+          filter: `id=eq.${job.id}`,
         },
         (payload) => {
           const updatedJob = payload.new as ScrapeJob;
           setJob(updatedJob);
-          
+
           if (updatedJob.status === 'completed') {
             toast.success(`Extracted ${updatedJob.faqs_extracted} FAQs from your website!`);
             setLoading(false);
@@ -67,7 +101,7 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
             toast.error(updatedJob.error_message || 'Failed to analyze website');
             setLoading(false);
           }
-        }
+        },
       )
       .subscribe();
 
@@ -89,14 +123,14 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
     }
 
     setLoading(true);
-    
+
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
+      const { data, error } = await supabase.functions.invoke('start-own-website-analysis', {
         body: {
           workspace_id: workspaceId,
-          workflow_type: 'own_website_scrape',
-          website_url: url
-        }
+          website_url: url,
+          trigger_source: 'onboarding_website_scrape_card',
+        },
       });
 
       if (error) throw error;
@@ -104,7 +138,7 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
       // Set initial job state
       setJob({
         id: data.job_id,
-        status: data.status || 'mapping',
+        status: data.status || 'pending',
         pages_found: data.pages_found || 0,
         pages_scraped: data.pages_scraped || 0,
         pages_extracted: 0,
@@ -112,9 +146,8 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
         ground_truth_facts: 0,
         business_info: null,
         error_message: null,
-        search_keywords: []
+        search_keywords: [],
       });
-
     } catch (e: any) {
       toast.error(e.message || 'Failed to start website analysis');
       setLoading(false);
@@ -124,20 +157,20 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
   // Calculate dynamic progress based on actual pages
   const calculateProgress = () => {
     if (!job) return 0;
-    
+
     const status = job.status as JobStatus;
     const baseProgress = STATUS_CONFIG[status]?.progress || 0;
-    
+
     if (status === 'scraping' && job.pages_found > 0) {
       const scrapeProgress = (job.pages_scraped / job.pages_found) * 35; // 35% for scraping phase
       return 15 + scrapeProgress; // Start at 15% (after mapping)
     }
-    
+
     if (status === 'extracting') {
       // Extraction is mostly one big step, but show some progress
       return 75;
     }
-    
+
     return baseProgress;
   };
 
@@ -148,27 +181,35 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
         <CardContent className="pt-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <CheckCircle className="h-12 w-12 text-primary" />
-            
+
             <div className="space-y-3">
               <h3 className="text-lg font-semibold">Website Analyzed!</h3>
-              
+
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center gap-2 justify-center">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span><strong>{job.faqs_extracted}</strong> FAQs extracted</span>
+                  <span>
+                    <strong>{job.faqs_extracted}</strong> FAQs extracted
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 justify-center">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span><strong>{job.ground_truth_facts}</strong> facts captured</span>
+                  <span>
+                    <strong>{job.ground_truth_facts}</strong> facts captured
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 justify-center">
                   <Globe className="h-4 w-4 text-muted-foreground" />
-                  <span><strong>{job.pages_scraped}</strong> pages analyzed</span>
+                  <span>
+                    <strong>{job.pages_scraped}</strong> pages analyzed
+                  </span>
                 </div>
                 {job.search_keywords?.length > 0 && (
                   <div className="flex items-center gap-2 justify-center">
                     <Search className="h-4 w-4 text-muted-foreground" />
-                    <span><strong>{job.search_keywords.length}</strong> keywords found</span>
+                    <span>
+                      <strong>{job.search_keywords.length}</strong> keywords found
+                    </span>
                   </div>
                 )}
               </div>
@@ -178,7 +219,7 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
                   Business: <strong>{job.business_info.name}</strong>
                 </p>
               )}
-              
+
               {job.business_info?.services && job.business_info.services.length > 0 && (
                 <p className="text-sm text-muted-foreground">
                   Services: {job.business_info.services.slice(0, 3).join(', ')}
@@ -188,7 +229,8 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
             </div>
 
             <p className="text-sm text-muted-foreground max-w-md">
-              These FAQs are your "gold standard" - they'll always take priority over competitor content.
+              These FAQs are your "gold standard" - they'll always take priority over competitor
+              content.
             </p>
 
             <Button onClick={onComplete} className="mt-2">
@@ -207,15 +249,22 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
         <CardContent className="pt-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <AlertCircle className="h-12 w-12 text-destructive" />
-            
+
             <div className="space-y-2">
               <h3 className="text-lg font-semibold">Analysis Failed</h3>
               <p className="text-sm text-muted-foreground max-w-md">
-                {job.error_message || 'Could not analyze website. Please check the URL and try again.'}
+                {job.error_message ||
+                  'Could not analyze website. Please check the URL and try again.'}
               </p>
             </div>
 
-            <Button onClick={() => { setJob(null); setLoading(false); }} variant="outline">
+            <Button
+              onClick={() => {
+                setJob(null);
+                setLoading(false);
+              }}
+              variant="outline"
+            >
               Try Again
             </Button>
           </div>
@@ -240,7 +289,7 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
                 {config.icon}
               </div>
             </div>
-            
+
             <div className="w-full max-w-md space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -273,9 +322,7 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              This usually takes 30-60 seconds
-            </p>
+            <p className="text-xs text-muted-foreground">This usually takes 30-60 seconds</p>
           </div>
         </CardContent>
       </Card>
@@ -291,7 +338,8 @@ export const WebsiteScrape = ({ workspaceId, onComplete }: WebsiteScrapeProps) =
           <CardTitle>Your Website</CardTitle>
         </div>
         <CardDescription>
-          We'll analyze your website to extract FAQs, pricing, services, and learn your communication style
+          We'll analyze your website to extract FAQs, pricing, services, and learn your
+          communication style
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

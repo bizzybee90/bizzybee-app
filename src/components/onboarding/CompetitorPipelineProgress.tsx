@@ -538,8 +538,12 @@ export function CompetitorPipelineProgress({
   const handleRecoverJob = async () => {
     setIsRecovering(true);
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery', jobId },
+      const { data, error } = await supabase.functions.invoke('start-onboarding-discovery', {
+        body: {
+          workspace_id: workspaceId,
+          target_count: targetCount,
+          trigger_source: 'competitor_pipeline_recovery',
+        },
       });
 
       if (error) {

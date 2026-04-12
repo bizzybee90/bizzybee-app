@@ -1,5 +1,5 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
 
 export interface ToolDefinition {
@@ -39,6 +39,8 @@ export async function callClaude(
   systemPrompt: string,
   messages: Message[],
   tools: ToolDefinition[],
+  model = MODEL,
+  maxTokens = MAX_TOKENS,
 ): Promise<ClaudeResponse> {
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -48,8 +50,8 @@ export async function callClaude(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
+      model,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages,
       tools,
@@ -62,6 +64,14 @@ export async function callClaude(
   }
 
   return (await response.json()) as ClaudeResponse;
+}
+
+export function extractTextContent(content: ContentBlock[]): string {
+  return content
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+    .trim();
 }
 
 export function extractToolUseBlocks(content: ContentBlock[]): ToolUseBlock[] {

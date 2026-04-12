@@ -8,6 +8,11 @@ export interface RunContext {
   service_area: string | null;
   business_type: string | null;
   allowed_urls: string[];
+  selected_competitor_ids: string[];
+  website_url: string | null;
+  trigger_source: string | null;
+  model_policy: Record<string, unknown>;
+  provider_policy: Record<string, unknown>;
 }
 
 export async function handleGetRunContext(
@@ -23,6 +28,15 @@ export async function handleGetRunContext(
   if (runErr || !run) throw new Error(`Agent run not found: ${input.run_id}`);
 
   const workspaceId = run.workspace_id;
+  const inputSnapshot = (run.input_snapshot as Record<string, unknown> | null) || {};
+  const selectedCompetitorIds = Array.isArray(inputSnapshot.selected_competitor_ids)
+    ? inputSnapshot.selected_competitor_ids.filter(
+        (value): value is string => typeof value === 'string',
+      )
+    : [];
+  const configuredAllowedUrls = Array.isArray(inputSnapshot.allowed_urls)
+    ? inputSnapshot.allowed_urls.filter((value): value is string => typeof value === 'string')
+    : [];
 
   const { data: workspace } = await supabase
     .from('workspaces')
@@ -32,18 +46,25 @@ export async function handleGetRunContext(
 
   const { data: bizCtx } = await supabase
     .from('business_context')
-    .select('company_name, industry, service_area, business_type')
+    .select('company_name, industry, service_area, business_type, website_url')
     .eq('workspace_id', workspaceId)
     .single();
 
-  const { data: competitors } = await supabase
+  let competitorQuery = supabase
     .from('competitor_sites')
-    .select('url, domain, title')
+    .select('id, url, domain, title')
     .eq('workspace_id', workspaceId)
     .eq('is_selected', true)
     .neq('status', 'rejected');
 
-  const allowedUrls = (competitors ?? []).map((c) => c.url).filter((u): u is string => !!u);
+  if (selectedCompetitorIds.length > 0) {
+    competitorQuery = competitorQuery.in('id', selectedCompetitorIds);
+  }
+
+  const { data: competitors } = await competitorQuery;
+
+  const competitorUrls = (competitors ?? []).map((c) => c.url).filter((u): u is string => !!u);
+  const allowedUrls = configuredAllowedUrls.length > 0 ? configuredAllowedUrls : competitorUrls;
 
   await supabase
     .from('agent_runs')
@@ -62,5 +83,14 @@ export async function handleGetRunContext(
     service_area: bizCtx?.service_area ?? null,
     business_type: bizCtx?.business_type ?? null,
     allowed_urls: allowedUrls,
+    selected_competitor_ids: selectedCompetitorIds,
+    website_url:
+      typeof inputSnapshot.website_url === 'string'
+        ? inputSnapshot.website_url
+        : (bizCtx?.website_url ?? null),
+    trigger_source:
+      typeof inputSnapshot.trigger_source === 'string' ? inputSnapshot.trigger_source : null,
+    model_policy: (inputSnapshot.model_policy as Record<string, unknown> | null) || {},
+    provider_policy: (inputSnapshot.provider_policy as Record<string, unknown> | null) || {},
   };
 }

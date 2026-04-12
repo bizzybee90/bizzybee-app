@@ -171,17 +171,8 @@ export function EmailPipelineProgress({
   const classificationTriggeredRef = useRef(false);
 
   const triggerClassificationWorkflow = useCallback(async () => {
-    const { error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-      body: {
-        workspace_id: workspaceId,
-        workflow_type: 'email_classification',
-      },
-    });
-
-    if (error) {
-      throw error;
-    }
-  }, [workspaceId]);
+    return;
+  }, []);
 
   // Poll raw_emails for real-time progress every 3 seconds
   useEffect(() => {
@@ -260,7 +251,7 @@ export function EmailPipelineProgress({
 
   const isComplete = classifyStatus === 'done';
 
-  // Trigger n8n classification when import completes
+  // Classification is handled by the queue workers once import has materialized emails.
   useEffect(() => {
     if (!importComplete || classificationTriggeredRef.current || skipClassification) return;
 
@@ -271,7 +262,7 @@ export function EmailPipelineProgress({
 
       try {
         await triggerClassificationWorkflow();
-        logger.debug('n8n classification triggered');
+        logger.debug('Email classification is already handled by the onboarding runner');
       } catch (error) {
         logger.error('Failed to trigger classification', error);
         setWebhookError(true);

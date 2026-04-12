@@ -5,8 +5,7 @@ import { toast } from 'sonner';
 import { SearchTermsStep } from '../SearchTermsStep';
 
 // Mock Supabase client — use vi.hoisted so mocks are available at mock-hoist time
-const { mockUpsert, mockMaybeSingle, mockInvoke } = vi.hoisted(() => ({
-  mockUpsert: vi.fn(),
+const { mockMaybeSingle, mockInvoke } = vi.hoisted(() => ({
   mockMaybeSingle: vi.fn(),
   mockInvoke: vi.fn(),
 }));
@@ -19,7 +18,6 @@ vi.mock('@/integrations/supabase/client', () => ({
           maybeSingle: mockMaybeSingle,
         }),
       }),
-      upsert: mockUpsert,
     }),
     functions: {
       invoke: mockInvoke,
@@ -48,8 +46,6 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
       },
       error: null,
     });
-    // Default: upsert succeeds
-    mockUpsert.mockResolvedValue({ error: null });
     // Default: trigger invoke succeeds
     mockInvoke.mockResolvedValue({ data: { success: true }, error: null });
   });
@@ -70,12 +66,14 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     const continueButton = await screen.findByRole('button', { name: /continue/i });
     await user.click(continueButton);
 
-    // Verify the trigger-n8n-workflow function was invoked with the right body
+    // Verify the onboarding discovery function was invoked with the right body
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('trigger-n8n-workflow', {
+      expect(mockInvoke).toHaveBeenCalledWith('start-onboarding-discovery', {
         body: {
           workspace_id: 'test-workspace-id',
-          workflow_type: 'competitor_discovery',
+          search_queries: expect.any(Array),
+          target_count: 15,
+          trigger_source: 'onboarding_search_terms',
         },
       });
     });
@@ -84,7 +82,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     expect(onNext).toHaveBeenCalled();
   });
 
-  it('still advances if trigger invoke fails (silent failure)', async () => {
+  it('does not advance if the discovery trigger rejects', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();
@@ -101,25 +99,27 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     const continueButton = await screen.findByRole('button', { name: /continue/i });
     await user.click(continueButton);
 
-    // Both should be true: trigger was called, AND onNext was called regardless of the rejection
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('trigger-n8n-workflow', {
+      expect(mockInvoke).toHaveBeenCalledWith('start-onboarding-discovery', {
         body: {
           workspace_id: 'test-workspace-id',
-          workflow_type: 'competitor_discovery',
+          search_queries: expect.any(Array),
+          target_count: 15,
+          trigger_source: 'onboarding_search_terms',
         },
       });
-      expect(onNext).toHaveBeenCalled();
+      expect(toast.error).toHaveBeenCalledWith('Failed to save search terms');
     });
+
+    expect(onNext).not.toHaveBeenCalled();
   });
 
-  it('does NOT trigger competitor_discovery if upsert fails', async () => {
+  it('does NOT advance if the discovery trigger fails', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();
 
-    // Make the upsert fail
-    mockUpsert.mockResolvedValue({ error: new Error('DB error') });
+    mockInvoke.mockResolvedValue({ data: null, error: new Error('Edge function failed') });
 
     render(<SearchTermsStep workspaceId="test-workspace-id" onNext={onNext} onBack={onBack} />);
 
@@ -135,8 +135,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
       expect(toast.error).toHaveBeenCalledWith('Failed to save search terms');
     });
 
-    // Trigger should NOT have been called because upsert failed
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalled();
     expect(onNext).not.toHaveBeenCalled();
   });
 });

@@ -23,8 +23,8 @@ export async function handleFetchSourcePage(
     throw new Error(`URL not in allowed list: ${input.url}`);
   }
 
-  const apifyKey = Deno.env.get('APIFY_API_KEY');
-  if (!apifyKey) throw new Error('APIFY_API_KEY not configured');
+  const apifyKey = Deno.env.get('APIFY_API_KEY') || Deno.env.get('APIFY_API_TOKEN');
+  if (!apifyKey) throw new Error('APIFY_API_KEY or APIFY_API_TOKEN not configured');
 
   const response = await fetch(`${APIFY_RUN_URL}?token=${apifyKey}&timeout=${APIFY_TIMEOUT_SECS}`, {
     method: 'POST',

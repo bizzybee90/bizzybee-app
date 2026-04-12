@@ -22,6 +22,15 @@ verify_jwt = false
 [functions.start-email-import]
 verify_jwt = false
 
+[functions.start-onboarding-discovery]
+verify_jwt = false
+
+[functions.start-own-website-analysis]
+verify_jwt = false
+
+[functions.start-faq-generation]
+verify_jwt = false
+
 [functions.unified-ingest]
 verify_jwt = false
 
@@ -121,6 +130,18 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.faq-agent-runner]
+verify_jwt = false
+
+[functions.pipeline-worker-onboarding-discovery]
+verify_jwt = false
+
+[functions.pipeline-worker-onboarding-website]
+verify_jwt = false
+
+[functions.pipeline-worker-onboarding-faq]
+verify_jwt = false
+
+[functions.pipeline-supervisor-onboarding]
 verify_jwt = false
 
 # =============================================================================

@@ -137,40 +137,16 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
 
     setIsSaving(true);
     try {
-      // Save search terms config to n8n_workflow_progress table
-      // Using type workaround since the new table isn't in generated types yet
-      const { error } = await supabase
-        .from('n8n_workflow_progress' as 'allowed_webhook_ips')
-        .upsert(
-          {
-            workspace_id: workspaceId,
-            workflow_type: 'search_terms_config',
-            status: 'completed',
-            details: {
-              search_queries: enabledTerms,
-              target_count: 15,
-              all_terms: searchTerms,
-            },
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          } as never,
-          {
-            onConflict: 'workspace_id,workflow_type',
-          },
-        );
+      const { error } = await supabase.functions.invoke('start-onboarding-discovery', {
+        body: {
+          workspace_id: workspaceId,
+          search_queries: enabledTerms,
+          target_count: 15,
+          trigger_source: 'onboarding_search_terms',
+        },
+      });
 
       if (error) throw error;
-
-      // Fire-and-forget: kick off competitor discovery in the background
-      // so it runs in parallel with the user's email + channels setup.
-      // Errors are silently logged. ProgressScreen may double-fire this
-      // as a safety net — extra competitor_research_jobs rows are harmless.
-      // See: docs/plans/2026-04-08-early-competitor-discovery-trigger-design.md
-      supabase.functions
-        .invoke('trigger-n8n-workflow', {
-          body: { workspace_id: workspaceId, workflow_type: 'competitor_discovery' },
-        })
-        .catch((err) => console.error('competitor_discovery trigger failed:', err));
 
       toast.success('Search terms saved');
       onNext();

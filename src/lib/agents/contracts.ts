@@ -57,7 +57,7 @@ export type ManagedWorkflowDefinition = {
   migrationPriority: 1 | 2 | 3;
   replacesWorkflowType: string | null;
   writesTo: string[];
-  mirrorsProgressTo: string[];
+  progressSurface: string;
   whyGoodFit: string;
 };
 
@@ -67,7 +67,7 @@ export const managedWorkflowDefinitions: Record<ManagedWorkflowKey, ManagedWorkf
     migrationPriority: 1,
     replacesWorkflowType: 'faq_generation',
     writesTo: ['faq_database'],
-    mirrorsProgressTo: ['n8n_workflow_progress'],
+    progressSurface: 'bb_get_onboarding_progress',
     whyGoodFit:
       'Judgment-heavy extraction and consolidation over multiple competitor sources with bounded output.',
   },
@@ -76,7 +76,7 @@ export const managedWorkflowDefinitions: Record<ManagedWorkflowKey, ManagedWorkf
     migrationPriority: 2,
     replacesWorkflowType: 'own_website_scrape',
     writesTo: ['faq_database', 'scraping_jobs'],
-    mirrorsProgressTo: ['n8n_workflow_progress', 'scraping_jobs'],
+    progressSurface: 'bb_get_onboarding_progress',
     whyGoodFit:
       'Reuses the FAQ extraction pattern while keeping deterministic page fetching and compatibility writes.',
   },
@@ -85,7 +85,7 @@ export const managedWorkflowDefinitions: Record<ManagedWorkflowKey, ManagedWorkf
     migrationPriority: 3,
     replacesWorkflowType: 'competitor_discovery',
     writesTo: ['competitor_research_jobs', 'competitor_sites'],
-    mirrorsProgressTo: ['n8n_workflow_progress'],
+    progressSurface: 'bb_get_onboarding_progress',
     whyGoodFit:
       'High-upside orchestration candidate once the lower-risk FAQ and website scrape pilots are proven.',
   },

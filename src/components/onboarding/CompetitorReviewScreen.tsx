@@ -384,8 +384,17 @@ export function CompetitorReviewScreen({
 
     setIsSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workspace_id: workspaceId, workflow_type: 'faq_generation', jobId, targetCount },
+      const selectedCompetitorIds = competitors
+        .filter((competitor) => competitor.is_selected)
+        .map((competitor) => competitor.id);
+
+      const { data, error } = await supabase.functions.invoke('start-faq-generation', {
+        body: {
+          workspace_id: workspaceId,
+          selected_competitor_ids: selectedCompetitorIds,
+          target_count: targetCount,
+          trigger_source: 'onboarding_competitor_review',
+        },
       });
 
       if (error) throw error;
