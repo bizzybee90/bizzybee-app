@@ -123,6 +123,13 @@ const providerChecklists: Record<string, { title: string; steps: string[] }> = {
   },
 };
 
+type MetaSelectionSummary = {
+  pageName: string | null;
+  instagramUsername: string | null;
+  selectionSource: string | null;
+  pageCount: number | null;
+};
+
 export const ChannelManagementPanel = ({
   mode = 'settings',
   workspaceId: forcedWorkspaceId,
@@ -332,6 +339,51 @@ export const ChannelManagementPanel = ({
     const value = (config as Record<string, unknown>)[key];
     return typeof value === 'string' ? value : '';
   };
+
+  const getMetaSelectionSummary = (config: unknown): MetaSelectionSummary => {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return {
+        pageName: null,
+        instagramUsername: null,
+        selectionSource: null,
+        pageCount: null,
+      };
+    }
+
+    const record = config as Record<string, unknown>;
+    const metaSelection =
+      record.metaSelection &&
+      typeof record.metaSelection === 'object' &&
+      !Array.isArray(record.metaSelection)
+        ? (record.metaSelection as Record<string, unknown>)
+        : null;
+
+    const pageCountValue = metaSelection?.pageCount;
+    const pageCount =
+      typeof pageCountValue === 'number'
+        ? pageCountValue
+        : typeof pageCountValue === 'string'
+          ? Number.parseInt(pageCountValue, 10)
+          : null;
+
+    return {
+      pageName:
+        (typeof metaSelection?.selectedPageName === 'string' && metaSelection.selectedPageName) ||
+        (typeof record.pageName === 'string' && record.pageName) ||
+        null,
+      instagramUsername:
+        (typeof record.instagramUsername === 'string' && record.instagramUsername) ||
+        (typeof record.username === 'string' && record.username) ||
+        null,
+      selectionSource:
+        (typeof metaSelection?.selectedSelectionSource === 'string' &&
+          metaSelection.selectedSelectionSource) ||
+        null,
+      pageCount: Number.isFinite(pageCount) ? pageCount : null,
+    };
+  };
+
+  const formatSelectionSource = (value: string | null) => (value ? value.replace(/_/g, ' ') : null);
 
   useEffect(() => {
     const nextDrafts: Record<string, Record<string, string>> = {};
@@ -958,6 +1010,51 @@ export const ChannelManagementPanel = ({
     return getChannelSetupDescription(definition, state, config);
   };
 
+  const renderMetaSelectionSummary = (config: unknown) => {
+    const summary = getMetaSelectionSummary(config);
+
+    if (
+      !summary.pageName &&
+      !summary.instagramUsername &&
+      !summary.selectionSource &&
+      summary.pageCount === null
+    ) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+        <p className="text-xs font-medium uppercase tracking-wide text-sky-700">
+          Saved Meta selection
+        </p>
+        <div className="mt-2 grid gap-2 md:grid-cols-2">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-sky-700/70">Selected Page</p>
+            <p className="mt-1 font-medium text-sky-900">{summary.pageName ?? 'Page not stored'}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-sky-700/70">Instagram</p>
+            <p className="mt-1 font-medium text-sky-900">
+              {summary.instagramUsername ? `@${summary.instagramUsername}` : 'Not linked'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-sky-700/70">Selection source</p>
+            <p className="mt-1 font-medium text-sky-900">
+              {formatSelectionSource(summary.selectionSource) ?? 'Not stored'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-sky-700/70">Pages seen</p>
+            <p className="mt-1 font-medium text-sky-900">
+              {summary.pageCount !== null ? summary.pageCount : 'Not stored'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderConnectionAction = (
     definition: NonNullable<ReturnType<typeof getChannelDefinition>>,
     state: ChannelConnectionState,
@@ -1447,6 +1544,9 @@ export const ChannelManagementPanel = ({
                           {renderConnectionAction(definition, connectionState)}
                         </div>
                       </div>
+
+                      {(definition.key === 'facebook' || definition.key === 'instagram') &&
+                        renderMetaSelectionSummary(channel.config)}
 
                       {availabilityState.state === 'shadow-preview' ? (
                         <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">

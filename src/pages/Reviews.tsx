@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   Bell,
   CircleAlert,
   CheckCircle2,
+  Loader2,
   MapPin,
   MessageSquare,
   RefreshCw,
@@ -69,6 +70,7 @@ interface ReviewConnectionDraft {
   accountRef: string;
   locationRef: string;
   placeId: string;
+  placeLabel: string;
 }
 
 interface ReviewSyncPreviewRun {
@@ -77,6 +79,12 @@ interface ReviewSyncPreviewRun {
   startedAt: string;
   completedAt: string;
   detail: string;
+}
+
+interface PlacePrediction {
+  description: string;
+  place_id: string;
+  original?: string;
 }
 
 const REVIEW_LOCATION_PRESETS = [
@@ -118,6 +126,7 @@ function ReviewsPageContent() {
     accountRef: '',
     locationRef: '',
     placeId: '',
+    placeLabel: '',
   });
   const [reviewAlertPolicyDraft, setReviewAlertPolicyDraft] = useState<ReviewAlertPolicy>({
     alertsEnabled: true,
@@ -125,6 +134,11 @@ function ReviewsPageContent() {
     lowRatingThreshold: 3,
     staleReviewHours: 24,
   });
+  const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+  const [placePredictions, setPlacePredictions] = useState<PlacePrediction[]>([]);
+  const [placeSearchError, setPlaceSearchError] = useState<string | null>(null);
+  const [placeSearchProvider, setPlaceSearchProvider] = useState<string | null>(null);
+  const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
 
   const isPreview = workspace?.id === 'preview-workspace';
 
@@ -203,6 +217,10 @@ function ReviewsPageContent() {
           : '',
       placeId:
         typeof googleBusinessConfig?.placeId === 'string' ? googleBusinessConfig.placeId : '',
+      placeLabel:
+        typeof googleBusinessConfig?.reviewPlaceLabel === 'string'
+          ? googleBusinessConfig.reviewPlaceLabel
+          : '',
     }),
     [googleBusinessConfig],
   );
@@ -237,7 +255,8 @@ function ReviewsPageContent() {
   const isConnectionDraftDirty =
     reviewConnectionDraft.accountRef !== reviewConnectionConfig.accountRef ||
     reviewConnectionDraft.locationRef !== reviewConnectionConfig.locationRef ||
-    reviewConnectionDraft.placeId !== reviewConnectionConfig.placeId;
+    reviewConnectionDraft.placeId !== reviewConnectionConfig.placeId ||
+    reviewConnectionDraft.placeLabel !== reviewConnectionConfig.placeLabel;
   const isReviewAlertPolicyDirty =
     reviewAlertPolicyDraft.alertsEnabled !== reviewAlertPolicy.alertsEnabled ||
     reviewAlertPolicyDraft.notifyOnEveryNewReview !== reviewAlertPolicy.notifyOnEveryNewReview ||
@@ -314,6 +333,17 @@ function ReviewsPageContent() {
         preset.locationRef === reviewConnectionDraft.locationRef ||
         (reviewConnectionDraft.placeId && preset.placeId === reviewConnectionDraft.placeId),
     ) ?? null;
+  const selectedLocationLabel =
+    (selectedLocationPreset?.name ?? reviewConnectionDraft.placeLabel.trim()) ||
+    (reviewConnectionDraft.placeId.trim().length > 0 ? 'Custom Google place' : null);
+  const savedLocationLabel =
+    (REVIEW_LOCATION_PRESETS.find(
+      (preset) =>
+        preset.locationRef === reviewConnectionConfig.locationRef ||
+        (reviewConnectionConfig.placeId && preset.placeId === reviewConnectionConfig.placeId),
+    )?.name ??
+      reviewConnectionConfig.placeLabel.trim()) ||
+    (reviewConnectionConfig.placeId.trim().length > 0 ? 'Custom Google place' : null);
   const goLiveChecklist = [
     {
       label: 'Google profile identity connected',
@@ -323,7 +353,7 @@ function ReviewsPageContent() {
     },
     {
       label: 'Primary review location selected',
-      complete: Boolean(selectedLocationPreset),
+      complete: Boolean(savedLocationLabel),
       actionLabel: 'Finish review connection',
       actionTo: '/reviews?setup=google',
     },
@@ -427,6 +457,18 @@ function ReviewsPageContent() {
 
   useEffect(() => {
     setReviewConnectionDraft(reviewConnectionConfig);
+    setPlaceSearchQuery(
+      reviewConnectionConfig.placeLabel.trim() ||
+        REVIEW_LOCATION_PRESETS.find(
+          (preset) =>
+            preset.locationRef === reviewConnectionConfig.locationRef ||
+            (reviewConnectionConfig.placeId && preset.placeId === reviewConnectionConfig.placeId),
+        )?.name ||
+        '',
+    );
+    setPlacePredictions([]);
+    setPlaceSearchError(null);
+    setPlaceSearchProvider(null);
   }, [reviewConnectionConfig]);
 
   useEffect(() => {
@@ -566,7 +608,78 @@ function ReviewsPageContent() {
       accountRef: preset.accountRef,
       locationRef: preset.locationRef,
       placeId: preset.placeId,
+      placeLabel: preset.name,
     });
+    setPlaceSearchQuery(preset.name);
+    setPlacePredictions([]);
+    setPlaceSearchError(null);
+    setPlaceSearchProvider(null);
+  };
+
+  const searchPlaces = useCallback(async (input: string) => {
+    const trimmedInput = input.trim();
+    if (trimmedInput.length < 2) {
+      setPlacePredictions([]);
+      setPlaceSearchError(null);
+      setPlaceSearchProvider(null);
+      return;
+    }
+
+    setPlaceSearchLoading(true);
+    setPlaceSearchError(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('google-places-autocomplete', {
+        body: { input: trimmedInput },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setPlacePredictions((data?.predictions as PlacePrediction[] | undefined) ?? []);
+      setPlaceSearchProvider(typeof data?.provider === 'string' ? data.provider : 'google');
+    } catch (error) {
+      console.error('Failed to search Google places for reviews:', error);
+      setPlacePredictions([]);
+      setPlaceSearchProvider(null);
+      setPlaceSearchError(
+        'Location search is temporarily unavailable. You can still paste a Google place ID manually.',
+      );
+    } finally {
+      setPlaceSearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void searchPlaces(placeSearchQuery);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [placeSearchQuery, searchPlaces]);
+
+  const handleSelectPlacePrediction = (prediction: PlacePrediction) => {
+    setReviewConnectionDraft((current) => ({
+      ...current,
+      placeId: prediction.place_id,
+      placeLabel: prediction.description,
+    }));
+    setPlaceSearchQuery(prediction.description);
+    setPlacePredictions([]);
+    setPlaceSearchError(null);
+  };
+
+  const handleClearPlaceSelection = () => {
+    setReviewConnectionDraft((current) => ({
+      ...current,
+      placeId: '',
+      placeLabel: '',
+    }));
+    setPlaceSearchQuery('');
+    setPlacePredictions([]);
+    setPlaceSearchError(null);
+    setPlaceSearchProvider(null);
   };
 
   const handleAssignOwner = (
@@ -594,6 +707,7 @@ function ReviewsPageContent() {
       reviewAccountRef: reviewConnectionDraft.accountRef.trim(),
       reviewLocationRef: reviewConnectionDraft.locationRef.trim(),
       placeId: reviewConnectionDraft.placeId.trim(),
+      reviewPlaceLabel: reviewConnectionDraft.placeLabel.trim(),
     };
 
     setSavingConnection(true);
@@ -1004,7 +1118,7 @@ function ReviewsPageContent() {
                     <div className="flex items-center justify-between gap-3">
                       <span>Primary location</span>
                       <Badge variant="outline" className="border-bb-border text-bb-text">
-                        {selectedLocationPreset?.name ?? 'Custom setup'}
+                        {selectedLocationLabel ?? 'Custom setup'}
                       </Badge>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -1033,9 +1147,9 @@ function ReviewsPageContent() {
                       Save Google review identifiers
                     </h2>
                     <p className="text-sm leading-6 text-bb-warm-gray">
-                      This is the first Reviews setup slice. BizzyBee can now store the Google
-                      review account and location identifiers it will use when review sync is
-                      enabled.
+                      BizzyBee can now store the Google review account and location identifiers it
+                      will use when review sync is enabled, and this setup now includes a live place
+                      search to make the primary location easier to capture cleanly.
                     </p>
                   </div>
 
@@ -1073,6 +1187,99 @@ function ReviewsPageContent() {
                       />
                     </div>
                     <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="review-place-search">Find your Google place</Label>
+                      <Input
+                        id="review-place-search"
+                        value={placeSearchQuery}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setPlaceSearchQuery(nextValue);
+                          if (!nextValue.trim()) {
+                            setReviewConnectionDraft((current) => ({
+                              ...current,
+                              placeId: '',
+                              placeLabel: '',
+                            }));
+                            setPlaceSearchProvider(null);
+                            setPlaceSearchError(null);
+                          }
+                        }}
+                        placeholder="Search for your business or location"
+                      />
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-bb-warm-gray">
+                        {placeSearchLoading ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Searching Google place matches...</span>
+                          </>
+                        ) : placeSearchProvider ? (
+                          <span>
+                            Search provider:{' '}
+                            <span className="font-medium text-bb-text">
+                              {placeSearchProvider === 'fallback'
+                                ? 'fallback location search'
+                                : 'Google Places'}
+                            </span>
+                          </span>
+                        ) : (
+                          <span>
+                            Search helps prefill the Google place ID for the primary location.
+                          </span>
+                        )}
+                      </div>
+                      {placeSearchError && (
+                        <p className="text-sm text-amber-700">{placeSearchError}</p>
+                      )}
+                      {!placeSearchLoading &&
+                        placeSearchQuery.trim().length >= 2 &&
+                        placePredictions.length > 0 && (
+                          <div className="rounded-2xl border border-bb-border bg-bb-linen/60 p-3">
+                            <p className="mb-3 text-xs font-medium uppercase tracking-[0.12em] text-bb-warm-gray">
+                              Suggested places
+                            </p>
+                            <div className="space-y-2">
+                              {placePredictions.map((prediction) => {
+                                const isSelected =
+                                  reviewConnectionDraft.placeId === prediction.place_id;
+
+                                return (
+                                  <button
+                                    key={prediction.place_id}
+                                    type="button"
+                                    onClick={() => handleSelectPlacePrediction(prediction)}
+                                    className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${
+                                      isSelected
+                                        ? 'border-bb-gold bg-bb-gold/10'
+                                        : 'border-bb-border bg-bb-white hover:bg-bb-linen/70'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="space-y-1">
+                                        <p className="text-sm font-medium text-bb-text">
+                                          {prediction.description}
+                                        </p>
+                                        <p className="font-mono text-xs text-bb-warm-gray">
+                                          {prediction.place_id}
+                                        </p>
+                                      </div>
+                                      <Badge
+                                        className={
+                                          isSelected
+                                            ? 'border-bb-gold/20 bg-bb-gold/15 text-bb-espresso hover:bg-bb-gold/15'
+                                            : 'border-bb-border bg-bb-linen text-bb-warm-gray hover:bg-bb-linen'
+                                        }
+                                      >
+                                        {isSelected ? 'Selected' : 'Use this place'}
+                                      </Badge>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="review-place-id">Google place ID</Label>
                       <Input
                         id="review-place-id"
@@ -1081,10 +1288,18 @@ function ReviewsPageContent() {
                           setReviewConnectionDraft((current) => ({
                             ...current,
                             placeId: event.target.value,
+                            placeLabel:
+                              event.target.value.trim() === current.placeId.trim()
+                                ? current.placeLabel
+                                : '',
                           }))
                         }
                         placeholder="ChIJN1t_tDeuEmsRUsoyG83frY4"
                       />
+                      <p className="text-xs text-bb-warm-gray">
+                        You can still paste a Google place ID manually if you already have it from
+                        your Google Business Profile setup.
+                      </p>
                     </div>
                   </div>
 
@@ -1092,11 +1307,40 @@ function ReviewsPageContent() {
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-bb-text">Choose a primary location</p>
                       <p className="text-sm leading-5 text-bb-warm-gray">
-                        Until live Google location selection lands, BizzyBee can still save a clear
-                        primary review location so the module has one canonical place to sync and
-                        report against.
+                        BizzyBee can save a clear primary review location now, either from a known
+                        preset or from the live place search above, so the module has one canonical
+                        place to sync and report against.
                       </p>
                     </div>
+
+                    {selectedLocationLabel && (
+                      <div className="rounded-2xl border border-bb-border bg-bb-white p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-bb-text">
+                              Current primary location
+                            </p>
+                            <p className="text-sm text-bb-warm-gray">{selectedLocationLabel}</p>
+                            {reviewConnectionDraft.placeId.trim().length > 0 && (
+                              <p className="font-mono text-xs text-bb-warm-gray">
+                                {reviewConnectionDraft.placeId}
+                              </p>
+                            )}
+                          </div>
+                          {!selectedLocationPreset &&
+                            reviewConnectionDraft.placeId.trim().length > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleClearPlaceSelection}
+                              >
+                                Clear place
+                              </Button>
+                            )}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid gap-3 md:grid-cols-2">
                       {REVIEW_LOCATION_PRESETS.map((preset) => {
@@ -1171,12 +1415,10 @@ function ReviewsPageContent() {
                         reviewConnectionConfig,
                       )}
                     </p>
-                    {selectedLocationPreset && (
+                    {savedLocationLabel && (
                       <p className="mt-3 text-sm text-bb-warm-gray">
                         Primary location:{' '}
-                        <span className="font-medium text-bb-text">
-                          {selectedLocationPreset.name}
-                        </span>
+                        <span className="font-medium text-bb-text">{savedLocationLabel}</span>
                       </p>
                     )}
                   </div>

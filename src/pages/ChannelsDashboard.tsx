@@ -51,6 +51,13 @@ interface ChannelStats {
   }>;
 }
 
+type MetaSelectionSummary = {
+  pageName: string | null;
+  instagramUsername: string | null;
+  selectionSource: string | null;
+  pageCount: number | null;
+};
+
 const channelConfig: Record<
   ChannelKey,
   {
@@ -119,6 +126,51 @@ const channelConfig: Record<
   },
 };
 
+const formatSelectionSource = (value: string | null) => (value ? value.replace(/_/g, ' ') : null);
+
+const getMetaSelectionSummary = (config: unknown): MetaSelectionSummary => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return {
+      pageName: null,
+      instagramUsername: null,
+      selectionSource: null,
+      pageCount: null,
+    };
+  }
+
+  const record = config as Record<string, unknown>;
+  const metaSelection =
+    record.metaSelection &&
+    typeof record.metaSelection === 'object' &&
+    !Array.isArray(record.metaSelection)
+      ? (record.metaSelection as Record<string, unknown>)
+      : null;
+
+  const pageCountValue = metaSelection?.pageCount;
+  const pageCount =
+    typeof pageCountValue === 'number'
+      ? pageCountValue
+      : typeof pageCountValue === 'string'
+        ? Number.parseInt(pageCountValue, 10)
+        : null;
+
+  return {
+    pageName:
+      (typeof metaSelection?.selectedPageName === 'string' && metaSelection.selectedPageName) ||
+      (typeof record.pageName === 'string' && record.pageName) ||
+      null,
+    instagramUsername:
+      (typeof record.instagramUsername === 'string' && record.instagramUsername) ||
+      (typeof record.username === 'string' && record.username) ||
+      null,
+    selectionSource:
+      (typeof metaSelection?.selectedSelectionSource === 'string' &&
+        metaSelection.selectedSelectionSource) ||
+      null,
+    pageCount: Number.isFinite(pageCount) ? pageCount : null,
+  };
+};
+
 export default function ChannelsDashboard() {
   const { workspace, loading: workspaceLoading } = useWorkspace();
   const navigate = useNavigate();
@@ -134,6 +186,7 @@ export default function ChannelsDashboard() {
     dashboardDefinitions,
     channelConnectionStates,
     channelsNeedingSetup,
+    configuredChannelMap,
   } = useChannelSetup(workspace?.id);
   const supportedChannels = useMemo(
     () => dashboardDefinitions.map((definition) => definition.key),
@@ -517,6 +570,11 @@ export default function ChannelsDashboard() {
             const Icon = config.icon;
             const connection = channelConnectionStates.get(stat.channel);
             const definition = CHANNEL_DEFINITIONS[stat.channel];
+            const channelRecord = configuredChannelMap.get(stat.channel);
+            const metaSelection =
+              stat.channel === 'facebook' || stat.channel === 'instagram'
+                ? getMetaSelectionSummary(channelRecord?.config)
+                : null;
             const routeTo =
               connection?.enabled &&
               (connection.state === 'needs_connection' ||
@@ -599,6 +657,27 @@ export default function ChannelsDashboard() {
                   <h4 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray mb-2">
                     Recent Activity
                   </h4>
+                  {metaSelection &&
+                    (metaSelection.pageName ||
+                      metaSelection.instagramUsername ||
+                      metaSelection.selectionSource ||
+                      metaSelection.pageCount !== null) && (
+                      <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                        <p className="font-medium text-sky-900">Saved Meta selection</p>
+                        <p className="mt-1">
+                          {metaSelection.pageName ? `Page: ${metaSelection.pageName}. ` : ''}
+                          {metaSelection.instagramUsername
+                            ? `Instagram: @${metaSelection.instagramUsername}. `
+                            : ''}
+                          {metaSelection.selectionSource
+                            ? `Source: ${formatSelectionSource(metaSelection.selectionSource)}. `
+                            : ''}
+                          {metaSelection.pageCount !== null
+                            ? `Pages seen: ${metaSelection.pageCount}.`
+                            : ''}
+                        </p>
+                      </div>
+                    )}
                   {connection?.enabled &&
                     (connection.state === 'needs_connection' ||
                       connection.state === 'provider_setup_required') &&
