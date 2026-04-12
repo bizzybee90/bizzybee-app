@@ -24,7 +24,10 @@ async function verifyStateSignature(signedState: string): Promise<string> {
   const payload = signedState.slice(0, dotIndex);
   const receivedHmac = signedState.slice(dotIndex + 1);
 
-  const secret = Deno.env.get('OAUTH_STATE_SECRET') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const secret = Deno.env.get('OAUTH_STATE_SECRET')?.trim();
+  if (!secret) {
+    throw new Error('OAUTH_STATE_SECRET not configured');
+  }
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
