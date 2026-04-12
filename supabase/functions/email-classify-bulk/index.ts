@@ -508,18 +508,6 @@ async function handlePartitionComplete(
     { onConflict: 'workspace_id' },
   );
 
-  // Mark email_import as complete in n8n_workflow_progress
-  await supabase.from('n8n_workflow_progress').upsert(
-    {
-      workspace_id,
-      workflow_type: 'email_import',
-      status: 'complete',
-      details: { total_classified: totalClassified || 0 },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'workspace_id,workflow_type' },
-  );
-
   // Trigger voice learning
   await triggerVoiceLearning(supabaseUrl, supabaseServiceKey, workspace_id);
 
@@ -534,23 +522,10 @@ async function handlePartitionComplete(
   }).catch((e) => console.error(`${workerTag} Failed to trigger conversion:`, e));
   console.log(`${workerTag} Triggered convert-emails-to-conversations`);
 
-  // Send callback to n8n if provided
   if (callback_url) {
-    try {
-      await fetch(callback_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id,
-          status: 'classification_complete',
-          total_classified: totalClassified || 0,
-          message: 'All emails classified, voice learning triggered',
-        }),
-      });
-      console.log(`${workerTag} Sent completion callback to ${callback_url}`);
-    } catch (e) {
-      console.error(`${workerTag} Callback failed:`, e);
-    }
+    console.log(
+      `${workerTag} Ignoring legacy callback_url after native pipeline cutover: ${callback_url}`,
+    );
   }
 
   // Check if backfill is pending and update progress

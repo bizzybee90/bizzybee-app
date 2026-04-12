@@ -122,8 +122,8 @@ export function TriageLearningPanel() {
 
       // bulk-retriage-conversations edge function has been removed
       toast({
-        title: 'Migrated to n8n',
-        description: 'Bulk re-triage has been migrated to n8n workflows.',
+        title: 'Moved to automation pipeline',
+        description: 'Bulk re-triage now runs through the native automation pipeline.',
       });
     } catch (error) {
       logger.error('Error running bulk re-triage', error);
@@ -214,8 +214,8 @@ export function TriageLearningPanel() {
 
       // bootstrap-sender-rules edge function has been removed
       toast({
-        title: 'Migrated to n8n',
-        description: 'Sender rule bootstrapping has been migrated to n8n workflows.',
+        title: 'Moved to automation pipeline',
+        description: 'Sender rule bootstrapping now runs through the native automation pipeline.',
       });
       setSuggestions([]);
     } catch (error) {
@@ -627,7 +627,8 @@ export function TriageLearningPanel() {
             AI Learning from Corrections
           </CardTitle>
           <CardDescription>
-            Based on reviewed reclassifications, BizzyBee has identified sender patterns that could become rules.
+            Based on reviewed reclassifications, BizzyBee has identified sender patterns that could
+            become rules.
           </CardDescription>
         </CardHeader>
         <CardContent>

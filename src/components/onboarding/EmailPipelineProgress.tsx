@@ -389,7 +389,7 @@ export function EmailPipelineProgress({
           )}
         </StageCard>
 
-        {/* Stage 2: Classify (n8n) */}
+        {/* Stage 2: Classify (native automation pipeline) */}
         <StageCard
           stage={2}
           title="Classify Emails"

@@ -11,16 +11,22 @@ import {
 } from '../_shared/pipeline.ts';
 import {
   ONBOARDING_SUPERVISOR_QUEUE,
+  buildOnboardingObservabilityContext,
   failRun,
   recordRunEvent,
   type OnboardingSupervisorJob,
 } from '../_shared/onboarding.ts';
 import { deadletterStepJob, requeueStepJob } from '../_shared/onboarding-worker.ts';
+import { loadRunRecord } from '../_shared/onboarding-worker.ts';
 
 const QUEUE_NAME = ONBOARDING_SUPERVISOR_QUEUE;
 const VT_SECONDS = 120;
 const MAX_ATTEMPTS = 5;
 const STALL_THRESHOLD_MS = 5 * 60 * 1000;
+// Keep a small early-warning window so degraded runs show up in the event stream
+// before they cross the hard stall cutoff.
+const WARNING_THRESHOLD_MS = 4 * 60 * 1000;
+const HEARTBEAT_CHECK_DELAY_SECONDS = 300;
 
 async function processJob(record: {
   msg_id: number;
@@ -29,29 +35,58 @@ async function processJob(record: {
 }) {
   const supabase = createServiceClient();
   const job = record.message;
-
-  const { data: run, error } = await supabase
-    .from('agent_runs')
-    .select('id, workspace_id, workflow_key, status, current_step_key, last_heartbeat_at')
-    .eq('id', job.run_id)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to load onboarding run ${job.run_id}: ${error.message}`);
-  }
+  const run = await loadRunRecord(supabase, job.run_id).catch((error) => {
+    if (error instanceof Error && /not found/i.test(error.message)) {
+      return null;
+    }
+    throw error;
+  });
 
   if (!run) {
     await queueDelete(supabase, QUEUE_NAME, record.msg_id);
     return;
   }
 
+  const heartbeatAgeMs = run.last_heartbeat_at
+    ? Date.now() - new Date(run.last_heartbeat_at).getTime()
+    : null;
+  const observedAt = new Date().toISOString();
+  const observabilityContext = buildOnboardingObservabilityContext({
+    runId: run.id,
+    workspaceId: run.workspace_id,
+    workflowKey: run.workflow_key,
+    status: run.status,
+    currentStepKey: run.current_step_key,
+    lastHeartbeatAt: run.last_heartbeat_at,
+    triggerSource: run.trigger_source,
+    rolloutMode: run.rollout_mode,
+    legacyProgressWorkflowType: run.legacy_progress_workflow_type,
+    sourceJobId: run.source_job_id,
+    queueName: QUEUE_NAME,
+    action: job.action,
+    heartbeatAgeMs,
+    checkedAt: observedAt,
+    attempt: record.read_ct,
+    extra: {
+      msg_id: record.msg_id,
+      queue_message_action: job.action,
+    },
+  });
+
   if (!['queued', 'running', 'waiting'].includes(run.status)) {
+    await recordRunEvent(supabase, {
+      runId: run.id,
+      workspaceId: run.workspace_id,
+      level: 'info',
+      eventType: 'supervisor:terminal_observed',
+      message: `Run already ${run.status}`,
+      payload: observabilityContext,
+    });
     await queueDelete(supabase, QUEUE_NAME, record.msg_id);
     return;
   }
 
-  const heartbeatAt = run.last_heartbeat_at ? new Date(run.last_heartbeat_at).getTime() : 0;
-  const isStalled = !heartbeatAt || Date.now() - heartbeatAt > STALL_THRESHOLD_MS;
+  const isStalled = heartbeatAgeMs === null || heartbeatAgeMs > STALL_THRESHOLD_MS;
 
   if (job.action === 'fail_stalled' || isStalled) {
     await failRun(supabase, {
@@ -60,24 +95,34 @@ async function processJob(record: {
       workflowKey: run.workflow_key as OnboardingSupervisorJob['workflow_key'],
       reason: `Run stalled while on step ${run.current_step_key || 'unknown'}`,
       details: {
-        last_heartbeat_at: run.last_heartbeat_at,
         current_step_key: run.current_step_key,
+        last_heartbeat_at: run.last_heartbeat_at,
+        heartbeat_age_ms: heartbeatAgeMs,
+        threshold_ms: STALL_THRESHOLD_MS,
+        warning_threshold_ms: WARNING_THRESHOLD_MS,
+        queue_name: QUEUE_NAME,
+        supervisor_action: job.action,
+        checked_at: observedAt,
       },
+      context: observabilityContext,
+      eventType: job.action === 'fail_stalled' ? 'supervisor:forced_fail' : 'supervisor:stalled',
     });
     await queueDelete(supabase, QUEUE_NAME, record.msg_id);
     return;
   }
 
+  const heartbeatLevel =
+    heartbeatAgeMs !== null && heartbeatAgeMs >= WARNING_THRESHOLD_MS ? 'warning' : 'info';
   await recordRunEvent(supabase, {
     runId: run.id,
     workspaceId: run.workspace_id,
-    level: 'debug',
+    level: heartbeatLevel,
     eventType: 'supervisor:heartbeat_check',
-    message: 'Run heartbeat healthy',
-    payload: {
-      current_step_key: run.current_step_key,
-      last_heartbeat_at: run.last_heartbeat_at,
-    },
+    message:
+      heartbeatLevel === 'warning'
+        ? 'Run heartbeat approaching stall threshold'
+        : 'Run heartbeat healthy',
+    payload: observabilityContext,
   });
 
   await queueSend(
@@ -87,8 +132,16 @@ async function processJob(record: {
       run_id: run.id,
       workflow_key: run.workflow_key,
       action: 'heartbeat_check',
+      observed_status: run.status,
+      observed_step_key: run.current_step_key,
+      observed_last_heartbeat_at: run.last_heartbeat_at,
+      heartbeat_age_ms: heartbeatAgeMs,
+      threshold_ms: STALL_THRESHOLD_MS,
+      warning_threshold_ms: WARNING_THRESHOLD_MS,
+      checked_at: observedAt,
+      queue_name: QUEUE_NAME,
     },
-    300,
+    HEARTBEAT_CHECK_DELAY_SECONDS,
   );
   await queueDelete(supabase, QUEUE_NAME, record.msg_id);
 }

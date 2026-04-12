@@ -8,7 +8,8 @@ import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
  * workers (email-classify-bulk) with partition parameters.
  * Returns immediately after dispatching.
  *
- * Called by n8n with: { workspace_id, callback_url }
+ * Legacy callback_url is still accepted for backwards compatibility, but
+ * completion now lives in native Supabase progress surfaces.
  */
 
 const corsHeaders = {

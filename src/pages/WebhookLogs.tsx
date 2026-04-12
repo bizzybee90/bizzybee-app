@@ -5,12 +5,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, RefreshCw, Code } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { BackButton } from '@/components/shared/BackButton';
 
 export default function WebhookLogs() {
@@ -43,7 +38,8 @@ export default function WebhookLogs() {
   const getStatusBadge = (statusCode: number | null) => {
     if (!statusCode) return <Badge variant="outline">Pending</Badge>;
     if (statusCode >= 200 && statusCode < 300) return <Badge>Success</Badge>;
-    if (statusCode >= 400 && statusCode < 500) return <Badge variant="destructive">Client Error</Badge>;
+    if (statusCode >= 400 && statusCode < 500)
+      return <Badge variant="destructive">Client Error</Badge>;
     if (statusCode >= 500) return <Badge variant="destructive">Server Error</Badge>;
     return <Badge variant="outline">{statusCode}</Badge>;
   };
@@ -54,7 +50,9 @@ export default function WebhookLogs() {
         <div>
           <BackButton to="/" label="Back to Dashboard" />
           <h1 className="text-2xl md:text-3xl font-bold mt-2">Webhook Logs</h1>
-          <p className="text-sm text-muted-foreground mt-1 md:mt-2">Monitor n8n webhook communications</p>
+          <p className="text-sm text-muted-foreground mt-1 md:mt-2">
+            Monitor webhook communications across the native automation pipeline
+          </p>
         </div>
         <Button onClick={loadLogs} disabled={loading} size="sm" className="self-start sm:self-auto">
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -65,9 +63,7 @@ export default function WebhookLogs() {
       <Card>
         <div className="divide-y">
           {logs.length === 0 && !loading && (
-            <div className="p-8 text-center text-muted-foreground">
-              No webhook logs yet
-            </div>
+            <div className="p-8 text-center text-muted-foreground">No webhook logs yet</div>
           )}
 
           {logs.map((log) => (
@@ -83,7 +79,7 @@ export default function WebhookLogs() {
                   ) : (
                     <ArrowUp className="h-5 w-5 text-green-500 shrink-0" />
                   )}
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium capitalize">{log.direction}</span>
@@ -92,11 +88,11 @@ export default function WebhookLogs() {
                         <Badge variant="outline">Retry {log.retry_count}</Badge>
                       )}
                     </div>
-                    
+
                     <p className="text-sm text-muted-foreground truncate">
                       {new Date(log.created_at).toLocaleString()}
                     </p>
-                    
+
                     {log.error_message && (
                       <p className="text-sm text-destructive mt-1 truncate">
                         Error: {log.error_message}
@@ -119,7 +115,7 @@ export default function WebhookLogs() {
           <DialogHeader>
             <DialogTitle>Webhook Details</DialogTitle>
           </DialogHeader>
-          
+
           {selectedLog && (
             <div className="space-y-4">
               <div>

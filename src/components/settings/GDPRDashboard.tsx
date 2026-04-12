@@ -110,7 +110,7 @@ export const GDPRDashboard = () => {
 
   const runManualCleanup = async () => {
     // cleanup-old-data edge function has been removed
-    toast.info('Data cleanup migrated to n8n');
+    toast.info('Data cleanup now runs through the native automation pipeline');
   };
 
   if (roleLoading || workspaceLoading || loading) {

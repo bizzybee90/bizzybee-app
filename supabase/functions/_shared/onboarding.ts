@@ -62,6 +62,52 @@ export interface OnboardingSupervisorJob {
   run_id: string;
   workflow_key: OnboardingWorkflowKey;
   action: 'heartbeat_check' | 'retry_stalled' | 'fail_stalled';
+  observed_status?: string | null;
+  observed_step_key?: string | null;
+  observed_last_heartbeat_at?: string | null;
+  heartbeat_age_ms?: number | null;
+  threshold_ms?: number | null;
+  warning_threshold_ms?: number | null;
+  checked_at?: string | null;
+  queue_name?: string | null;
+}
+
+export function buildOnboardingObservabilityContext(params: {
+  runId: string;
+  workspaceId: string;
+  workflowKey: OnboardingWorkflowKey;
+  status?: string | null;
+  currentStepKey?: string | null;
+  lastHeartbeatAt?: string | null;
+  triggerSource?: string | null;
+  rolloutMode?: string | null;
+  legacyProgressWorkflowType?: string | null;
+  sourceJobId?: string | null;
+  heartbeatAgeMs?: number | null;
+  queueName?: string | null;
+  action?: string | null;
+  attempt?: number | null;
+  checkedAt?: string | null;
+  extra?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    run_id: params.runId,
+    workspace_id: params.workspaceId,
+    workflow_key: params.workflowKey,
+    status: params.status ?? null,
+    current_step_key: params.currentStepKey ?? null,
+    last_heartbeat_at: params.lastHeartbeatAt ?? null,
+    trigger_source: params.triggerSource ?? null,
+    rollout_mode: params.rolloutMode ?? null,
+    legacy_progress_workflow_type: params.legacyProgressWorkflowType ?? null,
+    source_job_id: params.sourceJobId ?? null,
+    heartbeat_age_ms: params.heartbeatAgeMs ?? null,
+    queue_name: params.queueName ?? null,
+    action: params.action ?? null,
+    attempt: params.attempt ?? null,
+    checked_at: params.checkedAt ?? null,
+    ...(params.extra || {}),
+  };
 }
 
 export function normalizeWebsiteUrl(value: string | null | undefined): string | null {
@@ -352,25 +398,33 @@ export async function failRun(
     workflowKey: OnboardingWorkflowKey;
     reason: string;
     details?: Record<string, unknown>;
+    context?: Record<string, unknown>;
+    eventType?: string;
+    eventLevel?: 'debug' | 'info' | 'warning' | 'error';
   },
 ): Promise<void> {
+  const mergedContext = {
+    ...(params.context || {}),
+    ...(params.details || {}),
+  };
+
   await touchAgentRun(supabase, {
     runId: params.runId,
     status: 'failed',
     completed: true,
     errorSummary: {
       reason: params.reason,
-      ...(params.details || {}),
+      ...mergedContext,
     },
   });
 
   await recordRunEvent(supabase, {
     runId: params.runId,
     workspaceId: params.workspaceId,
-    level: 'error',
-    eventType: `${params.workflowKey}:failed`,
+    level: params.eventLevel || 'error',
+    eventType: params.eventType || `${params.workflowKey}:failed`,
     message: params.reason,
-    payload: params.details || {},
+    payload: mergedContext,
   });
 }
 

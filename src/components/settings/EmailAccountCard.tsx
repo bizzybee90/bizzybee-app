@@ -91,6 +91,14 @@ const providerLabels: Record<string, string> = {
   imap: 'IMAP',
 };
 
+const IMPORT_CAP_BY_MODE: Record<string, number> = {
+  new_only: 250,
+  last_1000: 1000,
+  last_10000: 10000,
+  last_30000: 10000,
+  all_history: 10000,
+};
+
 function getProviderDisplay(provider: string) {
   const normalized = provider.trim();
   return {
@@ -159,15 +167,24 @@ export const EmailAccountCard = ({ config, onDisconnect, onUpdate }: EmailAccoun
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
-        body: { workflow_type: 'email_import', configId: config.id, mode: config.import_mode },
+      const { data, error } = await supabase.functions.invoke('start-email-import', {
+        body: {
+          workspace_id: config.workspace_id,
+          config_id: config.id,
+          mode: 'backfill',
+          cap: IMPORT_CAP_BY_MODE[config.import_mode] ?? 5000,
+        },
       });
 
-      if (error) throw error;
+      if (error || data?.ok === false) {
+        throw error || new Error(data?.error || 'Failed to queue import');
+      }
 
       toast({
-        title: 'Sync complete',
-        description: `Processed ${data?.messagesProcessed || 0} messages`,
+        title: data?.existing_run_id ? 'Sync already running' : 'Sync queued',
+        description: data?.existing_run_id
+          ? 'BizzyBee is already syncing this inbox in the background.'
+          : 'BizzyBee will keep syncing this inbox in the background.',
       });
       onUpdate();
     } catch (error: any) {

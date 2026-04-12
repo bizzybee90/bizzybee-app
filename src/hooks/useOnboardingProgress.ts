@@ -59,7 +59,13 @@ export function useOnboardingProgress(workspaceId: string | null, enabled = true
       setError(null);
     } catch (err) {
       logger.error('Failed to load onboarding progress', err);
-      setError(err instanceof Error ? err.message : 'Failed to load onboarding progress');
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'Failed to load onboarding progress';
+      setError(message);
     } finally {
       setLoading(false);
     }

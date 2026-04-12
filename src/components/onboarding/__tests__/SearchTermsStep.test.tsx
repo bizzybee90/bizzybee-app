@@ -82,7 +82,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     expect(onNext).toHaveBeenCalled();
   });
 
-  it('does not advance if the discovery trigger rejects', async () => {
+  it('keeps the user on the step if the discovery trigger rejects', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();
@@ -114,7 +114,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     expect(onNext).not.toHaveBeenCalled();
   });
 
-  it('does NOT advance if the discovery trigger fails', async () => {
+  it('keeps the user on the step if the edge function returns an error', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();

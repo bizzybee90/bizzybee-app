@@ -1,47 +1,98 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Play, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Play, Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 
 const DELETED_FUNCTIONS = new Set([
-  'ai-inbox-summary', 'backfill-classify',
-  'bootstrap-sender-rules', 'bulk-retriage', 'business-location',
-  'classification-worker', 'classify-emails',
-  'cleanup-old-data', 'competitor-dedupe-faqs',
-  'competitor-discover', 'competitor-discover-smart', 'competitor-discovery-start',
-  'competitor-faq-generate', 'competitor-faq-per-site', 'competitor-hybrid-discovery',
-  'competitor-places-discover', 'competitor-refine-faqs', 'competitor-research-watchdog',
-  'competitor-scrape', 'competitor-scrape-start', 'competitor-search-suggest',
-  'competitor-serp-discovery', 'competitor-webhooks', 'compute-sender-stats',
-  'consolidate-faqs', 'copy-industry-faqs',
-  'customer-intelligence', 'detect-style-drift',
-  'email-classify', 'email-classify-v2',
-  'email-import', 'extract-website-faqs',
+  'ai-inbox-summary',
+  'backfill-classify',
+  'bootstrap-sender-rules',
+  'bulk-retriage',
+  'business-location',
+  'classification-worker',
+  'classify-emails',
+  'cleanup-old-data',
+  'competitor-dedupe-faqs',
+  'competitor-discover',
+  'competitor-discover-smart',
+  'competitor-discovery-start',
+  'competitor-faq-generate',
+  'competitor-faq-per-site',
+  'competitor-hybrid-discovery',
+  'competitor-places-discover',
+  'competitor-refine-faqs',
+  'competitor-research-watchdog',
+  'competitor-scrape',
+  'competitor-scrape-start',
+  'competitor-search-suggest',
+  'competitor-serp-discovery',
+  'competitor-webhooks',
+  'compute-sender-stats',
+  'consolidate-faqs',
+  'copy-industry-faqs',
+  'customer-intelligence',
+  'detect-style-drift',
+  'email-classify',
+  'email-classify-v2',
+  'email-import',
+  'extract-website-faqs',
   'force-email-sync',
-  'generate-response', 'generate-ai-summary',
-  'handle-discovery-complete', 'handle-scrape-failed',
-  'hydrate-worker', 'industry-keywords',
-  'kb-discover-competitors', 'kb-mine-site', 'kb-start-job',
-  'learn-correction', 'learn-from-edit', 'log-conversation',
-  'pattern-detect', 'pipeline-watchdog', 'places-webhook',
-  'process-own-website-scrape', 'process-worker', 'receive-apify-data',
-  'recover-competitor-job', 'refine-competitor-faqs',
-  'resume-own-website-scrape', 'save-classification-correction', 'scan-worker',
-  'send-csat-request', 'send-scheduled-summary', 'send-summary-notifications',
-  'start-competitor-analysis', 'start-competitor-research',
-  'start-own-website-scrape', 'start-website-scrape', 'sync-recent-emails',
-  'test-conversation', 'test-integration',
-  'validate-competitor-sites', 'voice-learn', 'voice-learning',
-  'website-scrape', 'competitor-extract-faqs',
-  'competitor-scrape-worker', 'bulk-retriage-conversations', 'populate-sender-rules',
-  'cleanup-duplicates', 'email-sync'
+  'generate-response',
+  'generate-ai-summary',
+  'handle-discovery-complete',
+  'handle-scrape-failed',
+  'hydrate-worker',
+  'industry-keywords',
+  'kb-discover-competitors',
+  'kb-mine-site',
+  'kb-start-job',
+  'learn-correction',
+  'learn-from-edit',
+  'log-conversation',
+  'pattern-detect',
+  'pipeline-watchdog',
+  'places-webhook',
+  'process-own-website-scrape',
+  'process-worker',
+  'receive-apify-data',
+  'recover-competitor-job',
+  'refine-competitor-faqs',
+  'resume-own-website-scrape',
+  'save-classification-correction',
+  'scan-worker',
+  'send-csat-request',
+  'send-scheduled-summary',
+  'send-summary-notifications',
+  'start-competitor-analysis',
+  'start-competitor-research',
+  'start-own-website-scrape',
+  'start-website-scrape',
+  'sync-recent-emails',
+  'test-conversation',
+  'test-integration',
+  'validate-competitor-sites',
+  'voice-learn',
+  'voice-learning',
+  'website-scrape',
+  'competitor-extract-faqs',
+  'competitor-scrape-worker',
+  'bulk-retriage-conversations',
+  'populate-sender-rules',
+  'cleanup-duplicates',
+  'email-sync',
 ]);
 
 interface Trigger {
@@ -83,9 +134,7 @@ const TRIGGERS: Trigger[] = [
   {
     name: 'Scrape Website',
     function: 'website-scrape',
-    params: [
-      { name: 'website_url', type: 'text' },
-    ],
+    params: [{ name: 'website_url', type: 'text' }],
     description: 'Extract FAQs from website',
   },
   {
@@ -97,9 +146,7 @@ const TRIGGERS: Trigger[] = [
   {
     name: 'Generate Insights',
     function: 'pattern-detect',
-    params: [
-      { name: 'period_days', type: 'select', options: ['7', '14', '30'], default: '7' },
-    ],
+    params: [{ name: 'period_days', type: 'select', options: ['7', '14', '30'], default: '7' }],
     description: 'Generate inbox insights',
   },
   {
@@ -119,9 +166,7 @@ const TRIGGERS: Trigger[] = [
   {
     name: 'Draft Verify',
     function: 'draft-verify',
-    params: [
-      { name: 'draft_text', type: 'text' },
-    ],
+    params: [{ name: 'draft_text', type: 'text' }],
     description: 'Verify AI draft for accuracy',
   },
 ];
@@ -138,11 +183,8 @@ export function ManualTriggers() {
   }, []);
 
   const fetchWorkspaces = async () => {
-    const { data } = await supabase
-      .from('workspaces')
-      .select('id, name')
-      .order('name');
-    
+    const { data } = await supabase.from('workspaces').select('id, name').order('name');
+
     setWorkspaces(data || []);
     if (data && data.length > 0) {
       setSelectedWorkspace(data[0].id);
@@ -151,15 +193,15 @@ export function ManualTriggers() {
 
   const runTrigger = async (trigger: Trigger) => {
     if (DELETED_FUNCTIONS.has(trigger.function)) {
-      toast.info('This function has been migrated to n8n workflows');
+      toast.info('This function now runs through the native automation pipeline');
       return;
     }
 
     const triggerId = trigger.function;
 
-    setResults(prev => ({
+    setResults((prev) => ({
       ...prev,
-      [triggerId]: { triggerId, status: 'running' }
+      [triggerId]: { triggerId, status: 'running' },
     }));
 
     const startTime = Date.now();
@@ -171,7 +213,7 @@ export function ManualTriggers() {
 
       // Add custom params
       const customParams = paramValues[triggerId] || {};
-      trigger.params.forEach(param => {
+      trigger.params.forEach((param) => {
         const value = customParams[param.name] || param.default;
         if (value) {
           params[param.name] = value;
@@ -179,38 +221,38 @@ export function ManualTriggers() {
       });
 
       const { data, error } = await supabase.functions.invoke(trigger.function, {
-        body: params
+        body: params,
       });
 
       const duration = Date.now() - startTime;
 
       if (error) {
-        setResults(prev => ({
+        setResults((prev) => ({
           ...prev,
-          [triggerId]: { triggerId, status: 'error', duration, error: error.message }
+          [triggerId]: { triggerId, status: 'error', duration, error: error.message },
         }));
       } else {
-        setResults(prev => ({
+        setResults((prev) => ({
           ...prev,
-          [triggerId]: { triggerId, status: 'success', duration, response: data }
+          [triggerId]: { triggerId, status: 'success', duration, response: data },
         }));
       }
     } catch (err) {
       const duration = Date.now() - startTime;
-      setResults(prev => ({
+      setResults((prev) => ({
         ...prev,
-        [triggerId]: { triggerId, status: 'error', duration, error: String(err) }
+        [triggerId]: { triggerId, status: 'error', duration, error: String(err) },
       }));
     }
   };
 
   const updateParam = (triggerId: string, paramName: string, value: string) => {
-    setParamValues(prev => ({
+    setParamValues((prev) => ({
       ...prev,
       [triggerId]: {
         ...(prev[triggerId] || {}),
-        [paramName]: value
-      }
+        [paramName]: value,
+      },
     }));
   };
 
@@ -238,7 +280,7 @@ export function ManualTriggers() {
                 <SelectValue placeholder="Select workspace" />
               </SelectTrigger>
               <SelectContent>
-                {workspaces.map(ws => (
+                {workspaces.map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>
                     {ws.name || ws.id.slice(0, 8)}
                   </SelectItem>
@@ -267,20 +309,24 @@ export function ManualTriggers() {
 
                   {trigger.params.length > 0 && (
                     <div className="space-y-2 my-3">
-                      {trigger.params.map(param => (
+                      {trigger.params.map((param) => (
                         <div key={param.name}>
                           <Label className="text-xs">{param.name}</Label>
                           {param.type === 'select' ? (
                             <Select
-                              value={paramValues[trigger.function]?.[param.name] || param.default || ''}
+                              value={
+                                paramValues[trigger.function]?.[param.name] || param.default || ''
+                              }
                               onValueChange={(v) => updateParam(trigger.function, param.name, v)}
                             >
                               <SelectTrigger className="h-8 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {param.options?.map(opt => (
-                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                {param.options?.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -289,7 +335,9 @@ export function ManualTriggers() {
                               className="h-8 text-xs"
                               placeholder={param.name}
                               value={paramValues[trigger.function]?.[param.name] || ''}
-                              onChange={(e) => updateParam(trigger.function, param.name, e.target.value)}
+                              onChange={(e) =>
+                                updateParam(trigger.function, param.name, e.target.value)
+                              }
                             />
                           )}
                         </div>
@@ -316,7 +364,10 @@ export function ManualTriggers() {
                       <div className="flex items-center gap-2 text-xs">
                         <Clock className="h-3 w-3" />
                         <span>{result.duration}ms</span>
-                        <Badge variant={result.status === 'success' ? 'default' : 'destructive'} className="text-xs">
+                        <Badge
+                          variant={result.status === 'success' ? 'default' : 'destructive'}
+                          className="text-xs"
+                        >
                           {result.status}
                         </Badge>
                       </div>

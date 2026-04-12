@@ -157,6 +157,8 @@ Deno.serve(async (req: Request) => {
     const sentiment = deriveSentiment(analysis);
     const outcome = deriveOutcome(success ?? undefined);
     const costCents = Math.round((duration / 60) * 18);
+    const requiresFollowup =
+      sentiment === 'negative' || outcome === 'message_taken' || outcome === 'transferred';
 
     // DB operations
     const supabase = createServiceClient();
@@ -233,6 +235,14 @@ Deno.serve(async (req: Request) => {
       cost_cents: costCents,
       sentiment: sentiment,
       outcome: outcome,
+      requires_followup: requiresFollowup,
+      actions_taken: requiresFollowup
+        ? {
+            suggested_followup: true,
+            source: 'native_ai_phone_post_call',
+            reason: sentiment === 'negative' ? 'negative_sentiment' : outcome,
+          }
+        : null,
     });
 
     if (insertErr) {
@@ -255,25 +265,6 @@ Deno.serve(async (req: Request) => {
 
     if (usageErr) {
       console.error(`[elevenlabs-webhook] Error upserting usage: ${usageErr.message}`);
-    }
-
-    // Fire-and-forget n8n webhook
-    const n8nUrl = Deno.env.get('N8N_WEBHOOK_URL')?.trim();
-    if (n8nUrl) {
-      fetch(n8nUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id: workspaceId,
-          caller_name: null,
-          caller_phone: callerNumber,
-          duration_seconds: duration,
-          summary: summary,
-          sentiment: sentiment,
-          outcome: outcome,
-          requires_followup: false,
-        }),
-      }).catch((err) => console.error(`[elevenlabs-webhook] n8n webhook error: ${err.message}`));
     }
 
     return new Response(JSON.stringify({ ok: true }), {

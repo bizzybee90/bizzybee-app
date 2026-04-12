@@ -135,7 +135,17 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
       // Step 5: Wipe scraping jobs & progress
       setNukeStep('Clearing progress & job state…');
       await supabase.from('scraping_jobs').delete().eq('workspace_id', workspaceId);
-      await supabase.from('n8n_workflow_progress').delete().eq('workspace_id', workspaceId);
+      await supabase.from('agent_run_events').delete().eq('workspace_id', workspaceId);
+      const { data: agentRuns } = await supabase
+        .from('agent_runs')
+        .select('id')
+        .eq('workspace_id', workspaceId);
+      const agentRunIds = agentRuns?.map((row) => row.id) || [];
+      if (agentRunIds.length > 0) {
+        await supabase.from('agent_run_artifacts').delete().in('run_id', agentRunIds);
+        await supabase.from('agent_run_steps').delete().in('run_id', agentRunIds);
+      }
+      await supabase.from('agent_runs').delete().eq('workspace_id', workspaceId);
       await supabase.from('email_import_progress').delete().eq('workspace_id', workspaceId);
 
       // Step 6: Wipe customers

@@ -285,20 +285,8 @@ async function setReviewReady(
   validated: number,
   rejected: number,
 ) {
-  await supabase.from('n8n_workflow_progress').upsert(
-    {
-      workspace_id: workspaceId,
-      workflow_type: 'competitor_scrape',
-      status: 'review_ready',
-      details: {
-        message: `${validated} competitors validated, ${rejected} filtered out`,
-        competitors_found: total,
-        validated,
-        rejected,
-      },
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'workspace_id,workflow_type' },
+  console.log(
+    `[${FUNCTION_NAME}] review ready for workspace=${workspaceId} total=${total} validated=${validated} rejected=${rejected}`,
   );
 }
 

@@ -119,12 +119,10 @@ export function LowConfidenceWizard() {
   const processConversation = useCallback(
     async (conv: LowConfidenceConversation): Promise<ProcessedResult> => {
       try {
-        const { data, error } = await supabase.functions.invoke('trigger-n8n-workflow', {
+        const { data, error } = await supabase.functions.invoke('classify-conversation', {
           body: {
-            workflow_type: 'email_classification',
-            conversationId: conv.id,
-            workspaceId,
-            limit: 1,
+            conversation_id: conv.id,
+            workspace_id: workspaceId,
           },
         });
 

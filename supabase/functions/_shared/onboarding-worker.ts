@@ -5,8 +5,13 @@ import {
   deadletterJob,
   queueDelete,
   queueSend,
+  nowIso,
 } from './pipeline.ts';
-import { failRun, type OnboardingWorkflowKey } from './onboarding.ts';
+import {
+  buildOnboardingObservabilityContext,
+  failRun,
+  type OnboardingWorkflowKey,
+} from './onboarding.ts';
 
 export async function loadRunRecord(
   supabase: SupabaseClient,
@@ -16,12 +21,23 @@ export async function loadRunRecord(
   workspace_id: string;
   workflow_key: OnboardingWorkflowKey;
   status: string;
+  current_step_key: string | null;
   input_snapshot: Record<string, unknown>;
+  output_summary: Record<string, unknown>;
+  error_summary: Record<string, unknown> | null;
+  started_at: string | null;
+  completed_at: string | null;
+  last_heartbeat_at: string | null;
+  trigger_source: string | null;
+  rollout_mode: string | null;
+  legacy_progress_workflow_type: string | null;
   source_job_id: string | null;
 }> {
   const { data, error } = await supabase
     .from('agent_runs')
-    .select('id, workspace_id, workflow_key, status, input_snapshot, source_job_id')
+    .select(
+      'id, workspace_id, workflow_key, status, current_step_key, input_snapshot, output_summary, error_summary, started_at, completed_at, last_heartbeat_at, trigger_source, rollout_mode, legacy_progress_workflow_type, source_job_id',
+    )
     .eq('id', runId)
     .single();
 
@@ -34,7 +50,16 @@ export async function loadRunRecord(
     workspace_id: data.workspace_id,
     workflow_key: data.workflow_key as OnboardingWorkflowKey,
     status: data.status,
+    current_step_key: data.current_step_key,
     input_snapshot: (data.input_snapshot as Record<string, unknown> | null) || {},
+    output_summary: (data.output_summary as Record<string, unknown> | null) || {},
+    error_summary: (data.error_summary as Record<string, unknown> | null) || null,
+    started_at: data.started_at,
+    completed_at: data.completed_at,
+    last_heartbeat_at: data.last_heartbeat_at,
+    trigger_source: data.trigger_source,
+    rollout_mode: data.rollout_mode,
+    legacy_progress_workflow_type: data.legacy_progress_workflow_type,
     source_job_id: data.source_job_id,
   };
 }
@@ -57,6 +82,8 @@ export async function requeueStepJob(
   const retryPayload = {
     ...record.message,
     attempt,
+    last_error: errorMessage,
+    requeued_at: nowIso(),
   };
 
   await queueSend(
@@ -94,6 +121,40 @@ export async function deadletterStepJob(
       : null;
   const runId =
     typeof params.record.message.run_id === 'string' ? params.record.message.run_id : null;
+  const run = runId ? await loadRunRecord(supabase, runId).catch(() => null) : null;
+  const stepKey =
+    typeof params.record.message.step === 'string' ? params.record.message.step : null;
+  const observabilityContext = buildOnboardingObservabilityContext({
+    runId: runId || 'unknown',
+    workspaceId: workspaceId || 'unknown',
+    workflowKey: params.workflowKey,
+    status: run?.status || null,
+    currentStepKey: run?.current_step_key || stepKey,
+    lastHeartbeatAt: run?.last_heartbeat_at || null,
+    triggerSource: run?.trigger_source || null,
+    rolloutMode: run?.rollout_mode || null,
+    legacyProgressWorkflowType: run?.legacy_progress_workflow_type || null,
+    sourceJobId: run?.source_job_id || null,
+    queueName: params.queueName,
+    action: 'deadletter',
+    attempt: params.record.read_ct,
+    checkedAt: nowIso(),
+    extra: {
+      scope: params.scope,
+      error_message: params.errorMessage,
+      queue_attempt: params.record.read_ct,
+      message: params.record.message,
+    },
+  });
+
+  const deadletterPayload = {
+    ...params.record.message,
+    last_error: params.errorMessage,
+    deadletter_scope: params.scope,
+    deadlettered_at: nowIso(),
+    deadlettered_attempts: params.record.read_ct,
+    run_context: observabilityContext,
+  };
 
   await deadletterJob(supabase, {
     fromQueue: params.queueName,
@@ -101,18 +162,24 @@ export async function deadletterStepJob(
     attempts: params.record.read_ct,
     workspaceId,
     runId,
-    jobPayload: params.record.message,
+    jobPayload: deadletterPayload,
     error: params.errorMessage,
     scope: params.scope,
   });
 
-  if (runId && workspaceId) {
+  if (run && runId && workspaceId) {
     await failRun(supabase, {
       runId,
       workspaceId,
       workflowKey: params.workflowKey,
       reason: params.errorMessage,
-      details: { scope: params.scope },
+      details: {
+        scope: params.scope,
+        queue_name: params.queueName,
+        attempt: params.record.read_ct,
+      },
+      context: observabilityContext,
+      eventType: `${params.workflowKey}:deadlettered`,
     });
   }
 }

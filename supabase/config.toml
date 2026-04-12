@@ -81,6 +81,9 @@ verify_jwt = false
 [functions.pre-triage-rules]
 verify_jwt = false
 
+[functions.classify-conversation]
+verify_jwt = false
+
 # =============================================================================
 # GDPR & CONSENT
 # =============================================================================

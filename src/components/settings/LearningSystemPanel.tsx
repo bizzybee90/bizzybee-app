@@ -6,18 +6,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { 
-  Brain, 
-  Database, 
-  Sparkles, 
-  RefreshCw, 
-  CheckCircle2, 
+import {
+  Brain,
+  Database,
+  Sparkles,
+  RefreshCw,
+  CheckCircle2,
   AlertCircle,
   TrendingUp,
   Loader2,
   Play,
   Zap,
-  Info
+  Info,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -34,7 +34,7 @@ export function LearningSystemPanel() {
   const { toast } = useToast();
   const { workspace } = useWorkspace();
   const queryClient = useQueryClient();
-  
+
   const [populatingRules, setPopulatingRules] = useState(false);
   const [computingStats, setComputingStats] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
@@ -47,7 +47,11 @@ export function LearningSystemPanel() {
   } | null>(null);
 
   // Fetch current stats
-  const { data: stats, isLoading: loadingStats, refetch: refetchStats } = useQuery({
+  const {
+    data: stats,
+    isLoading: loadingStats,
+    refetch: refetchStats,
+  } = useQuery({
     queryKey: ['learning-system-stats', workspace?.id],
     queryFn: async (): Promise<BootstrapStats> => {
       if (!workspace?.id) {
@@ -62,20 +66,33 @@ export function LearningSystemPanel() {
       }
 
       const [rulesRes, statsRes, correctionsRes, confidenceRes, totalRes] = await Promise.all([
-        supabase.from('sender_rules').select('sender_pattern', { count: 'exact' }).eq('workspace_id', workspace.id),
-        supabase.from('sender_behaviour_stats').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
+        supabase
+          .from('sender_rules')
+          .select('sender_pattern', { count: 'exact' })
+          .eq('workspace_id', workspace.id),
+        supabase
+          .from('sender_behaviour_stats')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id),
         supabase
           .from('conversations')
           .select('id', { count: 'exact', head: true })
           .eq('workspace_id', workspace.id)
           .eq('review_outcome', 'changed')
           .not('reviewed_at', 'is', null),
-        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id).not('triage_confidence', 'is', null),
-        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
+          .not('triage_confidence', 'is', null),
+        supabase
+          .from('conversations')
+          .select('id', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id),
       ]);
 
       // Count unique patterns
-      const uniquePatterns = new Set((rulesRes.data || []).map(r => r.sender_pattern));
+      const uniquePatterns = new Set((rulesRes.data || []).map((r) => r.sender_pattern));
 
       return {
         senderRulesCount: rulesRes.count || 0,
@@ -93,31 +110,31 @@ export function LearningSystemPanel() {
   const handlePopulateSenderRules = async () => {
     // populate-sender-rules edge function has been removed
     toast({
-      title: 'Migrated to n8n',
-      description: 'Sender rule population has been migrated to n8n workflows.',
+      title: 'Moved to automation pipeline',
+      description: 'Sender rule population now runs through the native automation pipeline.',
     });
   };
 
   const handleComputeSenderStats = async () => {
     // compute-sender-stats edge function has been removed
     toast({
-      title: 'Migrated to n8n',
-      description: 'Sender stats computation has been migrated to n8n workflows.',
+      title: 'Moved to automation pipeline',
+      description: 'Sender stats computation now runs through the native automation pipeline.',
     });
   };
 
   const handleApplyRulesToExisting = async () => {
     // bulk-retriage-conversations edge function has been removed
     toast({
-      title: 'Migrated to n8n',
-      description: 'Bulk re-triage has been migrated to n8n workflows.',
+      title: 'Moved to automation pipeline',
+      description: 'Bulk re-triage now runs through the native automation pipeline.',
     });
   };
 
   const handleRunFullBootstrap = async () => {
     await handlePopulateSenderRules();
     await handleComputeSenderStats();
-    
+
     toast({
       title: 'Learning System Bootstrapped',
       description: 'Sender rules and behavior stats have been initialized.',
@@ -126,11 +143,11 @@ export function LearningSystemPanel() {
 
   const getHealthStatus = () => {
     if (!stats) return 'unknown';
-    
+
     const hasRules = stats.uniqueRulesCount > 0;
     const hasStats = stats.senderStatsCount > 0;
     const hasConfidence = stats.conversationsWithConfidence > 0;
-    
+
     if (hasRules && hasStats && hasConfidence) return 'healthy';
     if (hasRules || hasStats) return 'partial';
     return 'empty';
@@ -186,9 +203,7 @@ export function LearningSystemPanel() {
               Last Bootstrap Result
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-green-600">
-              {lastResult.seeded !== undefined && (
-                <span>{lastResult.seeded} rules seeded</span>
-              )}
+              {lastResult.seeded !== undefined && <span>{lastResult.seeded} rules seeded</span>}
               {lastResult.learned !== undefined && (
                 <span>{lastResult.learned} patterns learned</span>
               )}
@@ -216,7 +231,10 @@ export function LearningSystemPanel() {
                   <Info className="h-3 w-3 text-muted-foreground/50 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="max-w-xs">Rules that automatically classify emails before AI runs. Emails from @stripe.com, @indeed.com, etc. are handled instantly.</p>
+                  <p className="max-w-xs">
+                    Rules that automatically classify emails before AI runs. Emails from
+                    @stripe.com, @indeed.com, etc. are handled instantly.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -232,7 +250,10 @@ export function LearningSystemPanel() {
                   <Info className="h-3 w-3 text-muted-foreground/50 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="max-w-xs">Historical data about how you handle emails from each sender domain. Used to suggest new rules.</p>
+                  <p className="max-w-xs">
+                    Historical data about how you handle emails from each sender domain. Used to
+                    suggest new rules.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -248,7 +269,10 @@ export function LearningSystemPanel() {
                   <Info className="h-3 w-3 text-muted-foreground/50 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="max-w-xs">When you reclassify an email, it creates a correction. After 3+ corrections for the same sender, a rule is auto-created.</p>
+                  <p className="max-w-xs">
+                    When you reclassify an email, it creates a correction. After 3+ corrections for
+                    the same sender, a rule is auto-created.
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -261,10 +285,9 @@ export function LearningSystemPanel() {
               With Confidence
             </div>
             <p className="text-2xl font-semibold">
-              {stats?.totalConversations ? 
-                `${Math.round((stats.conversationsWithConfidence / stats.totalConversations) * 100)}%` : 
-                '0%'
-              }
+              {stats?.totalConversations
+                ? `${Math.round((stats.conversationsWithConfidence / stats.totalConversations) * 100)}%`
+                : '0%'}
             </p>
             <p className="text-xs text-muted-foreground">
               {stats?.conversationsWithConfidence || 0} / {stats?.totalConversations || 0}
@@ -281,10 +304,11 @@ export function LearningSystemPanel() {
                 Apply Rules to Existing Emails
               </h4>
               <p className="text-sm text-muted-foreground mt-1">
-                Re-sort all existing emails using your sender rules. This applies rules to emails that arrived before the rules existed.
+                Re-sort all existing emails using your sender rules. This applies rules to emails
+                that arrived before the rules existed.
               </p>
             </div>
-            <Button 
+            <Button
               onClick={handleApplyRulesToExisting}
               disabled={applyingRules || (stats?.uniqueRulesCount || 0) === 0}
               variant="default"
@@ -310,15 +334,16 @@ export function LearningSystemPanel() {
             <div>
               <h4 className="font-medium">Quick Bootstrap</h4>
               <p className="text-sm text-muted-foreground">
-                Initialize sender rules with common patterns and compute behavior stats from your email history.
+                Initialize sender rules with common patterns and compute behavior stats from your
+                email history.
               </p>
             </div>
-            <Button 
+            <Button
               onClick={handleRunFullBootstrap}
               disabled={populatingRules || computingStats}
               size="lg"
             >
-              {(populatingRules || computingStats) ? (
+              {populatingRules || computingStats ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Play className="h-4 w-4 mr-2" />
@@ -341,8 +366,8 @@ export function LearningSystemPanel() {
                   </p>
                 </div>
               </div>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handlePopulateSenderRules}
                 disabled={populatingRules}
                 className="w-full"
@@ -364,13 +389,11 @@ export function LearningSystemPanel() {
                     <TrendingUp className="h-4 w-4 text-purple-500" />
                     Behavior Stats
                   </h4>
-                  <p className="text-sm text-muted-foreground">
-                    Analyze reply rates & patterns
-                  </p>
+                  <p className="text-sm text-muted-foreground">Analyze reply rates & patterns</p>
                 </div>
               </div>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleComputeSenderStats}
                 disabled={computingStats}
                 className="w-full"
@@ -390,12 +413,22 @@ export function LearningSystemPanel() {
         <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-2">
           <h4 className="font-medium">How the 3-Layer System Works:</h4>
           <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-            <li><strong>Layer A - Gatekeeper:</strong> Sender rules match emails before AI runs (faster, cheaper, reliable)</li>
-            <li><strong>Layer B - AI Triage:</strong> Decision router categorizes unmatched emails with confidence scores</li>
-            <li><strong>Layer C - Review Loop:</strong> Low-confidence emails go to Review; corrections create new rules</li>
+            <li>
+              <strong>Layer A - Gatekeeper:</strong> Sender rules match emails before AI runs
+              (faster, cheaper, reliable)
+            </li>
+            <li>
+              <strong>Layer B - AI Triage:</strong> Decision router categorizes unmatched emails
+              with confidence scores
+            </li>
+            <li>
+              <strong>Layer C - Review Loop:</strong> Low-confidence emails go to Review;
+              corrections create new rules
+            </li>
           </ol>
           <p className="text-muted-foreground mt-2">
-            After 3+ corrections for the same domain, the system automatically creates a sender rule.
+            After 3+ corrections for the same domain, the system automatically creates a sender
+            rule.
           </p>
         </div>
       </CardContent>

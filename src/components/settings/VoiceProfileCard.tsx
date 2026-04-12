@@ -101,12 +101,12 @@ export const VoiceProfileCard = ({ workspaceId }: VoiceProfileCardProps) => {
 
   const checkDrift = async () => {
     // detect-style-drift edge function has been removed
-    toast.info('Style drift detection migrated to n8n');
+    toast.info('Style drift detection now runs through the native automation pipeline');
   };
 
   const analyzeVoice = async (forceRefresh = false) => {
     // voice-learning edge function has been removed
-    toast.info('Voice learning migrated to n8n');
+    toast.info('Voice learning now runs through the native automation pipeline');
   };
 
   if (loading) {

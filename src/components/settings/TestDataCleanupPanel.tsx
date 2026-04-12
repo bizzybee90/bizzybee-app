@@ -143,8 +143,8 @@ export const TestDataCleanupPanel = () => {
     try {
       // cleanup-duplicates edge function removed
       toast({
-        title: 'Cleanup migrated to n8n',
-        description: 'Database cleanup functions have been migrated to n8n workflows.',
+        title: 'Cleanup moved to automation pipeline',
+        description: 'Database cleanup functions now run through the native automation pipeline.',
       });
       return;
     } catch (error: any) {
@@ -326,9 +326,9 @@ export const TestDataCleanupPanel = () => {
 
       // email-sync edge function removed
       toast({
-        title: 'Email sync migrated to n8n',
+        title: 'Email sync moved to automation pipeline',
         description:
-          'Email sync has been migrated to n8n workflows. Data was cleared but re-sync must be triggered from n8n.',
+          'Email sync now runs through the native automation pipeline. Data was cleared but re-sync must be triggered from the app.',
       });
 
       setCounts(null);
