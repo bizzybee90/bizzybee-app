@@ -371,7 +371,7 @@ export default function ChannelsDashboard() {
         <PanelNotice
           icon={Settings}
           title="Channels appear after workspace setup"
-          description="Finish onboarding first, then enable Email, WhatsApp, SMS, Facebook, Instagram, Google Business, and web chat from Settings > Channels & Integrations."
+          description="Finish onboarding first, then enable Email, WhatsApp, SMS, Facebook, Instagram, and web chat from Settings > Channels & Integrations. Google reviews and profile setup now live in Reviews."
           actionLabel="Open onboarding"
           actionTo="/onboarding?reset=true"
         />
@@ -483,7 +483,7 @@ export default function ChannelsDashboard() {
                 description={
                   channelsNeedingSetup.length === 1
                     ? `${primaryChannel.shortLabel} is enabled in this workspace, but ${primaryDescription.charAt(0).toLowerCase()}${primaryDescription.slice(1)}`
-                    : `${channelsNeedingSetup.map((definition) => definition.shortLabel).join(', ')} are enabled in this workspace, but still need connection or provider setup before they are fully ready.`
+                    : `${channelsNeedingSetup.map((definition) => definition.shortLabel).join(', ')} are enabled in this workspace, but still need connection, provisioning, or routing setup before they are fully ready.`
                 }
                 actionLabel={
                   channelsNeedingSetup.length === 1
@@ -502,7 +502,7 @@ export default function ChannelsDashboard() {
         <PanelNotice
           icon={MapPin}
           title="Google reviews now live separately from Channels"
-          description="This dashboard covers Google Business messages, not public reviews. Reviews now has its own dedicated module for reply workflow, alerts, and reputation analytics."
+          description="This dashboard only covers any legacy Google Business message transport. Reviews now has its own dedicated module for profile setup, reply workflow, alerts, and reputation analytics."
           actionLabel="Open Reviews"
           actionTo="/reviews"
         />
@@ -609,8 +609,8 @@ export default function ChannelsDashboard() {
                     )}
                   {stat.channel === 'google_business' && (
                     <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                      This card covers Google Business messages only. Public reviews now live in the
-                      Reviews module.
+                      This card only covers any remaining Google message transport. Public reviews
+                      and business profile work now live in the Reviews module.
                     </div>
                   )}
                   <ScrollArea className="h-[160px] md:h-[200px]">

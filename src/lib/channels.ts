@@ -113,8 +113,10 @@ export const CHANNEL_DEFINITIONS: Record<ChannelKey, ChannelDefinition> = {
     module: 'channels',
     label: 'SMS',
     shortLabel: 'SMS',
-    description: 'Text message communication through your business number.',
-    onboardingNote: 'Best for urgent updates and short replies.',
+    description:
+      'Text message communication through a BizzyBee-managed or approved business number.',
+    onboardingNote:
+      'Best for urgent updates. Most workspaces should start with a BizzyBee-managed SMS number.',
     setupMode: 'provider_setup',
     surfaces: ['settings', 'dashboard', 'onboarding', 'conversation'],
   },
@@ -123,8 +125,10 @@ export const CHANNEL_DEFINITIONS: Record<ChannelKey, ChannelDefinition> = {
     module: 'channels',
     label: 'WhatsApp',
     shortLabel: 'WhatsApp',
-    description: 'WhatsApp Business messaging for quick customer replies.',
-    onboardingNote: 'Popular for quick customer replies.',
+    description:
+      'WhatsApp messaging through a BizzyBee-managed sender first, with migration handled later when needed.',
+    onboardingNote:
+      'Best starting point is a BizzyBee-managed WhatsApp line. Existing app numbers usually need a separate migration path.',
     setupMode: 'provider_setup',
     surfaces: ['settings', 'dashboard', 'onboarding', 'conversation'],
   },
@@ -154,8 +158,9 @@ export const CHANNEL_DEFINITIONS: Record<ChannelKey, ChannelDefinition> = {
     label: 'Google Business Messages',
     shortLabel: 'Google Business',
     description:
-      'Messages from your Google Business Profile. Reviews belong in the Reviews module.',
-    onboardingNote: 'Messages work today. Review management is the next big module.',
+      'Google Business message transport only. Reviews, replies, and Business Profile work belong in the Reviews module.',
+    onboardingNote:
+      'Keep Google in mind for Reviews and Business Profile work. Messaging here is legacy transport, not the core Google strategy.',
     setupMode: 'account_linking',
     surfaces: ['settings', 'dashboard', 'onboarding', 'conversation'],
   },
@@ -192,17 +197,25 @@ export const CHANNEL_PROVIDER_GROUPS: ChannelProviderGroup[] = [
     id: 'twilio',
     title: 'SMS & WhatsApp',
     description:
-      'Workspace enablement happens in BizzyBee. Provider credentials and numbers still need operational setup.',
-    status: 'Provider setup required',
+      'BizzyBee should provision managed SMS and WhatsApp numbers first. Porting or migration is a later path.',
+    status: 'Managed provisioning recommended',
     channelKeys: ['sms', 'whatsapp'],
   },
   {
-    id: 'meta-google',
-    title: 'Facebook, Instagram & Google Business',
+    id: 'meta',
+    title: 'Meta Messaging',
     description:
-      'These channels use account linking rather than just a toggle, and should share one managed setup flow.',
+      'Facebook Messenger and Instagram use account linking inside BizzyBee and should feel like one polished Meta setup flow.',
     status: 'Account linking required',
-    channelKeys: ['facebook', 'instagram', 'google_business'],
+    channelKeys: ['facebook', 'instagram'],
+  },
+  {
+    id: 'google',
+    title: 'Google Reviews & Profile',
+    description:
+      'Google belongs in the dedicated Reviews module. Channels only keeps any Google message transport or routing identity.',
+    status: 'Reviews module setup',
+    channelKeys: ['google_business'],
   },
   {
     id: 'webchat',
@@ -225,9 +238,10 @@ export const CHANNEL_ROUTING_FIELDS: Partial<Record<ChannelKey, ChannelRoutingFi
   sms: [
     {
       key: 'phoneNumber',
-      label: 'Business SMS number',
+      label: 'SMS routing number',
       placeholder: '+447700900123',
-      helpText: 'Used to route inbound SMS to the right workspace.',
+      helpText:
+        'Use the BizzyBee-managed SMS number by default. Hosted or ported numbers can be added later if needed.',
       required: true,
     },
   ],
@@ -236,7 +250,8 @@ export const CHANNEL_ROUTING_FIELDS: Partial<Record<ChannelKey, ChannelRoutingFi
       key: 'businessNumber',
       label: 'WhatsApp business number',
       placeholder: '+447700900123',
-      helpText: 'Use the exact WhatsApp-enabled number connected to Twilio.',
+      helpText:
+        'Use the BizzyBee-managed WhatsApp sender by default. Existing WhatsApp app numbers usually need a dedicated migration path.',
       required: true,
     },
   ],
@@ -386,7 +401,7 @@ export function getChannelSetupDescription(
     }
 
     return definition.setupMode === 'account_linking'
-      ? 'The external business account still needs to be linked before this channel is fully ready.'
+      ? 'The external business account still needs to be linked and matched to the correct workspace before this channel is fully ready.'
       : 'This channel still needs to be connected before traffic can flow reliably.';
   }
 
@@ -395,7 +410,7 @@ export function getChannelSetupDescription(
       return `${missingRoutingLabels.join(', ')} still needs to be added for inbound routing.`;
     }
 
-    return 'Provider-level credentials or business numbers still need operational setup.';
+    return 'BizzyBee still needs the right managed number, approved business number, or provider credentials before live traffic can flow reliably.';
   }
 
   if (state === 'coming_soon') {

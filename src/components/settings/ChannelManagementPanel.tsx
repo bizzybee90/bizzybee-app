@@ -86,17 +86,25 @@ const providerChecklists: Record<string, { title: string; steps: string[] }> = {
   twilio: {
     title: 'What BizzyBee needs',
     steps: [
-      'Enable SMS or WhatsApp for this workspace.',
-      'Save the exact business phone number BizzyBee should match inbound messages against.',
-      'Make sure your Twilio credentials and webhook destination are configured operationally.',
+      'Start with a BizzyBee-managed SMS, WhatsApp, or voice number for the workspace.',
+      'Save the exact routing number or sender BizzyBee should match inbound traffic against.',
+      'Treat bringing an existing number across as an advanced migration path, not the default setup.',
     ],
   },
-  'meta-google': {
+  meta: {
     title: 'What BizzyBee needs',
     steps: [
-      'Enable the channel you actually want to support.',
-      'Save the page, Instagram account, or Google agent identifiers for this workspace.',
-      'Finish the external business account linking on the provider side.',
+      'Connect Facebook first, then choose the exact page and Instagram identity for this workspace.',
+      'Save the page, Instagram account, and related routing identifiers BizzyBee should use.',
+      'Finish Meta-side business linking and keep Messenger plus Instagram polished before moving WhatsApp over later.',
+    ],
+  },
+  google: {
+    title: 'What BizzyBee needs',
+    steps: [
+      'Treat Reviews as the main home for Google profile, review sync, replies, and alerts.',
+      'Use Channels only for any legacy Google message routing identifiers that still need to be stored.',
+      'Connect the Google Business location and review identity before promising live review automation.',
     ],
   },
   webchat: {
@@ -1008,7 +1016,7 @@ export const ChannelManagementPanel = ({
       <PanelNotice
         icon={Settings2}
         title="Finish setup before connecting channels"
-        description="BizzyBee needs a workspace first so email, WhatsApp, Facebook, Instagram, and Google Business channels can be attached to the right business."
+        description="BizzyBee needs a workspace first so email, Twilio numbers, Meta accounts, and Google review/profile setup can be attached to the right business."
         actionLabel="Open onboarding"
         actionTo="/onboarding?reset=true"
       />
@@ -1545,8 +1553,9 @@ export const ChannelManagementPanel = ({
               Provider Setup Status
             </h3>
             <p className="text-sm text-muted-foreground">
-              BizzyBee now uses this single setup flow for channels. The cards below show what is
-              already self-serve and what still depends on provider-level linking.
+              BizzyBee now uses one control surface for channel readiness. These cards show which
+              providers are self-serve, which ones still need managed provisioning, and which
+              products now live in dedicated modules like Reviews and AI Phone.
             </p>
           </div>
 
@@ -1675,13 +1684,17 @@ export const ChannelManagementPanel = ({
                       >
                         {groupActionLabel ?? 'Add business numbers'}
                       </Button>
-                    ) : card.id === 'meta-google' ? (
+                    ) : card.id === 'meta' ? (
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => focusFirstIncompleteChannel(card.channels)}
                       >
                         {groupActionLabel ?? 'Save account IDs'}
+                      </Button>
+                    ) : card.id === 'google' ? (
+                      <Button size="sm" variant="outline" asChild>
+                        <Link to="/reviews">Open Reviews</Link>
                       </Button>
                     ) : card.statusTone === 'needs_setup' || card.statusTone === 'not_enabled' ? (
                       <Button

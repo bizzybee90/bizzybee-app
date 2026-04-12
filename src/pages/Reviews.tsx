@@ -316,9 +316,9 @@ function ReviewsPageContent() {
     ) ?? null;
   const goLiveChecklist = [
     {
-      label: 'Google Business messaging foundation connected',
+      label: 'Google Business profile foundation connected',
       complete: googleBusinessMessageState === 'ready',
-      actionLabel: 'Open Google Business setup',
+      actionLabel: 'Open Google profile setup',
       actionTo: getChannelSetupHref('google_business'),
     },
     {
@@ -724,16 +724,16 @@ function ReviewsPageContent() {
 
   const setupChecklist = [
     {
-      title: 'Google Business messaging foundation',
+      title: 'Google Business profile foundation',
       complete: googleBusinessMessageState === 'ready',
       detail:
         googleBusinessMessageState === 'ready'
-          ? 'Google Business messaging is already configured in Channels.'
+          ? 'Google Business identity is already configured and ready to support Reviews.'
           : `Current status: ${getChannelConnectionLabel(
               googleChannelDefinition,
               googleBusinessMessageState,
             )}.`,
-      actionLabel: 'Open Google Business setup',
+      actionLabel: 'Open Google profile setup',
       actionTo: getChannelSetupHref('google_business'),
     },
     {
@@ -771,8 +771,9 @@ function ReviewsPageContent() {
                 </h1>
                 <p className="max-w-3xl text-sm leading-6 text-bb-warm-gray">
                   Reviews is now a first-class BizzyBee module. This page owns connection, alerts,
-                  inbox workflow, reply state, and reputation analytics for public reviews instead
-                  of hiding them inside Channels or Settings.
+                  inbox workflow, reply state, and reputation analytics for public reviews, with
+                  room for profile operations where the Google integration supports them, instead of
+                  hiding everything inside Channels or Settings.
                 </p>
               </div>
             </div>
@@ -796,8 +797,8 @@ function ReviewsPageContent() {
 
         {workspaceLoading || loading ? (
           <PanelNotice
-            title="Loading review foundation"
-            description="BizzyBee is checking your Google Business and notification setup."
+            title="Loading Google profile and review setup"
+            description="BizzyBee is checking your Google Business identity, review connection, and notification setup."
             icon={RefreshCw}
           />
         ) : fetchError ? (
@@ -836,7 +837,7 @@ function ReviewsPageContent() {
                       </Badge>
                       {googleBusinessMessageState === 'ready' && (
                         <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-                          Google Business messaging foundation detected
+                          Google profile foundation detected
                         </Badge>
                       )}
                     </div>

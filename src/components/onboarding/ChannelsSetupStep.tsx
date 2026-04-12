@@ -55,8 +55,9 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
         </div>
         <CardTitle className="text-2xl text-bb-text">Choose your channels</CardTitle>
         <CardDescription className="mx-auto max-w-xl text-sm text-bb-warm-gray">
-          Pick the places your customers contact you. These choices save straight into your
-          workspace setup, so onboarding and Settings stay in sync.
+          Pick the places your customers contact you. Email stays on its own step, phone has its own
+          module, and the selections here save straight into workspace setup so onboarding and
+          Settings stay in sync.
         </CardDescription>
       </div>
 
@@ -81,7 +82,7 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
 
       <PanelNotice
         title="Enable the channels you want BizzyBee ready for"
-        description="Email stays on its own step because it needs account connection. The options below handle your messaging channels and provider readiness."
+        description="Email connects separately, AI Phone has its own provisioning flow, and the options below cover messaging channels plus the provider setup BizzyBee will still need to finish."
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -108,7 +109,7 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
             channelsNeedingSetup.length > 0
               ? `${enabledChannelLabels.join(', ')} ${
                   enabledChannelLabels.length === 1 ? 'is' : 'are'
-                } enabled. You can continue onboarding now and finish any remaining provider setup later from Settings > Channels & Integrations.`
+                } enabled. You can continue onboarding now and finish any remaining provisioning, routing, or account linking later from Settings > Channels & Integrations.`
               : `${enabledChannelLabels.join(', ')} ${
                   enabledChannelLabels.length === 1 ? 'is' : 'are'
                 } enabled and currently ready for BizzyBee to use.`
@@ -141,9 +142,15 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
       </div>
 
       <PanelNotice
+        icon={Phone}
+        title="BizzyBee-managed numbers are the default"
+        description="For SMS, WhatsApp, and voice, the simplest onboarding path is usually a BizzyBee-managed number or sender. Moving an existing number over can happen later as an advanced migration path."
+      />
+
+      <PanelNotice
         icon={MapPin}
         title="Google reviews are a separate module"
-        description="Channels still covers Google Business messages. BizzyBee Reviews will handle public reviews, replies, alerts, and reputation analytics as its own workspace module."
+        description="Channels only keeps any Google message-routing identity that still matters. BizzyBee Reviews owns public reviews, replies, alerts, and profile-focused setup as its own workspace module."
       />
 
       <div className="flex items-center justify-between">
