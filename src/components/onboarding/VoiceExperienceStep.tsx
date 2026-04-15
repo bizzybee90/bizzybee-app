@@ -144,94 +144,200 @@ export type ReplySegment =
   | { type: 'cited'; content: string; faqQuestion: string };
 
 /**
+ * Derive style bits from the user's tone + formality selections. These compose
+ * into the final reply so that toggling a chip or moving the slider produces a
+ * visibly-different preview (greeting form, opener, reassurance, sign-off).
+ *
+ *   formalityScore 1-3  → friendly register ("Jessica here", "Cheers, speak soon!")
+ *   formalityScore 4-7  → balanced ("Jessica speaking", "Thanks, speak soon.")
+ *   formalityScore 8-10 → polished ("Jessica speaking.", "Thank you. Goodbye.")
+ *
+ * Selected tone chips inject behaviour on top of formality:
+ *   warm      — extra "Happy to help." pleasantry
+ *   friendly  — contractions, "Cheers!" close
+ *   polished  — "Certainly —" prefix, formal close
+ *   reassuring / calm — adds "No rush at all." as a separate sentence
+ *   concise   — drops pleasantries and reassurance; shorter closer
+ */
+function deriveVoiceStyle(
+  toneDescriptors: string[],
+  formalityScore: number,
+  companyName: string,
+  receptionistName: string,
+) {
+  const tones = new Set(toneDescriptors.map((t) => t.toLowerCase()));
+  const isPolished = tones.has('polished') || formalityScore >= 8;
+  const isFriendly = tones.has('friendly') || formalityScore <= 3;
+  const isConcise = tones.has('concise');
+  const isWarm = tones.has('warm');
+  const isReassuring = tones.has('reassuring') || tones.has('calm');
+  const coName = companyName || 'your business';
+  const name = receptionistName || 'your receptionist';
+
+  // Opening greeting — varies by formality
+  const greeting = isPolished
+    ? `Good day, you're through to ${coName}. ${name} speaking.`
+    : isFriendly
+      ? `Hi — thanks for calling ${coName}. ${name} here.`
+      : `Hi, thanks for calling ${coName} — ${name} speaking.`;
+
+  // Opener pleasantry — dropped when concise
+  const opener = isConcise
+    ? ''
+    : isPolished
+      ? 'Certainly — happy to help.'
+      : isWarm
+        ? 'Happy to help.'
+        : 'Happy to help.';
+
+  // Reassurance — only when reassuring/calm tone AND not concise
+  const reassurance = isReassuring && !isConcise ? 'No rush at all.' : '';
+
+  // Sign-off — varies by formality + friendliness
+  const signoff = isPolished
+    ? 'Thank you. Goodbye.'
+    : isFriendly
+      ? 'Cheers, speak soon!'
+      : 'Thanks, speak soon.';
+
+  // Contractions: polished expands them, friendly keeps; balanced keeps too
+  const contract = (s: string) =>
+    isPolished
+      ? s
+          .replace(/\bI'll\b/g, 'I will')
+          .replace(/\bcan't\b/g, 'cannot')
+          .replace(/\bwasn't\b/g, 'was not')
+          .replace(/\bthat's\b/gi, 'that is')
+      : s;
+
+  return { greeting, opener, reassurance, signoff, contract, isPolished, isFriendly, isConcise };
+}
+
+function joinParts(...parts: string[]): string {
+  return parts.filter((p) => p && p.trim().length > 0).join(' ');
+}
+
+/**
  * Build a natural receptionist reply for the selected scenario. The reply is
  * the actual spoken answer — not a narrative about what the reply would be.
- * Optionally includes a grounded phrase from a matched website FAQ, returned
- * as a separate segment so the UI can highlight it inline.
+ * Tone chips and formality slider drive visible changes via deriveVoiceStyle.
  */
 function buildScenarioReply(params: {
   scenarioId: VoiceScenarioId;
   companyName: string;
   receptionistName: string;
+  toneDescriptors: string[];
+  formalityScore: number;
   websiteFaq: WebsiteFaq | null;
 }): ReplySegment[] {
-  const { scenarioId, companyName, receptionistName, websiteFaq } = params;
-  const coName = companyName || 'your business';
-  const name = receptionistName || 'your receptionist';
+  const { scenarioId, companyName, receptionistName, toneDescriptors, formalityScore, websiteFaq } =
+    params;
+  const style = deriveVoiceStyle(toneDescriptors, formalityScore, companyName, receptionistName);
   const hasFaq = Boolean(websiteFaq?.answer?.trim());
   const cue = hasFaq ? firstSentence(websiteFaq!.answer).replace(/[.!?]+$/u, '') : '';
 
-  const greet = (tail: string): ReplySegment[] => [
-    { type: 'text', content: `Hi, thanks for calling ${coName} — ${name} speaking. ${tail}` },
-  ];
-
+  // Scenario-specific body templates — vary phrasing by formality
   switch (scenarioId) {
-    case 'quote_request':
+    case 'quote_request': {
+      const closer = style.isConcise
+        ? 'Postcode and number of windows, please.'
+        : style.isPolished
+          ? 'If you could share the postcode and roughly how many windows, I will confirm an accurate figure for you.'
+          : "If you can share the postcode and roughly how many windows, I'll firm that up for you.";
       if (hasFaq) {
+        const pre = joinParts(style.greeting, style.opener);
         return [
-          { type: 'text', content: `Hi, thanks for calling ${coName} — ${name} speaking. ` },
+          { type: 'text', content: `${pre} ` },
           { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
-          {
-            type: 'text',
-            content:
-              '. If you can share the postcode and roughly how many windows, I can firm that up for you. Thanks, speak soon.',
-          },
+          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
         ];
       }
-      return greet(
-        'Happy to help with a price. Could I take the postcode and roughly how many windows so I can give you a proper quote? Thanks, speak soon.',
-      );
-
-    case 'booking_change':
-      if (hasFaq) {
-        return [
-          {
-            type: 'text',
-            content: `Hi, thanks for calling ${coName} — ${name} speaking. No problem at all. Just to set expectations, `,
-          },
-          { type: 'cited', content: cue.toLowerCase(), faqQuestion: websiteFaq!.question },
-          {
-            type: 'text',
-            content:
-              ". What day would work better for you? I'll make the note and confirm by text. Thanks, speak soon.",
-          },
-        ];
-      }
-      return greet(
-        "No problem at all. What day would work better for you? I'll make the note and confirm by text. Thanks, speak soon.",
-      );
-
-    case 'complaint':
-      // Deliberately demonstrates a guard-railed response: no refund committed
-      // on the call, warm acknowledgement, clear escalation path. This is the
-      // pattern a customer rule like "never offer refunds over the phone" would
-      // enforce.
       return [
         {
           type: 'text',
-          content: `Hi, thanks for calling ${coName} — ${name} speaking. I'm really sorry Tuesday wasn't right. That's not the standard we want. I can't commit to a refund on the call, but I'll log this for the owner to review today and we'll call you back within a few hours — would that be alright? Thanks for letting us know.`,
+          content: joinParts(
+            style.greeting,
+            style.opener,
+            style.reassurance,
+            closer,
+            style.signoff,
+          ),
         },
       ];
+    }
 
-    case 'new_enquiry':
-    default:
+    case 'booking_change': {
+      const ack = style.isPolished ? 'Not a problem.' : 'No problem at all.';
+      const closer = style.isConcise
+        ? "Which day works? I'll confirm by text."
+        : style.isPolished
+          ? 'What day would work better for you? I will make a note and confirm by text.'
+          : "What day would work better for you? I'll make the note and confirm by text.";
       if (hasFaq) {
+        const pre = joinParts(style.greeting, ack, 'Just to set expectations,');
         return [
-          {
-            type: 'text',
-            content: `Hi, thanks for calling ${coName} — ${name} speaking. Happy to help. `,
-          },
-          { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
-          {
-            type: 'text',
-            content:
-              '. If you share a postcode I can confirm we cover the area and walk you through how it works. Thanks, speak soon.',
-          },
+          { type: 'text', content: `${pre} ` },
+          { type: 'cited', content: cue.toLowerCase(), faqQuestion: websiteFaq!.question },
+          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
         ];
       }
-      return greet(
-        'Happy to help. If you share a postcode I can confirm we cover the area and walk you through how it works. Thanks, speak soon.',
-      );
+      return [
+        {
+          type: 'text',
+          content: joinParts(style.greeting, ack, style.reassurance, closer, style.signoff),
+        },
+      ];
+    }
+
+    case 'complaint': {
+      // Guard-railed: never commits a refund on the call; warmth scales with tone.
+      const apology = style.isPolished
+        ? 'I am really sorry Tuesday was not right. That is not the standard we aim for.'
+        : style.contract("I'm really sorry Tuesday wasn't right. That's not the standard we want.");
+      const escalate = style.isPolished
+        ? 'I cannot commit to a refund on this call, but I will log this for the owner to review today, and we will call you back within a few hours. Would that be acceptable?'
+        : style.contract(
+            "I can't commit to a refund on the call, but I'll log this for the owner to review today and we'll call you back within a few hours — would that be alright?",
+          );
+      const close = style.isPolished
+        ? 'Thank you for letting us know.'
+        : 'Thanks for letting us know.';
+      return [
+        {
+          type: 'text',
+          content: joinParts(style.greeting, apology, escalate, close),
+        },
+      ];
+    }
+
+    case 'new_enquiry':
+    default: {
+      const closer = style.isConcise
+        ? "Share a postcode and I'll confirm coverage."
+        : style.isPolished
+          ? 'If you could share a postcode, I will confirm that we cover the area and walk you through how it works.'
+          : 'If you share a postcode I can confirm we cover the area and walk you through how it works.';
+      if (hasFaq) {
+        const pre = joinParts(style.greeting, style.opener);
+        return [
+          { type: 'text', content: `${pre} ` },
+          { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
+          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
+        ];
+      }
+      return [
+        {
+          type: 'text',
+          content: joinParts(
+            style.greeting,
+            style.opener,
+            style.reassurance,
+            closer,
+            style.signoff,
+          ),
+        },
+      ];
+    }
   }
 }
 
@@ -294,6 +400,8 @@ export function VoiceExperienceStep({
     scenarioId: selectedScenario.id,
     companyName: businessContext.companyName,
     receptionistName: value.receptionistName || value.selectedVoiceName,
+    toneDescriptors: value.toneDescriptors,
+    formalityScore: value.formalityScore,
     websiteFaq: scenarioFaq,
   });
   const previewReplyText = replyToPlainText(previewReplySegments);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEFAULT_VOICE_EXPERIENCE_DRAFT } from '../VoiceExperienceStep.config';
 import { VoiceExperienceStep } from '../VoiceExperienceStep';
@@ -87,6 +87,24 @@ describe('VoiceExperienceStep', () => {
     await waitFor(() => {
       expect(screen.getByText(/Guard-rail demo/i)).toBeInTheDocument();
       expect(screen.getByText(/I can't commit to a refund on the call/i)).toBeInTheDocument();
+    });
+
+    // Polishing up the formality should visibly rewrite the reply (contractions
+    // expand, sign-off shifts from "Thanks, speak soon." to "Thank you. Goodbye."
+    // and the opener becomes "Good day, you're through to…").
+    await user.click(screen.getByRole('button', { name: /new enquiry/i }));
+    const slider = screen.getByLabelText('Formality slider') as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: '10' } });
+    await waitFor(() => {
+      expect(screen.getByText(/Good day, you're through to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Thank you\. Goodbye\./i)).toBeInTheDocument();
+    });
+
+    // Dragging to friendly (1) should swap to "Jessica here" + "Cheers, speak soon!"
+    fireEvent.change(slider, { target: { value: '1' } });
+    await waitFor(() => {
+      expect(screen.getByText(/Jessica here/i)).toBeInTheDocument();
+      expect(screen.getByText(/Cheers, speak soon!/i)).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: /Select Chris voice/i }));
