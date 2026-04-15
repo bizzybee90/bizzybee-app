@@ -16,6 +16,7 @@ import {
   touchPipelineRun,
   withinBudget,
 } from '../_shared/pipeline.ts';
+import { resolveQueueAttempt } from '../_shared/onboarding-worker.ts';
 import type { ImportFetchJob } from '../_shared/types.ts';
 
 const QUEUE_NAME = 'bb_import_jobs';
@@ -329,7 +330,16 @@ Deno.serve(async (req) => {
         processed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const attempts = record.read_ct;
+        // Use payload-backed attempt counter, not pgmq.read_ct. read_ct resets to 1
+        // every time we queueSend a new message during a requeue, so relying on it
+        // made both the rate-limit and mailbox-warmup paths loop indefinitely
+        // without ever reaching MAX_ATTEMPTS — the deadletter safety net silently
+        // never fired. resolveQueueAttempt reads the `attempt` field from the job
+        // payload AND combines with read_ct, so the counter persists across
+        // requeues. Observed live on 2026-04-15: Fastmail import stuck at
+        // mailbox_warmup_attempts=1 for 16+ minutes while the worker kept
+        // retrying every ~15s.
+        const attempts = resolveQueueAttempt(record);
         const workspaceId = record.message?.workspace_id;
         const runId = record.message?.run_id;
 
@@ -353,6 +363,7 @@ Deno.serve(async (req) => {
 
             const retryJob = {
               ...record.message,
+              attempt: attempts + 1,
               rate_limit_count: Number(record.message?.rate_limit_count || 0) + 1,
             };
 
@@ -433,6 +444,7 @@ Deno.serve(async (req) => {
               QUEUE_NAME,
               {
                 ...record.message,
+                attempt: attempts + 1,
                 pageToken: record.message?.pageToken ?? null,
                 rate_limit_count: Number(record.message?.rate_limit_count || 0),
               } as unknown as Record<string, unknown>,
