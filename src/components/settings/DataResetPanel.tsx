@@ -111,58 +111,8 @@ export function DataResetPanel({ workspaceId }: DataResetPanelProps) {
       });
       if (nukeError) throw nukeError;
 
-      // Step 2: Wipe knowledge base
-      setNukeStep('Clearing knowledge base…');
-      await supabase.from('faq_database').delete().eq('workspace_id', workspaceId);
-      await supabase.from('example_responses').delete().eq('workspace_id', workspaceId);
-
-      // Step 3: Wipe competitor research
-      setNukeStep('Clearing competitor research…');
-      await supabase.from('competitor_faq_candidates').delete().eq('workspace_id', workspaceId);
-      await supabase.from('competitor_faqs_raw').delete().eq('workspace_id', workspaceId);
-      await supabase.from('competitor_pages').delete().eq('workspace_id', workspaceId);
-      await supabase.from('competitor_sites').delete().eq('workspace_id', workspaceId);
-      await supabase.from('competitor_research_jobs').delete().eq('workspace_id', workspaceId);
-
-      // Step 4: Wipe voice & learning data
-      setNukeStep('Clearing AI learning data…');
-      await supabase.from('voice_profiles').delete().eq('workspace_id', workspaceId);
-      await supabase.from('correction_examples').delete().eq('workspace_id', workspaceId);
-      await supabase.from('classification_corrections').delete().eq('workspace_id', workspaceId);
-      await supabase.from('sender_rules').delete().eq('workspace_id', workspaceId);
-      await supabase.from('sender_behaviour_stats').delete().eq('workspace_id', workspaceId);
-
-      // Step 5: Wipe scraping jobs & progress
-      setNukeStep('Clearing progress & job state…');
-      await supabase.from('scraping_jobs').delete().eq('workspace_id', workspaceId);
-      await supabase.from('agent_run_events').delete().eq('workspace_id', workspaceId);
-      const { data: agentRuns } = await supabase
-        .from('agent_runs')
-        .select('id')
-        .eq('workspace_id', workspaceId);
-      const agentRunIds = agentRuns?.map((row) => row.id) || [];
-      if (agentRunIds.length > 0) {
-        await supabase.from('agent_run_artifacts').delete().in('run_id', agentRunIds);
-        await supabase.from('agent_run_steps').delete().in('run_id', agentRunIds);
-      }
-      await supabase.from('agent_runs').delete().eq('workspace_id', workspaceId);
-      await supabase.from('email_import_progress').delete().eq('workspace_id', workspaceId);
-
-      // Step 6: Wipe customers
-      setNukeStep('Clearing customers…');
-      await supabase.from('customers').delete().eq('workspace_id', workspaceId);
-
-      // Step 7: Reset onboarding state
-      setNukeStep('Resetting onboarding state…');
-      await supabase
-        .from('users')
-        .update({
-          onboarding_completed: false,
-          onboarding_step: 'welcome',
-        })
-        .eq('id', user.id);
-
-      // Step 8: Clear localStorage
+      // Step 2: Clear local preview + cached onboarding state
+      setNukeStep('Clearing local app state…');
       try {
         Object.keys(localStorage).forEach((key) => {
           if (key.startsWith('bizzybee:')) localStorage.removeItem(key);
