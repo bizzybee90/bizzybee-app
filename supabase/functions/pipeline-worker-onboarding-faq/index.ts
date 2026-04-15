@@ -473,12 +473,15 @@ async function processJob(
     });
 
     try {
-      const { candidates } = await loadRunArtifact<{ candidates: FaqCandidate[] }>(
-        supabase,
-        run.id,
-        run.workspace_id,
-        'faq_candidates_raw',
-      );
+      // generate_candidates writes { faqs, batchCount } via extractFaqCandidatesFromPages
+      // (onboarding-faq-engine.ts:108). Previously this step destructured { candidates }
+      // which silently gave undefined and threw "Cannot read properties of undefined
+      // (reading 'filter')" inside dedupeFaqCandidatesAgainstQuestions. Read `faqs`.
+      const artifact = await loadRunArtifact<{
+        faqs?: FaqCandidate[];
+        candidates?: FaqCandidate[];
+      }>(supabase, run.id, run.workspace_id, 'faq_candidates_raw');
+      const candidates = artifact.faqs ?? artifact.candidates ?? [];
       const existingQuestions = await loadExistingFaqQuestions(supabase, run.workspace_id);
       const deduped = dedupeFaqCandidatesAgainstQuestions(candidates, existingQuestions);
 
@@ -487,7 +490,7 @@ async function processJob(
         workspaceId: run.workspace_id,
         artifactType: 'faq_candidate_batch',
         artifactKey: 'faq_candidates_deduped',
-        content: { candidates: deduped },
+        content: { faqs: deduped, candidates: deduped },
         stepId: step.id,
       });
 
@@ -807,7 +810,13 @@ Deno.serve(async (req) => {
           attempt: Number(record.message?.attempt || 0),
           error: message,
         });
-        if (record.read_ct >= MAX_ATTEMPTS) {
+        // Use resolveQueueAttempt which reads the payload `attempt` counter.
+        // record.read_ct is the PGMQ delivery count and resets to 1 whenever
+        // requeueStepJob archives the old msg and enqueues a fresh one — so
+        // using read_ct here creates an infinite requeue loop for dead runs
+        // (observed 2026-04-15: 57 messages with attempt=14-21 but read_ct=0
+        // because the deadletter branch was never reached).
+        if (resolveQueueAttempt(record) >= MAX_ATTEMPTS) {
           await deadletterStepJob(supabase, {
             queueName: QUEUE_NAME,
             workflowKey: 'faq_generation',

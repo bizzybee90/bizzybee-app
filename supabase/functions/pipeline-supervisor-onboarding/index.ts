@@ -17,8 +17,12 @@ import {
   recordRunEvent,
   type OnboardingSupervisorJob,
 } from '../_shared/onboarding.ts';
-import { deadletterStepJob, requeueStepJob } from '../_shared/onboarding-worker.ts';
-import { loadRunRecord } from '../_shared/onboarding-worker.ts';
+import {
+  deadletterStepJob,
+  loadRunRecord,
+  requeueStepJob,
+  resolveQueueAttempt,
+} from '../_shared/onboarding-worker.ts';
 import { captureEdgeException } from '../_shared/sentry.ts';
 
 const QUEUE_NAME = ONBOARDING_SUPERVISOR_QUEUE;
@@ -231,7 +235,10 @@ Deno.serve(async (req) => {
         processed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (record.read_ct >= MAX_ATTEMPTS) {
+        // record.read_ct resets on every requeueStepJob. Use resolveQueueAttempt
+        // which reads the payload-level attempt counter across requeues.
+        const attempt = resolveQueueAttempt(record);
+        if (attempt >= MAX_ATTEMPTS) {
           await captureEdgeException({
             functionName: 'pipeline-supervisor-onboarding',
             error,
@@ -242,7 +249,7 @@ Deno.serve(async (req) => {
             },
             extra: {
               run_id: record.message.run_id,
-              attempts: record.read_ct,
+              attempts: attempt,
               deadlettered: true,
             },
           });

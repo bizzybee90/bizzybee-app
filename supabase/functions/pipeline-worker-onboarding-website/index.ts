@@ -105,7 +105,9 @@ Deno.serve(async (req) => {
           attempt: Number(record.message?.attempt || 0),
           error: message,
         });
-        if (record.read_ct >= MAX_ATTEMPTS) {
+        // record.read_ct resets on every requeueStepJob. Use resolveQueueAttempt
+        // which reads the payload-level attempt counter across requeues.
+        if (resolveQueueAttempt(record) >= MAX_ATTEMPTS) {
           await deadletterStepJob(supabase, {
             queueName: QUEUE_NAME,
             workflowKey: 'own_website_scrape',
