@@ -1,4 +1,4 @@
-export type VoiceScenarioId = 'new_enquiry' | 'quote_request' | 'booking_change';
+export type VoiceScenarioId = 'new_enquiry' | 'quote_request' | 'booking_change' | 'complaint';
 
 export interface VoiceExperienceDraft {
   selectedVoiceId: string;

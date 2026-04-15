@@ -63,7 +63,14 @@ describe('VoiceExperienceStep', () => {
     expect(
       screen.getByText('warm · reassuring · professional', { selector: 'p' }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/BizzyBee would answer as Jessica/i)).toBeInTheDocument();
+    // Reply is now an actual receptionist reply, not a narrative about the reply.
+    // Look for a phrase that only appears in the new_enquiry reply body.
+    expect(
+      screen.getByText(/If you share a postcode I can confirm we cover the area/i),
+    ).toBeInTheDocument();
+    // "What this unlocks" is now a concrete checklist, not a generic paragraph.
+    expect(screen.getByText(/Custom rules/i)).toBeInTheDocument();
+    expect(screen.getByText(/Escalation triggers/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^warm$/i }));
     await waitFor(() => {
@@ -72,9 +79,14 @@ describe('VoiceExperienceStep', () => {
 
     await user.click(screen.getByRole('button', { name: /quote request/i }));
     await waitFor(() => {
-      expect(
-        screen.getByText(/Could you give me a rough price for the job\?/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/How much would it be for a regular clean/i)).toBeInTheDocument();
+    });
+
+    // Complaint scenario shows the guard-rail demo note (no refund commitment).
+    await user.click(screen.getByRole('button', { name: /complaint/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Guard-rail demo/i)).toBeInTheDocument();
+      expect(screen.getByText(/I can't commit to a refund on the call/i)).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: /Select Chris voice/i }));

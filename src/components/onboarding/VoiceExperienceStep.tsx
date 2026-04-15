@@ -29,20 +29,26 @@ const SCENARIOS: Array<{
   {
     id: 'new_enquiry',
     label: 'New enquiry',
-    caller: 'Hi, I found you on Google and wanted to check if you can help.',
-    intent: 'A first-time customer asking for next steps.',
+    caller: 'Hi, I found you on Google — what areas do you cover?',
+    intent: 'A first-time caller checking if you can help.',
   },
   {
     id: 'quote_request',
     label: 'Quote request',
-    caller: 'Could you give me a rough price for the job?',
-    intent: 'A customer wants a fast, clear quotation.',
+    caller: 'How much would it be for a regular clean?',
+    intent: 'A caller wants a fast, grounded price.',
   },
   {
     id: 'booking_change',
     label: 'Booking change',
-    caller: 'I need to move my appointment to later this week.',
-    intent: 'A customer needs a friendly reschedule.',
+    caller: 'Can I move my appointment to later this week?',
+    intent: 'A caller needs a friendly reschedule.',
+  },
+  {
+    id: 'complaint',
+    label: 'Complaint',
+    caller: 'The job on Tuesday wasn’t up to standard — can I get my money back?',
+    intent: 'Shows a guard-railed escalation instead of a refund commitment.',
   },
 ];
 
@@ -112,9 +118,10 @@ function shortenSnippet(text: string, maxLength = 120) {
 
 function pickRelevantFaq(scenarioId: VoiceScenarioId, faqs: WebsiteFaq[]) {
   const keywordMap: Record<VoiceScenarioId, string[]> = {
-    quote_request: ['price', 'pricing', 'quote', 'cost', 'estimate'],
-    booking_change: ['book', 'booking', 'appointment', 'reschedule', 'availability'],
-    new_enquiry: ['service', 'cover', 'offer', 'area', 'location', 'help'],
+    quote_request: ['price', 'pricing', 'quote', 'cost', 'estimate', 'much'],
+    booking_change: ['book', 'booking', 'appointment', 'reschedule', 'cancel', 'skip'],
+    new_enquiry: ['service', 'cover', 'offer', 'area', 'home', 'difference', 'weekly'],
+    complaint: ['guarantee', 'refund', 'complaint', 'unhappy', 'sorry', 'redo'],
   };
 
   const keywords = keywordMap[scenarioId];
@@ -128,54 +135,109 @@ function pickRelevantFaq(scenarioId: VoiceScenarioId, faqs: WebsiteFaq[]) {
   );
 }
 
+/**
+ * A reply segment: either plain text or a phrase grounded in a specific website FAQ.
+ * Rendering: cited segments get an inline highlight + hoverable source.
+ */
+export type ReplySegment =
+  | { type: 'text'; content: string }
+  | { type: 'cited'; content: string; faqQuestion: string };
+
+/**
+ * Build a natural receptionist reply for the selected scenario. The reply is
+ * the actual spoken answer — not a narrative about what the reply would be.
+ * Optionally includes a grounded phrase from a matched website FAQ, returned
+ * as a separate segment so the UI can highlight it inline.
+ */
 function buildScenarioReply(params: {
   scenarioId: VoiceScenarioId;
   companyName: string;
-  selectedVoiceName: string;
   receptionistName: string;
-  toneDescriptors: string[];
-  formalityScore: number;
-  greeting: string;
-  signoff: string;
   websiteFaq: WebsiteFaq | null;
-}) {
-  const {
-    scenarioId,
-    companyName,
-    selectedVoiceName,
-    receptionistName,
-    toneDescriptors,
-    formalityScore,
-    greeting,
-    signoff,
-    websiteFaq,
-  } = params;
-  const toneSummary = buildToneSummary(toneDescriptors, formalityScore);
-  const greetingLine = buildGreeting(companyName, greeting, receptionistName);
-  const signoffLine = buildSignoff(signoff);
-  const styleLine =
-    formalityScore >= 8
-      ? 'polished and reassuring'
-      : formalityScore <= 4
-        ? 'friendly and relaxed'
-        : 'calm and professional';
-  const knowledgeCue = websiteFaq ? shortenSnippet(websiteFaq.answer) : null;
+}): ReplySegment[] {
+  const { scenarioId, companyName, receptionistName, websiteFaq } = params;
+  const coName = companyName || 'your business';
+  const name = receptionistName || 'your receptionist';
+  const hasFaq = Boolean(websiteFaq?.answer?.trim());
+  const cue = hasFaq ? firstSentence(websiteFaq!.answer).replace(/[.!?]+$/u, '') : '';
+
+  const greet = (tail: string): ReplySegment[] => [
+    { type: 'text', content: `Hi, thanks for calling ${coName} — ${name} speaking. ${tail}` },
+  ];
 
   switch (scenarioId) {
     case 'quote_request':
-      return knowledgeCue
-        ? `${greetingLine} From the website, BizzyBee already knows that ${knowledgeCue.toLowerCase()} It would answer in a ${styleLine} way, give the customer a grounded starting point, and then gather the details needed for a proper quote. ${signoffLine}`
-        : `${greetingLine} I’d be happy to help with that quote. BizzyBee would keep the tone ${styleLine}, gather the key details, and move the customer toward a clear next step. ${signoffLine}`;
+      if (hasFaq) {
+        return [
+          { type: 'text', content: `Hi, thanks for calling ${coName} — ${name} speaking. ` },
+          { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
+          {
+            type: 'text',
+            content:
+              '. If you can share the postcode and roughly how many windows, I can firm that up for you. Thanks, speak soon.',
+          },
+        ];
+      }
+      return greet(
+        'Happy to help with a price. Could I take the postcode and roughly how many windows so I can give you a proper quote? Thanks, speak soon.',
+      );
+
     case 'booking_change':
-      return knowledgeCue
-        ? `${greetingLine} BizzyBee can already lean on the website detail that ${knowledgeCue.toLowerCase()} It would confirm the change, keep the caller at ease, and make the handoff feel effortless in a ${toneSummary} style. ${signoffLine}`
-        : `${greetingLine} No problem at all. BizzyBee would confirm the change, keep the caller at ease, and make the handoff feel effortless in a ${toneSummary} style. ${signoffLine}`;
+      if (hasFaq) {
+        return [
+          {
+            type: 'text',
+            content: `Hi, thanks for calling ${coName} — ${name} speaking. No problem at all. Just to set expectations, `,
+          },
+          { type: 'cited', content: cue.toLowerCase(), faqQuestion: websiteFaq!.question },
+          {
+            type: 'text',
+            content:
+              ". What day would work better for you? I'll make the note and confirm by text. Thanks, speak soon.",
+          },
+        ];
+      }
+      return greet(
+        "No problem at all. What day would work better for you? I'll make the note and confirm by text. Thanks, speak soon.",
+      );
+
+    case 'complaint':
+      // Deliberately demonstrates a guard-railed response: no refund committed
+      // on the call, warm acknowledgement, clear escalation path. This is the
+      // pattern a customer rule like "never offer refunds over the phone" would
+      // enforce.
+      return [
+        {
+          type: 'text',
+          content: `Hi, thanks for calling ${coName} — ${name} speaking. I'm really sorry Tuesday wasn't right. That's not the standard we want. I can't commit to a refund on the call, but I'll log this for the owner to review today and we'll call you back within a few hours — would that be alright? Thanks for letting us know.`,
+        },
+      ];
+
     case 'new_enquiry':
     default:
-      return knowledgeCue
-        ? `${greetingLine} Thanks for reaching out. BizzyBee already knows from the website that ${knowledgeCue.toLowerCase()} It would answer as ${selectedVoiceName}, keep things ${styleLine}, and guide the caller toward the right service or booking step. ${signoffLine}`
-        : `${greetingLine} Thanks for reaching out. BizzyBee would answer as ${selectedVoiceName}, keep things ${styleLine}, and guide the caller toward the right service or booking step. ${signoffLine}`;
+      if (hasFaq) {
+        return [
+          {
+            type: 'text',
+            content: `Hi, thanks for calling ${coName} — ${name} speaking. Happy to help. `,
+          },
+          { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
+          {
+            type: 'text',
+            content:
+              '. If you share a postcode I can confirm we cover the area and walk you through how it works. Thanks, speak soon.',
+          },
+        ];
+      }
+      return greet(
+        'Happy to help. If you share a postcode I can confirm we cover the area and walk you through how it works. Thanks, speak soon.',
+      );
   }
+}
+
+/** Collapse a ReplySegment[] into a plain string (used for voice-sample previews). */
+function replyToPlainText(segments: ReplySegment[]): string {
+  return segments.map((seg) => seg.content).join('');
 }
 
 export function VoiceExperienceStep({
@@ -228,17 +290,13 @@ export function VoiceExperienceStep({
     };
   }, [workspaceId]);
 
-  const previewReply = buildScenarioReply({
+  const previewReplySegments = buildScenarioReply({
     scenarioId: selectedScenario.id,
     companyName: businessContext.companyName,
-    selectedVoiceName: value.selectedVoiceName,
-    receptionistName: value.receptionistName,
-    toneDescriptors: value.toneDescriptors,
-    formalityScore: value.formalityScore,
-    greeting: value.greeting,
-    signoff: value.signoff,
+    receptionistName: value.receptionistName || value.selectedVoiceName,
     websiteFaq: scenarioFaq,
   });
+  const previewReplyText = replyToPlainText(previewReplySegments);
   const greetingPreview = useMemo(
     () => buildGreeting(businessContext.companyName, value.greeting, value.receptionistName),
     [businessContext.companyName, value.greeting, value.receptionistName],
@@ -317,7 +375,7 @@ export function VoiceExperienceStep({
           <CardContent>
             <VoiceSelector
               selectedVoiceId={value.selectedVoiceId}
-              previewText={previewReply}
+              previewText={previewReplyText}
               helperText="Instant samples play in your browser here so preview mode still feels alive. Live calls use the BizzyBee voice profile you choose."
               onSelect={(voiceId, voiceName) => {
                 const shouldSyncReceptionistName =
@@ -487,7 +545,7 @@ export function VoiceExperienceStep({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {SCENARIOS.map((scenario) => {
                 const active = scenario.id === value.scenarioId;
                 return (
@@ -527,28 +585,43 @@ export function VoiceExperienceStep({
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-2xl bg-muted/40 p-4">
+              <div className="space-y-3 rounded-2xl bg-muted/40 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    BizzyBee replies
+                    {value.receptionistName || value.selectedVoiceName} replies
                   </p>
                   <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
                     <Volume2 className="h-3.5 w-3.5" />
                     Spoken preview ready
                   </div>
                 </div>
-                <p className="text-sm leading-6 text-foreground">{previewReply}</p>
-                {scenarioFaq ? (
-                  <div className="rounded-2xl border border-primary/15 bg-background/90 p-3">
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                      Grounded in fresh website knowledge
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-foreground">
-                      {scenarioFaq.question}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {shortenSnippet(scenarioFaq.answer, 150)}
-                    </p>
+                <p className="text-sm leading-6 text-foreground">
+                  {previewReplySegments.map((seg, i) =>
+                    seg.type === 'cited' ? (
+                      <span
+                        key={i}
+                        title={`Grounded in website FAQ: ${seg.faqQuestion}`}
+                        className="rounded-sm bg-primary/10 px-1 text-foreground underline decoration-primary/50 decoration-dotted underline-offset-4"
+                      >
+                        {seg.content}
+                      </span>
+                    ) : (
+                      <span key={i}>{seg.content}</span>
+                    ),
+                  )}
+                </p>
+                {scenarioFaq && previewReplySegments.some((seg) => seg.type === 'cited') ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-primary/80">Citation:</span>{' '}
+                    {scenarioFaq.question}
+                  </p>
+                ) : null}
+                {selectedScenario.id === 'complaint' ? (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-100">
+                    <span className="font-semibold">Guard-rail demo:</span> no refund committed on
+                    the call. In Settings → Rules you can lock this permanently (e.g. “Never offer
+                    refunds over the phone”), add escalation triggers, and route complaints to a
+                    named human.
                   </div>
                 ) : null}
               </div>
@@ -577,16 +650,73 @@ export function VoiceExperienceStep({
               </div>
 
               <div className="rounded-2xl border border-dashed border-primary/25 bg-primary/5 p-4">
-                <p className="text-sm font-medium text-foreground">What this unlocks</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  BizzyBee will use this voice profile for receptionist-style replies and future
-                  phone setup, so the assistant feels consistent from the very first conversation.
+                <p className="text-sm font-medium text-foreground">
+                  What you can layer on top of this voice
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Website knowledge makes the first reply feel grounded. Inbox learning will make
-                  the follow-up details even sharper once email is connected.
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The voice profile is the foundation. After onboarding you can shape behaviour
+                  without rewriting anything:
                 </p>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <ul className="mt-3 space-y-2 text-sm">
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">✏️</span>
+                    <span>
+                      <span className="font-medium text-foreground">Custom rules</span>{' '}
+                      <span className="text-muted-foreground">
+                        — e.g. “Never offer refunds over the phone”, “Don't quote outside the
+                        20-mile radius”, “Always ask about ground-floor access for ladders”.
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">📝</span>
+                    <span>
+                      <span className="font-medium text-foreground">Your own FAQs</span>{' '}
+                      <span className="text-muted-foreground">
+                        — edit the {faqCount} we auto-extracted, add your own, mark the ones the
+                        assistant should always lean on first.
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">🚨</span>
+                    <span>
+                      <span className="font-medium text-foreground">Escalation triggers</span>{' '}
+                      <span className="text-muted-foreground">
+                        — mentions of “complaint”, “refund”, “leak”, “damage” flag to you instead of
+                        auto-answering.
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">🕐</span>
+                    <span>
+                      <span className="font-medium text-foreground">Business hours</span>{' '}
+                      <span className="text-muted-foreground">
+                        — out-of-hours callers get a different greeting or straight voicemail.
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">💷</span>
+                    <span>
+                      <span className="font-medium text-foreground">Pricing guard rails</span>{' '}
+                      <span className="text-muted-foreground">
+                        — “Never quote below £19”, “Commercial quotes always get a human call-back”.
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span aria-hidden="true">🎤</span>
+                    <span>
+                      <span className="font-medium text-foreground">Test mode</span>{' '}
+                      <span className="text-muted-foreground">
+                        — dry-run real phone and inbox flows in a sandbox before going live.
+                      </span>
+                    </span>
+                  </li>
+                </ul>
+                <p className="mt-3 text-xs text-muted-foreground">
                   Sign-off preview:{' '}
                   <span className="font-medium text-foreground">{signoffPreview}</span>
                 </p>
