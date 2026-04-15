@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/lib/logger';
+import { disablePreviewMode, setOnboardingHandoff } from '@/lib/previewMode';
+import { WebsitePipelineProgress } from './WebsitePipelineProgress';
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,6 +23,7 @@ import { BizzyBeeLogo } from '@/components/branding/BizzyBeeLogo';
 
 interface KnowledgeBaseStepProps {
   workspaceId: string;
+  forceFresh?: boolean;
   businessContext: {
     companyName: string;
     businessType: string;
@@ -38,8 +41,68 @@ interface ExistingKnowledge {
   scrapedAt: string | null;
 }
 
+function formatRelativeFreshness(timestamp: string | null) {
+  if (!timestamp) return null;
+
+  const diffMs = Date.now() - new Date(timestamp).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'just now';
+
+  const diffSeconds = Math.round(diffMs / 1000);
+  if (diffSeconds < 60) {
+    return `${diffSeconds}s ago`;
+  }
+
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  return `${diffHours}h ago`;
+}
+
+function buildPreviewKnowledge(websiteUrl: string, companyName: string): ExistingKnowledge {
+  const host = websiteUrl
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/.*$/, '');
+  const hostLength = host.length || companyName.length || 12;
+  const pagesScraped = Math.max(6, Math.min(18, Math.round(hostLength * 0.75)));
+  const faqCount = Math.max(9, Math.min(28, pagesScraped + 6));
+
+  return {
+    faqCount,
+    pagesScraped,
+    scrapedAt: new Date().toISOString(),
+  };
+}
+
+function buildRealTestingPath(websiteUrl?: string) {
+  const params = new URLSearchParams({ reset: 'true', preview: '0' });
+
+  if (websiteUrl?.trim()) {
+    params.set('website', websiteUrl.trim());
+  }
+
+  return `/onboarding?${params.toString()}`;
+}
+
+function buildRealTestingAuthPath(websiteUrl?: string) {
+  const params = new URLSearchParams({ preview: '0' });
+  const nextPath = buildRealTestingPath(websiteUrl);
+
+  params.set('next', nextPath);
+
+  if (websiteUrl?.trim()) {
+    params.set('website', websiteUrl.trim());
+  }
+
+  return `/auth?${params.toString()}`;
+}
+
 export function KnowledgeBaseStep({
   workspaceId,
+  forceFresh = false,
   businessContext,
   onComplete,
   onBack,
@@ -51,17 +114,16 @@ export function KnowledgeBaseStep({
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [existingKnowledge, setExistingKnowledge] = useState<ExistingKnowledge | null>(null);
 
-  // Polling state
-  const [pollingFaqCount, setPollingFaqCount] = useState(0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const pollingStartRef = useRef<number | null>(null);
-  const lastCountRef = useRef<number>(-1);
-  const stableCountRef = useRef<number>(0);
-
   // Check if we already have website knowledge
   useEffect(() => {
     const checkExisting = async () => {
       if (isPreview) {
+        setStatus('idle');
+        return;
+      }
+
+      if (forceFresh) {
+        setExistingKnowledge(null);
         setStatus('idle');
         return;
       }
@@ -123,141 +185,34 @@ export function KnowledgeBaseStep({
     };
 
     checkExisting();
-  }, [workspaceId, businessContext.websiteUrl, isPreview]);
+  }, [workspaceId, businessContext.websiteUrl, isPreview, forceFresh]);
 
-  // Polling logic: watch faq_database directly while status === 'polling'
   useEffect(() => {
-    if (status !== 'polling' || isPreview) return;
+    if (status !== 'polling' || isPreview || jobDbId) return;
 
-    pollingStartRef.current = Date.now();
-    lastCountRef.current = -1;
-    stableCountRef.current = 0;
+    let cancelled = false;
 
-    const MAX_POLL_MS = 5 * 60 * 1000; // 5 minutes
-    const POLL_INTERVAL_MS = 8000;
-    const MIN_STABLE_COUNT = 5;
-    const STABLE_TICKS_REQUIRED = 2;
+    const resolveLatestJob = async () => {
+      const { data, error } = await supabase
+        .from('scraping_jobs')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('job_type', 'own_website_scrape')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    // Elapsed timer
-    const timerInterval = setInterval(() => {
-      if (pollingStartRef.current) {
-        setElapsedSeconds(Math.floor((Date.now() - pollingStartRef.current) / 1000));
-      }
-    }, 1000);
-
-    const markComplete = async (count: number) => {
-      // Derive pages scraped from distinct generation_source values (n8n stores page URL there)
-      let pagesScraped = 0;
-      try {
-        // @ts-expect-error - Supabase types cause deep instantiation errors
-        const { data: pageRows } = await supabase
-          .from('faq_database')
-          .select('generation_source')
-          .eq('workspace_id', workspaceId)
-          .eq('is_own_content', true)
-          .not('generation_source', 'is', null);
-        const uniquePages = new Set(
-          (pageRows as Array<{ generation_source: string }> | null)?.map(
-            (r) => r.generation_source,
-          ) ?? [],
-        );
-        pagesScraped = uniquePages.size;
-      } catch (err) {
-        logger.warn('Could not count pages', { error: String(err) });
-      }
-
-      // Update scraping_jobs row in DB so re-entry detection works
-      // Fix D: fall back to querying the most recent job if jobDbId isn't set (e.g. after remount)
-      let resolvedJobId = jobDbId;
-      if (!resolvedJobId) {
-        try {
-          const { data: latestJob } = await supabase
-            .from('scraping_jobs')
-            .select('id')
-            .eq('workspace_id', workspaceId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          resolvedJobId = latestJob?.id || null;
-        } catch (err) {
-          logger.warn('Could not find latest scraping_jobs row', { error: String(err) });
-        }
-      }
-      if (resolvedJobId) {
-        try {
-          await supabase
-            .from('scraping_jobs')
-            .update({
-              status: 'completed',
-              faqs_found: count,
-              pages_processed: pagesScraped,
-              completed_at: new Date().toISOString(),
-            })
-            .eq('id', resolvedJobId);
-        } catch (err) {
-          logger.warn('Could not update scraping_jobs', { error: String(err) });
-        }
-      }
-
-      setExistingKnowledge({
-        faqCount: count,
-        pagesScraped,
-        scrapedAt: new Date().toISOString(),
-      });
-      setStatus('already_done');
-    };
-
-    const poll = async () => {
-      const elapsed = pollingStartRef.current ? Date.now() - pollingStartRef.current : 0;
-
-      try {
-        // @ts-expect-error - Supabase types cause deep instantiation errors
-        const { count } = await supabase
-          .from('faq_database')
-          .select('id', { count: 'exact', head: true })
-          .eq('workspace_id', workspaceId)
-          .eq('is_own_content', true);
-
-        const currentCount = count || 0;
-        setPollingFaqCount(currentCount);
-
-        // Check stability
-        if (currentCount >= MIN_STABLE_COUNT && currentCount === lastCountRef.current) {
-          stableCountRef.current += 1;
-          if (stableCountRef.current >= STABLE_TICKS_REQUIRED) {
-            clearInterval(pollInterval);
-            clearInterval(timerInterval);
-            await markComplete(currentCount);
-            return;
-          }
-        } else {
-          stableCountRef.current = 0;
-        }
-        lastCountRef.current = currentCount;
-
-        // 5-minute timeout
-        if (elapsed >= MAX_POLL_MS) {
-          clearInterval(pollInterval);
-          clearInterval(timerInterval);
-          if (currentCount > 0) {
-            await markComplete(currentCount);
-          } else {
-            setError('The scrape timed out. You can add FAQs manually later or try again.');
-            setStatus('error');
-          }
-        }
-      } catch (err) {
-        logger.error('Polling error', err);
+      if (!cancelled && !error && data?.id) {
+        setJobDbId(data.id);
       }
     };
 
-    // First poll immediately, then every 8s
-    poll();
-    const pollInterval = setInterval(poll, POLL_INTERVAL_MS);
+    void resolveLatestJob();
+    const interval = window.setInterval(resolveLatestJob, 1200);
 
     return () => {
-      clearInterval(pollInterval);
-      clearInterval(timerInterval);
+      cancelled = true;
+      window.clearInterval(interval);
     };
   }, [status, workspaceId, jobDbId, isPreview]);
 
@@ -265,13 +220,27 @@ export function KnowledgeBaseStep({
     if (!businessContext.websiteUrl) return;
 
     if (isPreview) {
-      toast.info('Website scraping is not available in preview mode');
+      setStatus('starting');
+      setError(null);
+      setPollingFaqCount(0);
+
+      window.setTimeout(() => {
+        const previewKnowledge = buildPreviewKnowledge(
+          businessContext.websiteUrl ?? '',
+          businessContext.companyName ?? '',
+        );
+        setExistingKnowledge(previewKnowledge);
+        setElapsedSeconds(18);
+        setStatus('already_done');
+        toast.success('Preview mode built a sample knowledge base from your website.');
+      }, 900);
       return;
     }
 
     setStatus('starting');
     setError(null);
-    setPollingFaqCount(0);
+    setExistingKnowledge(null);
+    setJobDbId(null);
 
     try {
       const {
@@ -371,11 +340,28 @@ export function KnowledgeBaseStep({
     onComplete({ industryFaqs: 0, websiteFaqs: existingKnowledge?.faqCount || 0 });
   };
 
-  const elapsedLabel = (() => {
-    const mins = Math.floor(elapsedSeconds / 60);
-    const secs = elapsedSeconds % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-  })();
+  const handleSwitchToRealTesting = async () => {
+    setOnboardingHandoff({
+      step: 'knowledge',
+      businessContext: {
+        companyName: businessContext.companyName,
+        businessType: businessContext.businessType,
+        websiteUrl: businessContext.websiteUrl,
+      },
+    });
+
+    disablePreviewMode();
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    window.location.assign(
+      session
+        ? buildRealTestingPath(businessContext.websiteUrl)
+        : buildRealTestingAuthPath(businessContext.websiteUrl),
+    );
+  };
 
   // ── Checking state ──────────────────────────────────────────────
   if (status === 'checking') {
@@ -393,6 +379,7 @@ export function KnowledgeBaseStep({
   if (status === 'already_done' && existingKnowledge) {
     const pagesCount = existingKnowledge.pagesScraped || 0;
     const faqCount = existingKnowledge.faqCount || 0;
+    const freshnessLabel = formatRelativeFreshness(existingKnowledge.scrapedAt);
     const websiteDomain =
       businessContext.websiteUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || '';
     const faviconUrl = businessContext.websiteUrl
@@ -418,19 +405,56 @@ export function KnowledgeBaseStep({
         </div>
 
         <div className="text-center space-y-1">
-          <h2 className="text-xl font-semibold">Knowledge Base Ready</h2>
+          {isPreview ? (
+            <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
+              Demo preview
+            </div>
+          ) : null}
+          <h2 className="text-xl font-semibold">
+            {isPreview ? 'Sample knowledge preview ready' : 'Knowledge Base Ready'}
+          </h2>
           <p className="text-sm text-muted-foreground">{businessContext.websiteUrl}</p>
+          {isPreview ? (
+            <p className="text-xs text-muted-foreground">
+              These are sample results so you can feel the setup quickly. Use real scrape testing to
+              verify the live website pipeline.
+            </p>
+          ) : freshnessLabel ? (
+            <div className="mx-auto inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-emerald-700">
+              Live scrape completed {freshnessLabel}
+            </div>
+          ) : null}
         </div>
+
+        {!isPreview ? (
+          <div className="rounded-2xl border border-border/70 bg-muted/30 p-4 text-left">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Fresh knowledge signal
+            </p>
+            <p className="mt-2 text-sm font-medium text-foreground">
+              Grounded from {pagesCount} live pages on{' '}
+              {websiteDomain || businessContext.companyName}.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This run pulled a fresh site map, downloaded page content, and extracted {faqCount}{' '}
+              grounded FAQs before this screen unlocked.
+            </p>
+          </div>
+        ) : null}
 
         {/* Results summary */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card border rounded-xl p-3 text-center">
             <p className="text-2xl font-bold text-primary">{pagesCount || '—'}</p>
-            <p className="text-xs text-muted-foreground">Pages Scraped</p>
+            <p className="text-xs text-muted-foreground">
+              {isPreview ? 'Pages Scraped' : 'Live Pages Scraped'}
+            </p>
           </div>
           <div className="bg-card border rounded-xl p-3 text-center">
             <p className="text-2xl font-bold text-primary">{faqCount}</p>
-            <p className="text-xs text-muted-foreground">FAQs Extracted</p>
+            <p className="text-xs text-muted-foreground">
+              {isPreview ? 'FAQs Extracted' : 'Grounded FAQs Extracted'}
+            </p>
           </div>
           <div className="bg-card border rounded-xl p-3 text-center">
             <CheckCircle2 className="h-6 w-6 text-primary mx-auto mb-1" />
@@ -511,6 +535,11 @@ export function KnowledgeBaseStep({
           <Button variant="outline" onClick={onBack} className="flex-1">
             Back
           </Button>
+          {isPreview ? (
+            <Button variant="outline" onClick={handleSwitchToRealTesting} className="flex-1">
+              Use real scrape testing
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -535,7 +564,7 @@ export function KnowledgeBaseStep({
             className="gap-1 text-muted-foreground"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            Re-scrape
+            {isPreview ? 'Rebuild demo' : 'Re-scrape'}
           </Button>
           <Button onClick={handleContinueWithExisting} className="flex-1">
             Continue
@@ -548,65 +577,25 @@ export function KnowledgeBaseStep({
 
   // ── Polling state (n8n running, watching faq_database) ──────────
   if (status === 'polling') {
-    const faqsDetected = pollingFaqCount >= 5;
+    if (!isPreview) {
+      return (
+        <WebsitePipelineProgress
+          workspaceId={workspaceId}
+          jobId={jobDbId}
+          websiteUrl={businessContext.websiteUrl ?? ''}
+          onComplete={(results) =>
+            onComplete({ industryFaqs: 0, websiteFaqs: results.faqsExtracted })
+          }
+          onBack={onBack}
+          onRetry={() => {
+            setError(null);
+            void startScraping();
+          }}
+        />
+      );
+    }
 
-    const stages = [
-      { icon: Search, label: 'Discover Pages' },
-      { icon: Globe, label: 'Scrape Content' },
-      { icon: Sparkles, label: 'Extract Knowledge' },
-    ];
-
-    return (
-      <div className="space-y-5">
-        <div className="text-center space-y-1">
-          <h2 className="text-xl font-semibold">Extracting your website knowledge...</h2>
-          <p className="text-sm text-muted-foreground">{businessContext.websiteUrl}</p>
-        </div>
-
-        {/* Stage rows */}
-        <div className="border rounded-xl overflow-hidden">
-          {stages.map(({ icon: Icon, label }, i) => (
-            <div
-              key={i}
-              className={`flex items-center justify-between px-4 py-2.5 ${i < stages.length - 1 ? 'border-b' : ''}`}
-            >
-              <div className="flex items-center gap-2">
-                <Icon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{label}</span>
-              </div>
-              {faqsDetected ? (
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Live FAQ counter */}
-        <div className="bg-muted/40 border rounded-xl p-4 text-center space-y-1">
-          <p className="text-3xl font-bold text-primary">{pollingFaqCount}</p>
-          <p className="text-sm text-muted-foreground">FAQs found so far</p>
-          {elapsedSeconds > 0 && (
-            <p className="text-xs text-muted-foreground">{elapsedLabel} elapsed</p>
-          )}
-        </div>
-
-        <p className="text-xs text-center text-muted-foreground">
-          This usually takes 1–3 minutes. Feel free to wait or skip for now.
-        </p>
-
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onBack} className="flex-1">
-            <ChevronLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <Button variant="ghost" onClick={handleSkip} className="flex-1 text-muted-foreground">
-            Skip for now
-          </Button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // ── Starting state ──────────────────────────────────────────────
@@ -701,7 +690,9 @@ export function KnowledgeBaseStep({
         <Globe className="h-12 w-12 text-primary mx-auto" />
         <h2 className="text-xl font-semibold">Extract Website Knowledge</h2>
         <p className="text-sm text-muted-foreground">
-          We'll scrape your website to extract FAQs, pricing, and services
+          {isPreview
+            ? 'Demo preview uses sample knowledge so the flow stays fast and free. Use real testing when you want to verify the live scraper.'
+            : "We'll scrape your website to extract FAQs, pricing, and services"}
         </p>
       </div>
 
@@ -720,8 +711,13 @@ export function KnowledgeBaseStep({
         <Button variant="ghost" onClick={handleSkip} className="flex-1 text-muted-foreground">
           Skip this step
         </Button>
+        {isPreview ? (
+          <Button variant="outline" onClick={handleSwitchToRealTesting} className="flex-1">
+            Use real scrape testing
+          </Button>
+        ) : null}
         <Button onClick={() => startScraping()} className="flex-1">
-          Start Scraping
+          {isPreview ? 'Build demo knowledge' : 'Start Scraping'}
         </Button>
       </div>
     </div>

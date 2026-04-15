@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -17,10 +17,11 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
+import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 
 interface WebsitePipelineProgressProps {
   workspaceId: string;
-  jobId: string;
+  jobId?: string | null;
   websiteUrl: string;
   onComplete: (results: { faqsExtracted: number; pagesScraped: number }) => void;
   onBack: () => void;
@@ -28,7 +29,7 @@ interface WebsitePipelineProgressProps {
 }
 
 // Maps to scraping_jobs.status values
-type PipelinePhase = 'pending' | 'scraping' | 'processing' | 'completed' | 'failed';
+type PipelinePhase = 'pending' | 'scraping' | 'processing' | 'extracting' | 'completed' | 'failed';
 
 interface PipelineStats {
   phase: PipelinePhase;
@@ -41,7 +42,33 @@ interface PipelineStats {
   errorMessage: string | null;
 }
 
-type StageStatus = 'pending' | 'in_progress' | 'done' | 'error';
+type WebsiteProgressTrack = {
+  agent_status?: string;
+  current_step?: string | null;
+  job_id?: string | null;
+  job_status?: string | null;
+  started_at?: string | null;
+  updated_at?: string | null;
+  last_heartbeat_at?: string | null;
+  latest_error?: string | null;
+  output_summary?: {
+    website_extract_progress?: {
+      batch_index?: number;
+      batch_count?: number;
+      pages_in_batch?: number;
+      pages_total?: number;
+      candidate_count?: number;
+      total_candidate_count?: number;
+    };
+  };
+  counts?: {
+    pages_found?: number;
+    pages_processed?: number;
+    faqs_found?: number;
+  };
+};
+
+type StageStatus = 'pending' | 'queued' | 'in_progress' | 'done' | 'error';
 
 function StageCard({
   stage,
@@ -64,6 +91,12 @@ function StageCard({
       badgeClass: 'bg-muted text-muted-foreground',
       iconClass: 'text-muted-foreground',
       StatusIcon: Circle,
+    },
+    queued: {
+      badge: 'Queued',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      iconClass: 'text-amber-600',
+      StatusIcon: Loader2,
     },
     in_progress: {
       badge: 'In Progress',
@@ -91,6 +124,7 @@ function StageCard({
     <div
       className={cn(
         'rounded-lg border p-4 transition-all duration-300',
+        status === 'queued' && 'border-amber-200 bg-amber-50/60 shadow-sm',
         status === 'in_progress' && 'border-primary/50 bg-primary/5 shadow-sm',
         status === 'done' && 'border-success/30 bg-success/5',
         status === 'error' && 'border-destructive/30 bg-destructive/5',
@@ -115,7 +149,11 @@ function StageCard({
             {config.badge}
           </span>
           <config.StatusIcon
-            className={cn('h-4 w-4', config.iconClass, status === 'in_progress' && 'animate-spin')}
+            className={cn(
+              'h-4 w-4',
+              config.iconClass,
+              (status === 'in_progress' || status === 'queued') && 'animate-spin',
+            )}
           />
         </div>
       </div>
@@ -186,6 +224,23 @@ export function WebsitePipelineProgress({
   });
 
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [nudgeState, setNudgeState] = useState<{
+    running: boolean;
+    lastRunAt: number | null;
+    error: string | null;
+  }>({
+    running: false,
+    lastRunAt: null,
+    error: null,
+  });
+  const lastNudgeRef = useRef(0);
+  const { data: onboardingProgress, refresh: refreshOnboardingProgress } = useOnboardingProgress(
+    workspaceId,
+    Boolean(workspaceId),
+  );
+  const websiteTrack = onboardingProgress?.tracks.website as WebsiteProgressTrack | undefined;
+  const extractProgress = websiteTrack?.output_summary?.website_extract_progress;
 
   const handleDownloadPDF = async () => {
     setDownloadingPdf(true);
@@ -207,18 +262,20 @@ export function WebsitePipelineProgress({
     if (!jobId) return;
 
     const fetchStats = async () => {
-      const { data } = await supabase.from('scraping_jobs').select('*').eq('id', jobId).single();
+      const { data } = await supabase.from('scraping_jobs').select('*').eq('id', jobId).limit(1);
 
-      if (data) {
+      const row = data?.[0];
+
+      if (row) {
         setStats({
-          phase: data.status as PipelinePhase,
-          startedAt: (data.started_at as string) ?? null,
-          apifyRunId: (data.apify_run_id as string) ?? null,
-          apifyDatasetId: (data.apify_dataset_id as string) ?? null,
-          pagesFound: data.total_pages_found || 0,
-          pagesScraped: data.pages_processed || 0,
-          faqsExtracted: data.faqs_found || 0,
-          errorMessage: data.error_message || null,
+          phase: row.status as PipelinePhase,
+          startedAt: (row.started_at as string) ?? null,
+          apifyRunId: (row.apify_run_id as string) ?? null,
+          apifyDatasetId: (row.apify_dataset_id as string) ?? null,
+          pagesFound: row.total_pages_found || 0,
+          pagesScraped: row.pages_processed || 0,
+          faqsExtracted: row.faqs_found || 0,
+          errorMessage: row.error_message || null,
         });
       }
     };
@@ -250,13 +307,188 @@ export function WebsitePipelineProgress({
     };
   }, [jobId]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const effectiveStats = useMemo<PipelineStats>(() => {
+    const counts = websiteTrack?.counts;
+
+    let phase: PipelinePhase = stats.phase;
+    if (websiteTrack?.latest_error) {
+      phase = 'failed';
+    } else if (
+      websiteTrack?.job_status === 'completed' ||
+      websiteTrack?.agent_status === 'completed'
+    ) {
+      phase = 'completed';
+    } else if (websiteTrack?.current_step === 'website:fetch') {
+      phase = 'scraping';
+    } else if (websiteTrack?.current_step === 'website:extract') {
+      phase = 'extracting';
+    } else if (websiteTrack?.current_step === 'website:persist') {
+      phase = 'processing';
+    }
+
+    return {
+      phase,
+      startedAt: websiteTrack?.started_at ?? stats.startedAt,
+      apifyRunId: stats.apifyRunId,
+      apifyDatasetId: stats.apifyDatasetId,
+      pagesFound: typeof counts?.pages_found === 'number' ? counts.pages_found : stats.pagesFound,
+      pagesScraped:
+        typeof counts?.pages_processed === 'number' ? counts.pages_processed : stats.pagesScraped,
+      faqsExtracted:
+        typeof counts?.faqs_found === 'number' ? counts.faqs_found : stats.faqsExtracted,
+      errorMessage: websiteTrack?.latest_error ?? stats.errorMessage,
+    };
+  }, [stats, websiteTrack]);
+
+  const heartbeatAgeMs = useMemo(() => {
+    const raw = websiteTrack?.last_heartbeat_at ?? websiteTrack?.updated_at ?? null;
+    if (!raw) return null;
+    const parsed = new Date(raw).getTime();
+    if (Number.isNaN(parsed)) return null;
+    return Math.max(0, nowTick - parsed);
+  }, [nowTick, websiteTrack?.last_heartbeat_at, websiteTrack?.updated_at]);
+
+  const formatAge = (ageMs: number | null) => {
+    if (ageMs == null) return null;
+    const totalSeconds = Math.floor(ageMs / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  };
+
+  const currentStepLabel = useMemo(() => {
+    switch (websiteTrack?.current_step) {
+      case 'website:fetch':
+        return 'Crawler is fetching and mapping your site';
+      case 'website:extract':
+        return 'AI is extracting grounded FAQs and business facts';
+      case 'website:persist':
+        return 'Saving the new website knowledge into BizzyBee';
+      default:
+        if (
+          websiteTrack?.job_status === 'completed' ||
+          websiteTrack?.agent_status === 'completed' ||
+          websiteTrack?.agent_status === 'succeeded'
+        ) {
+          return 'Website knowledge complete';
+        }
+        if (websiteTrack?.agent_status === 'queued') {
+          return heartbeatAgeMs !== null && heartbeatAgeMs >= 30_000
+            ? 'Still queued — rechecking the website worker automatically'
+            : 'Queued for worker pickup';
+        }
+        if (websiteTrack?.agent_status === 'running') return 'Website worker is active';
+        return 'Waiting for the website worker to pick up the next step';
+    }
+  }, [
+    heartbeatAgeMs,
+    websiteTrack?.agent_status,
+    websiteTrack?.current_step,
+    websiteTrack?.job_status,
+  ]);
+
+  const heartbeatLabel = formatAge(heartbeatAgeMs);
+  const lastNudgeLabel = formatAge(
+    nudgeState.lastRunAt ? Math.max(0, nowTick - nudgeState.lastRunAt) : null,
+  );
+  const isLikelyStalled = (() => {
+    if (websiteTrack?.agent_status !== 'running' || heartbeatAgeMs === null) return false;
+    if (websiteTrack?.current_step === 'website:extract') {
+      return heartbeatAgeMs > 90 * 1000;
+    }
+    return (
+      heartbeatAgeMs > 5 * 60 * 1000 &&
+      effectiveStats.pagesFound === 0 &&
+      effectiveStats.pagesScraped === 0 &&
+      effectiveStats.faqsExtracted === 0
+    );
+  })();
+
+  const isSlowStart =
+    websiteTrack?.agent_status === 'running' &&
+    heartbeatAgeMs !== null &&
+    websiteTrack?.current_step !== 'website:extract' &&
+    heartbeatAgeMs > 2 * 60 * 1000 &&
+    effectiveStats.pagesFound === 0 &&
+    effectiveStats.pagesScraped === 0 &&
+    effectiveStats.faqsExtracted === 0;
+
+  useEffect(() => {
+    if (!workspaceId || !jobId || !websiteTrack?.run_id) return;
+    if (websiteTrack.agent_status !== 'queued') return;
+    if (heartbeatAgeMs == null || heartbeatAgeMs < 12_000) return;
+
+    const now = Date.now();
+    if (nudgeState.running || now - lastNudgeRef.current < 20_000) return;
+
+    let cancelled = false;
+    lastNudgeRef.current = now;
+    setNudgeState((current) => ({ ...current, running: true, error: null }));
+
+    void supabase.functions
+      .invoke('onboarding-worker-nudge', {
+        body: {
+          workspace_id: workspaceId,
+          run_id: websiteTrack.run_id,
+          workflow_key: 'own_website_scrape',
+        },
+      })
+      .then(async ({ error }) => {
+        if (cancelled) return;
+        if (error) {
+          setNudgeState({
+            running: false,
+            lastRunAt: Date.now(),
+            error: error.message || 'Failed to recheck the website worker',
+          });
+          return;
+        }
+
+        setNudgeState({
+          running: false,
+          lastRunAt: Date.now(),
+          error: null,
+        });
+        await refreshOnboardingProgress();
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNudgeState({
+          running: false,
+          lastRunAt: Date.now(),
+          error: error instanceof Error ? error.message : 'Failed to recheck the website worker',
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    heartbeatAgeMs,
+    jobId,
+    nudgeState.running,
+    refreshOnboardingProgress,
+    websiteTrack?.agent_status,
+    websiteTrack?.run_id,
+    workspaceId,
+  ]);
+
   // Derive stage statuses from phase and data
   const getStageStatuses = (): {
     discover: StageStatus;
     scrape: StageStatus;
     extract: StageStatus;
   } => {
-    const { phase, pagesFound, pagesScraped, faqsExtracted } = stats;
+    const { phase, pagesFound, pagesScraped } = effectiveStats;
+
+    if (websiteTrack?.agent_status === 'queued') {
+      return { discover: 'queued', scrape: 'pending', extract: 'pending' };
+    }
 
     if (phase === 'failed') {
       if (pagesFound === 0) {
@@ -283,7 +515,7 @@ export function WebsitePipelineProgress({
     }
 
     // 'processing' status means extraction is happening
-    if (phase === 'processing') {
+    if (phase === 'processing' || phase === 'extracting') {
       return { discover: 'done', scrape: 'done', extract: 'in_progress' };
     }
 
@@ -303,17 +535,19 @@ export function WebsitePipelineProgress({
 
   // Calculate scrape progress
   const scrapePercent =
-    stats.pagesFound > 0 ? Math.round((stats.pagesScraped / stats.pagesFound) * 100) : 0;
+    effectiveStats.pagesFound > 0
+      ? Math.round((effectiveStats.pagesScraped / effectiveStats.pagesFound) * 100)
+      : 0;
 
-  const isError = stats.phase === 'failed';
-  const isComplete = stats.phase === 'completed';
+  const isError = effectiveStats.phase === 'failed' || isLikelyStalled;
+  const isComplete = effectiveStats.phase === 'completed';
 
   const elapsedSeconds = useMemo(() => {
-    if (!stats.startedAt) return null;
-    const started = new Date(stats.startedAt).getTime();
+    if (!effectiveStats.startedAt) return null;
+    const started = new Date(effectiveStats.startedAt).getTime();
     if (Number.isNaN(started)) return null;
     return Math.max(0, Math.floor((Date.now() - started) / 1000));
-  }, [stats.startedAt]);
+  }, [effectiveStats.startedAt]);
 
   const elapsedLabel = useMemo(() => {
     if (elapsedSeconds == null) return null;
@@ -329,8 +563,8 @@ export function WebsitePipelineProgress({
 
   const handleContinue = () => {
     onComplete({
-      faqsExtracted: stats.faqsExtracted,
-      pagesScraped: stats.pagesScraped,
+      faqsExtracted: effectiveStats.faqsExtracted,
+      pagesScraped: effectiveStats.pagesScraped,
     });
   };
 
@@ -344,13 +578,128 @@ export function WebsitePipelineProgress({
           <br />
           <span className="font-medium text-foreground">{websiteUrl}</span>
         </p>
-        {stats.phase === 'scraping' && stats.pagesFound === 0 && (
+        {(websiteTrack?.agent_status || websiteTrack?.current_step) && (
+          <div
+            className={cn(
+              'mx-auto max-w-xl rounded-lg border px-4 py-3 text-left',
+              isLikelyStalled
+                ? 'border-amber-300 bg-amber-50'
+                : isSlowStart
+                  ? 'border-primary/20 bg-primary/5'
+                  : 'border-border bg-muted/30',
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">{currentStepLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  Agent status: {websiteTrack?.agent_status ?? 'pending'}
+                  {heartbeatLabel ? ` • last heartbeat ${heartbeatLabel} ago` : ''}
+                </p>
+              </div>
+              {websiteTrack?.agent_status === 'running' && !isLikelyStalled ? (
+                <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+              ) : null}
+              {isLikelyStalled ? <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" /> : null}
+            </div>
+            {isLikelyStalled ? (
+              <p className="mt-2 text-xs text-amber-700">
+                This run looks stalled. Retry below to kick off a fresh crawl.
+              </p>
+            ) : isSlowStart ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                The worker is active, but the first page counts can take a bit to appear while the
+                crawler boots and fetches your site.
+              </p>
+            ) : nudgeState.running ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Rechecking the website worker now so live counts can start moving.
+              </p>
+            ) : nudgeState.error ? (
+              <p className="mt-2 text-xs text-amber-700">
+                We tried to wake the website worker again, but it still needs attention.
+              </p>
+            ) : lastNudgeLabel && websiteTrack?.agent_status === 'queued' ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                We rechecked the worker {lastNudgeLabel} ago and will keep doing that while this run
+                is queued.
+              </p>
+            ) : null}
+          </div>
+        )}
+        {effectiveStats.phase === 'scraping' && effectiveStats.pagesFound === 0 && (
           <p className="text-xs text-muted-foreground">
             Crawler running{elapsedLabel ? ` (${elapsedLabel} elapsed)` : ''} — page counts update
             when the crawl completes.
           </p>
         )}
       </div>
+
+      {!jobId && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-center space-y-2">
+          <div className="flex items-center justify-center gap-2 text-primary">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm font-medium">Preparing live website analysis…</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            We&apos;re waiting for the new scrape job to register before showing page and FAQ
+            progress.
+          </p>
+        </div>
+      )}
+
+      {(websiteTrack?.agent_status ||
+        effectiveStats.pagesFound > 0 ||
+        effectiveStats.faqsExtracted > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Worker state
+            </p>
+            <p className="mt-2 text-sm font-semibold text-foreground capitalize">
+              {websiteTrack?.agent_status ?? 'pending'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {heartbeatLabel
+                ? `Last heartbeat ${heartbeatLabel} ago`
+                : 'Waiting for first worker ping'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Pages discovered
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.pagesFound}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Site map and internal pages found so far
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Pages scraped
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.pagesScraped}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Downloaded and ready for FAQ extraction
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              FAQ candidates
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.faqsExtracted}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Grounded questions and answers found so far
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stage Cards */}
       <div className="space-y-3">
@@ -366,16 +715,36 @@ export function WebsitePipelineProgress({
           status={stageStatuses.discover}
           icon={Search}
         >
-          {stageStatuses.discover === 'done' && stats.pagesFound > 0 && (
-            <p className="text-sm text-success">✓ {stats.pagesFound} pages discovered</p>
+          {stageStatuses.discover === 'done' && effectiveStats.pagesFound > 0 && (
+            <p className="text-sm text-success">✓ {effectiveStats.pagesFound} pages discovered</p>
+          )}
+          {stageStatuses.discover === 'queued' && (
+            <div className="space-y-2 text-sm text-amber-700">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Queued for the website worker to pick up.</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                We recheck the worker automatically, so you do not need to restart the whole scrape
+                just because the queue is slow.
+              </p>
+            </div>
           )}
           {stageStatuses.discover === 'in_progress' && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </span>
-              <span>Mapping website structure...</span>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                <span>Mapping website structure...</span>
+              </div>
+              {effectiveStats.pagesFound > 0 ? (
+                <p className="text-xs text-foreground">
+                  {effectiveStats.pagesFound} page{effectiveStats.pagesFound === 1 ? '' : 's'} found
+                  so far
+                </p>
+              ) : null}
             </div>
           )}
         </StageCard>
@@ -397,13 +766,13 @@ export function WebsitePipelineProgress({
           {stageStatuses.scrape === 'pending' && (
             <p className="text-sm text-muted-foreground">Waiting for discovery to complete...</p>
           )}
-          {stageStatuses.scrape === 'in_progress' && stats.pagesFound > 0 && (
+          {stageStatuses.scrape === 'in_progress' && effectiveStats.pagesFound > 0 && (
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Progress value={scrapePercent} className="h-2" />
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
-                    {stats.pagesScraped} / {stats.pagesFound} pages
+                    {effectiveStats.pagesScraped} / {effectiveStats.pagesFound} pages
                   </span>
                   <span className="font-medium">{scrapePercent}%</span>
                 </div>
@@ -411,7 +780,7 @@ export function WebsitePipelineProgress({
             </div>
           )}
           {stageStatuses.scrape === 'done' && (
-            <p className="text-sm text-success">✓ {stats.pagesScraped} pages scraped</p>
+            <p className="text-sm text-success">✓ {effectiveStats.pagesScraped} pages scraped</p>
           )}
         </StageCard>
 
@@ -433,15 +802,32 @@ export function WebsitePipelineProgress({
             <p className="text-sm text-muted-foreground">Coming next... (~30 seconds)</p>
           )}
           {stageStatuses.extract === 'in_progress' && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </span>
-              <span>
-                AI analysing content...
-                {stats.faqsExtracted > 0 && ` ${stats.faqsExtracted} FAQs found`}
-              </span>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                <span>
+                  AI analysing {effectiveStats.pagesScraped || effectiveStats.pagesFound || 0} pages
+                  for FAQs, pricing, and service details
+                </span>
+              </div>
+              {(extractProgress?.batch_count || stageStatuses.extract === 'in_progress') && (
+                <div className="rounded-md border border-primary/15 bg-primary/5 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span>
+                      {extractProgress?.batch_count
+                        ? `AI pass ${extractProgress.batch_index ?? 1} of ${extractProgress.batch_count}`
+                        : 'Extracting grounded website FAQs'}
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {effectiveStats.faqsExtracted} FAQ
+                      {effectiveStats.faqsExtracted === 1 ? '' : 's'} identified so far
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {stageStatuses.extract === 'done' && (
@@ -451,7 +837,7 @@ export function WebsitePipelineProgress({
                   <span className="text-xs">└─</span> FAQs extracted
                 </span>
                 <span className="font-medium flex items-center gap-1">
-                  {stats.faqsExtracted}
+                  {effectiveStats.faqsExtracted}
                   <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                 </span>
               </div>
@@ -464,13 +850,18 @@ export function WebsitePipelineProgress({
       <ProgressLine currentStage={getCurrentStage()} />
 
       {/* Error State */}
-      {isError && stats.errorMessage && (
+      {isError && (effectiveStats.errorMessage || isLikelyStalled) && (
         <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
             <div className="flex-1">
-              <p className="text-sm font-medium text-destructive">Something went wrong</p>
-              <p className="text-xs text-muted-foreground mt-1">{stats.errorMessage}</p>
+              <p className="text-sm font-medium text-destructive">
+                {isLikelyStalled ? 'This run may be stalled' : 'Something went wrong'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {effectiveStats.errorMessage ||
+                  'The website worker stopped reporting progress. Retry to start a fresh crawl.'}
+              </p>
             </div>
           </div>
           <Button
@@ -491,7 +882,7 @@ export function WebsitePipelineProgress({
           <CheckCircle2 className="h-6 w-6 text-success mx-auto" />
           <p className="text-sm font-medium text-success">Website Analysed!</p>
           <p className="text-xs text-muted-foreground">
-            {stats.faqsExtracted} FAQs extracted from {stats.pagesScraped} pages.
+            {effectiveStats.faqsExtracted} FAQs extracted from {effectiveStats.pagesScraped} pages.
           </p>
           <Button
             variant="outline"

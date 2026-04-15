@@ -22,4 +22,4 @@ COMMENT ON COLUMN public.competitor_sites.location_data IS
   'Raw location/provider metadata used during competitor review.';
 
 COMMENT ON COLUMN public.competitor_sites.relevance_score IS
-  'Score 0-100 used to rank discovered competitors during onboarding review.';
+  'Score 0-100 used to rank discovered competitors during onboarding review.';;

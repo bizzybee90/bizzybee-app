@@ -1,23 +1,23 @@
-import { useState } from "react";
-import { Navigate } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { HealthCards } from "@/components/admin/HealthCards";
-import { DataStats } from "@/components/admin/DataStats";
-import { ActiveJobs } from "@/components/admin/ActiveJobs";
-import { ErrorLog } from "@/components/admin/ErrorLog";
-import { ManualTriggers } from "@/components/admin/ManualTriggers";
-import { WorkspaceInspector } from "@/components/admin/WorkspaceInspector";
-import { QuotaMonitor } from "@/components/admin/QuotaMonitor";
-import { Shield, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { HealthCards } from '@/components/admin/HealthCards';
+import { DataStats } from '@/components/admin/DataStats';
+import { ActiveJobs } from '@/components/admin/ActiveJobs';
+import { ErrorLog } from '@/components/admin/ErrorLog';
+import { ManualTriggers } from '@/components/admin/ManualTriggers';
+import { WorkspaceInspector } from '@/components/admin/WorkspaceInspector';
+import { QuotaMonitor } from '@/components/admin/QuotaMonitor';
+import { Shield, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useUserRole } from '@/hooks/useUserRole';
 
 export default function DevOpsDashboard() {
   const { isAdmin, loading } = useUserRole();
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
+    setRefreshKey((prev) => prev + 1);
   };
 
   if (loading) {
@@ -37,7 +37,7 @@ export default function DevOpsDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-6 px-4 max-w-7xl">
+      <div className="w-full px-4 py-6 md:px-6 xl:px-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -68,7 +68,7 @@ export default function DevOpsDashboard() {
             <TabsTrigger value="jobs">Active Jobs</TabsTrigger>
             <TabsTrigger value="errors">Error Log</TabsTrigger>
             <TabsTrigger value="inspector">Workspace Inspector</TabsTrigger>
-            <TabsTrigger value="quotas">API Quotas</TabsTrigger>
+            <TabsTrigger value="quotas">Developer Costs</TabsTrigger>
           </TabsList>
 
           <TabsContent value="triggers" className="mt-4">

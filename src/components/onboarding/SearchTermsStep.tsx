@@ -135,24 +135,54 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       return;
     }
 
+    // Fire-and-forget: we intentionally do NOT await the invoke. Awaiting caused
+    // the "Saving..." button to hang for 20-50s when the edge function was slow
+    // (competitor discovery can take that long to provision). ProgressScreen's
+    // autoTrigger hook (useOnboardingDiscoveryAutoTrigger) is the safety net if
+    // this invoke fails before the server records the run.
     setIsSaving(true);
     try {
-      const { error } = await supabase.functions.invoke('start-onboarding-discovery', {
-        body: {
-          workspace_id: workspaceId,
-          search_queries: enabledTerms,
-          target_count: 15,
-          trigger_source: 'onboarding_search_terms',
-        },
-      });
+      const discoveryPromise = supabase.functions
+        .invoke('start-onboarding-discovery', {
+          body: {
+            workspace_id: workspaceId,
+            search_queries: enabledTerms,
+            target_count: 15,
+            trigger_source: 'onboarding_search_terms',
+          },
+        })
+        .then((result) => {
+          if (result?.error) {
+            console.warn(
+              'start-onboarding-discovery returned error (autoTrigger will retry)',
+              result.error,
+            );
+            return null;
+          }
+          return result?.data ?? null;
+        })
+        .catch((err) => {
+          console.warn('start-onboarding-discovery threw (autoTrigger will retry)', err);
+          return null;
+        });
 
-      if (error) throw error;
+      // Best-effort immediate nudge after the invoke resolves. Still fire-and-forget.
+      void discoveryPromise.then((data) => {
+        void supabase.functions
+          .invoke('onboarding-worker-nudge', {
+            body: {
+              workspace_id: workspaceId,
+              workflow_key: 'competitor_discovery',
+              run_id: typeof data?.run_id === 'string' ? data.run_id : undefined,
+            },
+          })
+          .catch((nudgeError) => {
+            console.warn('Failed to kick competitor discovery immediately', nudgeError);
+          });
+      });
 
       toast.success('Search terms saved');
       onNext();
-    } catch (error) {
-      console.error('Error saving search terms:', error);
-      toast.error('Failed to save search terms');
     } finally {
       setIsSaving(false);
     }
@@ -162,8 +192,10 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     return (
       <div className="space-y-6">
         <div className="text-center">
-          <CardTitle className="text-xl">Configure Search Terms</CardTitle>
-          <CardDescription className="mt-2">Loading your business information...</CardDescription>
+          <CardTitle className="text-xl">Loading discovery setup</CardTitle>
+          <CardDescription className="mt-2">
+            We&apos;re reading your business details and preparing a few useful search ideas.
+          </CardDescription>
         </div>
         <div className="flex justify-center py-8">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -175,9 +207,11 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <CardTitle className="text-xl">Configure Competitor Search</CardTitle>
+        <CardTitle className="text-xl">Optional: widen discovery beyond your website</CardTitle>
         <CardDescription className="mt-2">
-          We'll search for competitors using these terms. Enable the ones you want.
+          BizzyBee can look a little wider and see how nearby competitors describe similar work. You
+          can keep the suggestions, trim them back, or skip this later without affecting your core
+          inbox and phone setup.
         </CardDescription>
       </div>
 
@@ -185,8 +219,8 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
         <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
         <div className="text-muted-foreground">
-          <span className="font-medium text-foreground">Auto-generated</span> based on your business
-          type ({businessContext?.businessType || 'Unknown'}) and location (
+          <span className="font-medium text-foreground">BizzyBee suggested these</span> from your
+          business type ({businessContext?.businessType || 'Unknown'}) and location (
           {businessContext?.location || 'Unknown'}).
         </div>
       </div>
@@ -255,8 +289,8 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
 
       {/* Explainer */}
       <p className="text-sm text-muted-foreground">
-        We'll find and deeply analyse your top 15 local competitors — extracting every FAQ, pricing
-        detail, and service they offer that your site doesn't cover yet.
+        We&apos;ll find and analyse your top 15 local competitors - pulling out the services,
+        pricing cues, and FAQs worth covering next.
       </p>
 
       {/* Summary */}
@@ -279,7 +313,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
             <>Saving...</>
           ) : (
             <>
-              Continue
+              Continue to launch review
               <ChevronRight className="h-4 w-4" />
             </>
           )}

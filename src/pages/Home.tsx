@@ -25,7 +25,6 @@ import { DraftMessages } from '@/components/dashboard/DraftMessages';
 import { HumanAIActivityLog } from '@/components/dashboard/HumanAIActivityLog';
 import { LearningInsightsWidget } from '@/components/dashboard/LearningInsightsWidget';
 import { InsightsWidget } from '@/components/dashboard/InsightsWidget';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { getPreviewAwarePath } from '@/lib/previewMode';
 
@@ -167,7 +166,12 @@ export const Home = () => {
 
     fetchStats();
 
-    if (workspaceLoading || needsOnboarding || !workspace?.id || workspace.id === 'preview-workspace') {
+    if (
+      workspaceLoading ||
+      needsOnboarding ||
+      !workspace?.id ||
+      workspace.id === 'preview-workspace'
+    ) {
       return;
     }
 
@@ -236,146 +240,144 @@ export const Home = () => {
   ];
 
   const mainContent = (
-    <ScrollArea className="h-[calc(100vh-4rem)]">
-      <div className="mx-auto min-h-full max-w-[1120px] space-y-6 bg-bb-linen p-4 md:p-6">
-        {loading || workspaceLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-28 rounded-2xl" />
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-            </div>
+    <div className="min-h-full w-full space-y-6 bg-bb-linen p-4 md:p-6 xl:p-8">
+      {loading || workspaceLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-28 rounded-2xl" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Skeleton className="h-32 rounded-2xl" />
+            <Skeleton className="h-32 rounded-2xl" />
+            <Skeleton className="h-32 rounded-2xl" />
+            <Skeleton className="h-32 rounded-2xl" />
           </div>
-        ) : (
-          <>
-            {!workspaceLoading && (!workspace?.id || needsOnboarding) && (
-              <div className="rounded-[24px] border border-bb-border bg-bb-cream p-6 shadow-[0_10px_24px_rgba(28,21,16,0.04)]">
-                <p className="text-[18px] font-medium text-bb-text">
-                  Finish onboarding to unlock BizzyBee
-                </p>
-                <p className="mt-2 max-w-xl text-[13px] text-bb-text-secondary">
-                  BizzyBee is live, but this account still needs onboarding before inbox data,
-                  training, and channels can load correctly.
-                </p>
-                <div className="mt-4">
-                  <Button onClick={handleContinueOnboarding}>Continue onboarding</Button>
+        </div>
+      ) : (
+        <>
+          {!workspaceLoading && (!workspace?.id || needsOnboarding) && (
+            <div className="rounded-[24px] border border-bb-border bg-bb-cream p-6 shadow-[0_10px_24px_rgba(28,21,16,0.04)]">
+              <p className="text-[18px] font-medium text-bb-text">
+                Finish onboarding to unlock BizzyBee
+              </p>
+              <p className="mt-2 max-w-xl text-[13px] text-bb-text-secondary">
+                BizzyBee is live, but this account still needs onboarding before inbox data,
+                training, and channels can load correctly.
+              </p>
+              <div className="mt-4">
+                <Button onClick={handleContinueOnboarding}>Continue onboarding</Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Greeting ── */}
+          <div className="mb-2">
+            <h1 className="text-[18px] font-medium tracking-[-0.022em] text-bb-text">
+              {getGreeting()}
+            </h1>
+            <p className="text-[13px] mt-1 text-bb-text-secondary">
+              {stats.atRiskCount > 0
+                ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
+                : stats.toReplyCount > 0
+                  ? `${stats.toReplyCount} conversation${stats.toReplyCount !== 1 ? 's' : ''} waiting for your reply.`
+                  : 'Nothing needs your attention right now.'}
+            </p>
+          </div>
+
+          {/* ── Stat Cards ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {metrics.map((m) => {
+              const Icon = m.icon;
+              return (
+                <div
+                  key={m.label}
+                  onClick={m.onClick}
+                  className="bg-bb-cream cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5 rounded-2xl border-[0.5px] border-bb-border"
+                >
+                  <Icon className="h-5 w-5" style={{ color: m.iconColor }} />
+                  <p className="text-[20px] font-medium tracking-tight mt-3 mb-1 text-bb-text">
+                    {m.count}
+                  </p>
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                    {m.label}
+                  </p>
                 </div>
+              );
+            })}
+          </div>
+
+          {/* ── All caught up ── */}
+          {!needsOnboarding &&
+            stats.toReplyCount === 0 &&
+            stats.reviewCount === 0 &&
+            stats.atRiskCount === 0 && (
+              <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+                <Sparkles className="w-8 h-8 mb-4 text-bb-muted" />
+                <h3 className="text-[15px] font-medium text-bb-text">You're all caught up</h3>
+                <p className="text-[13px] mt-1 max-w-sm mx-auto text-bb-text-secondary">
+                  BizzyBee is actively monitoring your inbox.
+                </p>
               </div>
             )}
 
-            {/* ── Greeting ── */}
-            <div className="mb-2">
-              <h1 className="text-[18px] font-medium tracking-[-0.022em] text-bb-text">
-                {getGreeting()}
-              </h1>
-              <p className="text-[13px] mt-1 text-bb-text-secondary">
-                {stats.atRiskCount > 0
-                  ? `You have ${stats.atRiskCount} urgent item${stats.atRiskCount !== 1 ? 's' : ''} that need attention.`
-                  : stats.toReplyCount > 0
-                    ? `${stats.toReplyCount} conversation${stats.toReplyCount !== 1 ? 's' : ''} waiting for your reply.`
-                    : 'Nothing needs your attention right now.'}
-              </p>
-            </div>
-
-            {/* ── Stat Cards ── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {metrics.map((m) => {
-                const Icon = m.icon;
-                return (
-                  <div
-                    key={m.label}
-                    onClick={m.onClick}
-                    className="bg-bb-cream cursor-pointer transition-all duration-200 p-5 hover:shadow-md hover:-translate-y-0.5 rounded-2xl border-[0.5px] border-bb-border"
-                  >
-                    <Icon className="h-5 w-5" style={{ color: m.iconColor }} />
-                    <p className="text-[20px] font-medium tracking-tight mt-3 mb-1 text-bb-text">
-                      {m.count}
-                    </p>
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
-                      {m.label}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── All caught up ── */}
-            {!needsOnboarding &&
-              stats.toReplyCount === 0 &&
-              stats.reviewCount === 0 &&
-              stats.atRiskCount === 0 && (
-                <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-                  <Sparkles className="w-8 h-8 mb-4 text-bb-muted" />
-                  <h3 className="text-[15px] font-medium text-bb-text">You're all caught up</h3>
-                  <p className="text-[13px] mt-1 max-w-sm mx-auto text-bb-text-secondary">
-                    BizzyBee is actively monitoring your inbox.
-                  </p>
-                </div>
-              )}
-
-            {/* ── Widget Grid ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Pending Drafts */}
-              <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
-                <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
-                    Pending Drafts
-                  </h2>
-                </div>
-                <div className="flex-1">
-                  <DraftMessages onNavigate={handleNavigate} maxItems={4} />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full mt-3 text-bb-text-secondary"
-                  onClick={() => navigate('/needs-action?filter=drafts')}
-                >
-                  View all drafts
-                </Button>
+          {/* ── Widget Grid ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Pending Drafts */}
+            <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
+              <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                  Pending Drafts
+                </h2>
               </div>
-
-              {/* Recent Activity */}
-              <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
-                <div className="flex items-center gap-2 mb-4">
-                  <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
-                    Recent Activity
-                  </h2>
-                </div>
-                <div className="flex-1">
-                  <ActivityFeed onNavigate={handleNavigate} maxItems={6} />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full mt-3 text-bb-text-secondary"
-                  onClick={() => navigate('/activity')}
-                >
-                  View all activity
-                </Button>
+              <div className="flex-1">
+                <DraftMessages onNavigate={handleNavigate} maxItems={4} />
               </div>
-
-              {/* Right Column */}
-              <div className="space-y-6">
-                {workspace?.id && <InsightsWidget workspaceId={workspace.id} />}
-                <LearningInsightsWidget />
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-3 text-bb-text-secondary"
+                onClick={() => navigate('/needs-action?filter=drafts')}
+              >
+                View all drafts
+              </Button>
             </div>
 
-            {/* System Status Footer */}
-            <div className="flex items-center justify-center gap-2 text-[11px] pt-4 text-bb-muted">
-              <CheckCircle2 className="h-3 w-3 text-bb-success" />
-              <span>System active</span>
-              <span>·</span>
-              <Clock className="h-3 w-3" />
-              <span>Checking every minute</span>
+            {/* Recent Activity */}
+            <div className="bg-bb-cream p-5 flex flex-col rounded-2xl border-[0.5px] border-bb-border">
+              <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-[11px] font-medium uppercase tracking-wider text-bb-warm-gray">
+                  Recent Activity
+                </h2>
+              </div>
+              <div className="flex-1">
+                <ActivityFeed onNavigate={handleNavigate} maxItems={6} />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-3 text-bb-text-secondary"
+                onClick={() => navigate('/activity')}
+              >
+                View all activity
+              </Button>
             </div>
-          </>
-        )}
-      </div>
-    </ScrollArea>
+
+            {/* Right Column */}
+            <div className="space-y-6">
+              {workspace?.id && <InsightsWidget workspaceId={workspace.id} />}
+              <LearningInsightsWidget />
+            </div>
+          </div>
+
+          {/* System Status Footer */}
+          <div className="flex items-center justify-center gap-2 text-[11px] pt-4 text-bb-muted">
+            <CheckCircle2 className="h-3 w-3 text-bb-success" />
+            <span>System active</span>
+            <span>·</span>
+            <Clock className="h-3 w-3" />
+            <span>Checking every minute</span>
+          </div>
+        </>
+      )}
+    </div>
   );
 
   if (isMobile) {

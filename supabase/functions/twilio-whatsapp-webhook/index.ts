@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -264,6 +265,11 @@ Deno.serve(async (req) => {
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[whatsapp-webhook] Error:', errorMessage);
+    await captureEdgeException({
+      functionName: 'twilio-whatsapp-webhook',
+      error,
+      tags: { channel: 'whatsapp' },
+    });
 
     // Always return 200 to Twilio to prevent retries
     return new Response('<Response></Response>', {

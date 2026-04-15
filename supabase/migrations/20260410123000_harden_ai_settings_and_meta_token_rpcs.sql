@@ -4,10 +4,8 @@
 
 ALTER TABLE IF EXISTS public.automation_settings
   ADD COLUMN IF NOT EXISTS email_model text;
-
 COMMENT ON COLUMN public.automation_settings.email_model IS
   'Optional workspace override for the email classification/drafting Anthropic model. NULL uses the default Sonnet model.';
-
 DO $$
 BEGIN
   IF EXISTS (
@@ -40,7 +38,6 @@ BEGIN
       WITH CHECK (public.user_has_workspace_access(workspace_id));
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF EXISTS (
@@ -68,7 +65,6 @@ BEGIN
       );
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF EXISTS (
@@ -153,7 +149,6 @@ BEGIN
     GRANT EXECUTE ON FUNCTION public.get_meta_decrypted_token(uuid) TO service_role;
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF EXISTS (
@@ -171,7 +166,6 @@ BEGIN
       USING (public.bb_user_in_workspace(workspace_id));
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF EXISTS (
@@ -193,7 +187,6 @@ BEGIN
     GRANT SELECT ON public.website_scrape_jobs TO authenticated;
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF EXISTS (

@@ -59,7 +59,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
 
     // Wait for business context to load and search terms to populate
     await waitFor(() => {
-      expect(screen.getByText(/Configure/i)).toBeInTheDocument();
+      expect(screen.getByText(/BizzyBee suggested these/i)).toBeInTheDocument();
     });
 
     // Click Continue button
@@ -82,7 +82,12 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     expect(onNext).toHaveBeenCalled();
   });
 
-  it('keeps the user on the step if the discovery trigger rejects', async () => {
+  // Fire-and-forget semantics: user always advances immediately after clicking
+  // Continue. If the trigger fails, ProgressScreen.autoTrigger is the safety net
+  // (see useOnboardingDiscoveryAutoTrigger). This prevents the UI from hanging
+  // on a 20-50s awaited invoke when the network is slow.
+
+  it('advances even if the discovery trigger rejects (fire-and-forget)', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();
@@ -93,7 +98,7 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     render(<SearchTermsStep workspaceId="test-workspace-id" onNext={onNext} onBack={onBack} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Configure/i)).toBeInTheDocument();
+      expect(screen.getByText(/BizzyBee suggested these/i)).toBeInTheDocument();
     });
 
     const continueButton = await screen.findByRole('button', { name: /continue/i });
@@ -108,13 +113,19 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
           trigger_source: 'onboarding_search_terms',
         },
       });
-      expect(toast.error).toHaveBeenCalledWith('Failed to save search terms');
     });
 
-    expect(onNext).not.toHaveBeenCalled();
+    // User advances regardless. ProgressScreen.autoTrigger will retry.
+    await waitFor(() => {
+      expect(onNext).toHaveBeenCalled();
+    });
+
+    // Non-blocking error: no toast.error on the step itself.
+    // Failures are logged to console; ProgressScreen surfaces real state.
+    expect(toast.error).not.toHaveBeenCalledWith('Failed to save search terms');
   });
 
-  it('keeps the user on the step if the edge function returns an error', async () => {
+  it('advances even if the edge function returns an error (fire-and-forget)', async () => {
     const user = userEvent.setup();
     const onNext = vi.fn();
     const onBack = vi.fn();
@@ -124,18 +135,53 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
     render(<SearchTermsStep workspaceId="test-workspace-id" onNext={onNext} onBack={onBack} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Configure/i)).toBeInTheDocument();
+      expect(screen.getByText(/BizzyBee suggested these/i)).toBeInTheDocument();
     });
 
     const continueButton = await screen.findByRole('button', { name: /continue/i });
     await user.click(continueButton);
 
-    // Wait for the error path to actually execute
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Failed to save search terms');
+      expect(mockInvoke).toHaveBeenCalled();
     });
 
-    expect(mockInvoke).toHaveBeenCalled();
-    expect(onNext).not.toHaveBeenCalled();
+    // User advances regardless of edge-function error response.
+    await waitFor(() => {
+      expect(onNext).toHaveBeenCalled();
+    });
+
+    expect(toast.error).not.toHaveBeenCalledWith('Failed to save search terms');
+  });
+
+  it('does not block the UI for a slow invoke (fire-and-forget)', async () => {
+    const user = userEvent.setup();
+    const onNext = vi.fn();
+    const onBack = vi.fn();
+
+    // Simulate a slow invoke that never resolves during the test
+    let resolveInvoke: ((value: unknown) => void) | undefined;
+    mockInvoke.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInvoke = resolve;
+        }),
+    );
+
+    render(<SearchTermsStep workspaceId="test-workspace-id" onNext={onNext} onBack={onBack} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/BizzyBee suggested these/i)).toBeInTheDocument();
+    });
+
+    const continueButton = await screen.findByRole('button', { name: /continue/i });
+    await user.click(continueButton);
+
+    // onNext should be called even though the invoke promise is still pending.
+    await waitFor(() => {
+      expect(onNext).toHaveBeenCalled();
+    });
+
+    // Clean up the pending promise to avoid an unhandled-rejection warning
+    if (resolveInvoke) resolveInvoke({ data: { success: true }, error: null });
   });
 });

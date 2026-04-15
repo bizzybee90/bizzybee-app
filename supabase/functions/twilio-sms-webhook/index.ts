@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
 
 class WebhookAuthError extends Error {
   status: number;
@@ -247,6 +248,11 @@ Deno.serve(async (req) => {
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[sms-webhook] Error:', errorMessage);
+    await captureEdgeException({
+      functionName: 'twilio-sms-webhook',
+      error,
+      tags: { channel: 'sms' },
+    });
 
     // Always return 200 to Twilio to prevent retries
     return new Response('<Response></Response>', {

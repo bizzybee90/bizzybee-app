@@ -25,7 +25,6 @@ begin
   end;
 end;
 $$;
-
 create or replace function public.bb_unschedule_onboarding_crons()
 returns integer
 language plpgsql
@@ -53,7 +52,6 @@ begin
   return v_removed;
 end;
 $$;
-
 create or replace function public.bb_schedule_onboarding_crons()
 returns void
 language plpgsql
@@ -88,7 +86,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.bb_cleanup_old_queue_jobs()
 returns jsonb
 language plpgsql
@@ -133,7 +130,6 @@ begin
   return jsonb_build_object('deleted_total', v_total);
 end;
 $$;
-
 create or replace function public.bb_purge_archived_queues()
 returns jsonb
 language plpgsql
@@ -161,7 +157,6 @@ begin
   return v_result;
 end;
 $$;
-
 create or replace view public.bb_queue_depths as
 select *
 from (
@@ -179,7 +174,6 @@ from (
 cross join lateral (
   select public.bb_queue_visible_count(q.queue_name) as visible_messages
 ) depth;
-
 create or replace function public.bb_get_onboarding_progress(p_workspace_id uuid)
 returns jsonb
 language plpgsql
@@ -434,11 +428,9 @@ begin
   return coalesce(v_result, jsonb_build_object('workspace_id', p_workspace_id, 'tracks', '{}'::jsonb));
 end;
 $$;
-
 revoke all on function public.bb_unschedule_onboarding_crons() from public, anon, authenticated;
 revoke all on function public.bb_schedule_onboarding_crons() from public, anon, authenticated;
 revoke all on function public.bb_get_onboarding_progress(uuid) from public, anon;
-
 grant execute on function public.bb_unschedule_onboarding_crons() to service_role;
 grant execute on function public.bb_schedule_onboarding_crons() to service_role;
 grant execute on function public.bb_get_onboarding_progress(uuid) to authenticated, service_role;

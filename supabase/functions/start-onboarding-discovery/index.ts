@@ -4,6 +4,7 @@ import {
   isUuidLike,
   jsonResponse,
   queueSend,
+  wakeWorker,
 } from '../_shared/pipeline.ts';
 import {
   ONBOARDING_DISCOVERY_QUEUE,
@@ -98,6 +99,26 @@ Deno.serve(async (req) => {
     );
     const websiteDomain = domainFromUrl(businessContext?.website_url);
 
+    const { error: clearCompetitorsError } = await supabase
+      .from('competitor_sites')
+      .delete()
+      .eq('workspace_id', workspaceId);
+    if (clearCompetitorsError) {
+      throw new Error(`Failed to clear previous competitors: ${clearCompetitorsError.message}`);
+    }
+
+    const { error: clearCompetitorFaqsError } = await supabase
+      .from('faq_database')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('category', 'competitor_research')
+      .eq('is_own_content', false);
+    if (clearCompetitorFaqsError) {
+      throw new Error(
+        `Failed to clear previous competitor FAQs: ${clearCompetitorFaqsError.message}`,
+      );
+    }
+
     const { data: researchJob, error: researchError } = await supabase
       .from('competitor_research_jobs')
       .insert({
@@ -134,6 +155,7 @@ Deno.serve(async (req) => {
         target_count: targetCount,
         search_queries: searchQueries,
         website_url: businessContext?.website_url || undefined,
+        competitor_research_job_id: researchJob.id,
         model_policy: defaultModelPolicy(),
         provider_policy: defaultProviderPolicy(),
       },
@@ -159,8 +181,14 @@ Deno.serve(async (req) => {
         workflow_key: 'competitor_discovery',
         action: 'heartbeat_check',
       },
-      300,
+      30,
     );
+
+    try {
+      await wakeWorker(supabase, 'pipeline-worker-onboarding-discovery');
+    } catch (workerKickError) {
+      console.warn('Failed to kick onboarding discovery worker immediately', workerKickError);
+    }
 
     return corsResponse({
       ok: true,

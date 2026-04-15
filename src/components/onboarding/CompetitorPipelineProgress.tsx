@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { CompetitorListDialog } from '@/components/onboarding/CompetitorListDialog';
 import { CompetitorReviewScreen } from '@/components/onboarding/CompetitorReviewScreen';
+import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
 
 interface CompetitorPipelineProgressProps {
   workspaceId: string;
@@ -78,7 +79,116 @@ interface PipelineStats {
   errorMessage: string | null;
 }
 
-type StageStatus = 'pending' | 'in_progress' | 'done' | 'error';
+type CompetitorProgressTrack = {
+  run_id?: string | null;
+  agent_status?: string;
+  current_step?: string | null;
+  job_id?: string | null;
+  job_status?: string | null;
+  current_domain?: string | null;
+  latest_error?: string | null;
+  output_summary?: {
+    faq_progress?: {
+      current_domain?: string | null;
+      pages_scraped?: number;
+      page_count?: number;
+      candidate_count?: number;
+      faqs_after_dedup?: number;
+      final_count?: number;
+    };
+  };
+  counts?: {
+    sites_discovered?: number;
+    sites_validated?: number;
+    sites_approved?: number;
+    sites_scraped?: number;
+    pages_scraped?: number;
+    faqs_generated?: number;
+    faqs_after_dedup?: number;
+    faqs_added?: number;
+  };
+  started_at?: string | null;
+  completed_at?: string | null;
+  last_heartbeat_at?: string | null;
+  updated_at?: string | null;
+};
+
+type StageStatus = 'pending' | 'queued' | 'in_progress' | 'done' | 'error';
+
+function normalizeCompetitorStepToken(step: string | null | undefined): string {
+  return (step || '').trim().toLowerCase();
+}
+
+function formatHeartbeatAge(ageMs: number | null): string | null {
+  if (ageMs == null) return null;
+  const totalSeconds = Math.floor(ageMs / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function describeCompetitorCurrentStep(
+  discoveryTrack: CompetitorProgressTrack | undefined,
+  faqTrack: CompetitorProgressTrack | undefined,
+): string {
+  const faqStep = normalizeCompetitorStepToken(faqTrack?.current_step);
+  const discoveryStep = normalizeCompetitorStepToken(discoveryTrack?.current_step);
+
+  if (
+    faqTrack?.job_status === 'complete' ||
+    faqTrack?.agent_status === 'completed' ||
+    faqTrack?.agent_status === 'succeeded'
+  ) {
+    return 'Competitor FAQ research complete';
+  }
+
+  switch (faqStep) {
+    case 'load_context':
+      return 'Loading approved competitor context';
+    case 'context_loaded':
+      return 'Competitor context is ready for scraping';
+    case 'fetch_pages':
+    case 'fetch_complete':
+      return faqTrack?.current_domain
+        ? `Scraping ${faqTrack.current_domain}`
+        : 'Fetching competitor pages';
+    case 'generate_candidates':
+    case 'candidates_generated':
+      return 'AI is extracting competitor FAQ candidates';
+    case 'dedupe':
+      return 'Removing duplicates against your existing knowledge';
+    case 'finalize':
+    case 'quality_review_complete':
+      return 'Selecting the strongest final competitor FAQs';
+    case 'persist':
+    case 'finalized':
+      return 'Saving competitor FAQs into BizzyBee';
+    default:
+      break;
+  }
+
+  switch (discoveryStep) {
+    case 'discovery:seed_queries':
+    case 'discovery:search':
+      return 'Searching for nearby competitors';
+    case 'discovery:validate':
+    case 'discovery:qualify':
+      return 'Checking which competitor websites are worth learning from';
+    default:
+      break;
+  }
+
+  if (faqTrack?.agent_status === 'queued') {
+    return 'Queued for the FAQ worker to pick up';
+  }
+  if (faqTrack?.agent_status === 'running') {
+    return 'Competitor FAQ worker is active';
+  }
+  if (discoveryTrack?.agent_status === 'running') {
+    return 'Discovery worker is still preparing competitor sites';
+  }
+  return 'Waiting for the competitor worker to pick up the next step';
+}
 
 function StageCard({
   stage,
@@ -101,6 +211,12 @@ function StageCard({
       badgeClass: 'bg-muted text-muted-foreground',
       iconClass: 'text-muted-foreground',
       StatusIcon: Circle,
+    },
+    queued: {
+      badge: 'Queued',
+      badgeClass: 'bg-amber-100 text-amber-700',
+      iconClass: 'text-amber-600',
+      StatusIcon: Loader2,
     },
     in_progress: {
       badge: 'In Progress',
@@ -128,6 +244,7 @@ function StageCard({
     <div
       className={cn(
         'rounded-lg border p-4 transition-all duration-300',
+        status === 'queued' && 'border-amber-200 bg-amber-50/60 shadow-sm',
         status === 'in_progress' && 'border-primary/50 bg-primary/5 shadow-sm',
         status === 'done' && 'border-success/30 bg-success/5',
         status === 'error' && 'border-destructive/30 bg-destructive/5',
@@ -152,7 +269,11 @@ function StageCard({
             {config.badge}
           </span>
           <config.StatusIcon
-            className={cn('h-4 w-4', config.iconClass, status === 'in_progress' && 'animate-spin')}
+            className={cn(
+              'h-4 w-4',
+              config.iconClass,
+              (status === 'in_progress' || status === 'queued') && 'animate-spin',
+            )}
           />
         </div>
       </div>
@@ -241,9 +362,28 @@ export function CompetitorPipelineProgress({
   const [isStale, setIsStale] = useState(false);
   const [extractionStartTime, setExtractionStartTime] = useState<number | null>(null);
   const [isRecovering, setIsRecovering] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [nudgeState, setNudgeState] = useState<{
+    running: boolean;
+    lastRunAt: number | null;
+    error: string | null;
+  }>({
+    running: false,
+    lastRunAt: null,
+    error: null,
+  });
+  const lastNudgeRef = useRef(0);
 
   // Fetch search queries from DB for resumed jobs
   const [storedSearchQueries, setStoredSearchQueries] = useState<string[]>([]);
+  const { data: onboardingProgress, refresh: refreshOnboardingProgress } = useOnboardingProgress(
+    workspaceId,
+    Boolean(workspaceId),
+  );
+  const discoveryTrack = onboardingProgress?.tracks.discovery as
+    | CompetitorProgressTrack
+    | undefined;
+  const faqTrack = onboardingProgress?.tracks.faq_generation as CompetitorProgressTrack | undefined;
 
   useEffect(() => {
     const fetchJobQueries = async () => {
@@ -264,10 +404,114 @@ export function CompetitorPipelineProgress({
   // Merge: prefer passed queries, fall back to stored from DB
   const displayQueries = searchQueries?.length ? searchQueries : storedSearchQueries;
 
+  const effectiveStats = useMemo<PipelineStats>(() => {
+    const discoveryCounts = discoveryTrack?.counts;
+    const faqCounts = faqTrack?.counts;
+    const faqProgress = faqTrack?.output_summary?.faq_progress;
+    const sitesValidated =
+      typeof discoveryCounts?.sites_approved === 'number'
+        ? discoveryCounts.sites_approved
+        : typeof discoveryCounts?.sites_validated === 'number'
+          ? discoveryCounts.sites_validated
+          : stats.sitesValidated;
+
+    let phase: PipelinePhase = stats.phase;
+    if (discoveryTrack?.latest_error || faqTrack?.latest_error) {
+      phase = 'error';
+    } else if (
+      faqTrack?.job_status === 'complete' ||
+      faqTrack?.agent_status === 'completed' ||
+      faqTrack?.agent_status === 'succeeded'
+    ) {
+      phase = 'completed';
+    } else if (faqTrack?.agent_status === 'queued') {
+      phase = 'queued';
+    } else {
+      const faqStep = normalizeCompetitorStepToken(faqTrack?.current_step);
+      const discoveryStep = normalizeCompetitorStepToken(discoveryTrack?.current_step);
+
+      if (
+        discoveryTrack?.job_status === 'review_ready' ||
+        (discoveryTrack?.agent_status === 'completed' &&
+          faqTrack?.agent_status === 'pending' &&
+          sitesValidated > 0)
+      ) {
+        phase = 'review_ready';
+      } else if (faqStep === 'fetch_pages' || faqStep === 'fetch_complete') {
+        phase = 'scraping';
+      } else if (
+        faqStep === 'generate_candidates' ||
+        faqStep === 'candidates_generated' ||
+        faqStep === 'dedupe'
+      ) {
+        phase = faqStep === 'dedupe' ? 'deduplicating' : 'extracting';
+      } else if (
+        faqStep === 'finalize' ||
+        faqStep === 'quality_review_complete' ||
+        faqStep === 'persist' ||
+        faqStep === 'finalized'
+      ) {
+        phase = faqStep === 'persist' || faqStep === 'finalized' ? 'embedding' : 'refining';
+      } else if (
+        discoveryStep.includes('validate') ||
+        discoveryStep.includes('qualify') ||
+        stats.phase === 'validating'
+      ) {
+        phase = 'validating';
+      } else if (
+        discoveryStep.includes('search') ||
+        discoveryStep.includes('discover') ||
+        discoveryTrack?.agent_status === 'running'
+      ) {
+        phase = 'discovering';
+      }
+    }
+
+    return {
+      phase,
+      sitesDiscovered:
+        typeof discoveryCounts?.sites_discovered === 'number'
+          ? discoveryCounts.sites_discovered
+          : stats.sitesDiscovered,
+      sitesValidated,
+      sitesScraped:
+        typeof faqCounts?.sites_scraped === 'number' ? faqCounts.sites_scraped : stats.sitesScraped,
+      pagesScraped:
+        typeof faqCounts?.pages_scraped === 'number'
+          ? faqCounts.pages_scraped
+          : typeof faqProgress?.pages_scraped === 'number'
+            ? faqProgress.pages_scraped
+            : stats.pagesScraped,
+      faqsExtracted:
+        typeof faqCounts?.faqs_generated === 'number'
+          ? faqCounts.faqs_generated
+          : typeof faqProgress?.candidate_count === 'number'
+            ? faqProgress.candidate_count
+            : stats.faqsExtracted,
+      faqsAfterDedup:
+        typeof faqCounts?.faqs_after_dedup === 'number'
+          ? faqCounts.faqs_after_dedup
+          : typeof faqProgress?.faqs_after_dedup === 'number'
+            ? faqProgress.faqs_after_dedup
+            : stats.faqsAfterDedup,
+      faqsRefined:
+        typeof faqProgress?.final_count === 'number'
+          ? faqProgress.final_count
+          : typeof faqCounts?.faqs_after_dedup === 'number'
+            ? faqCounts.faqs_after_dedup
+            : stats.faqsRefined,
+      faqsAdded: typeof faqCounts?.faqs_added === 'number' ? faqCounts.faqs_added : stats.faqsAdded,
+      currentSite: faqTrack?.current_domain ?? faqProgress?.current_domain ?? stats.currentSite,
+      errorMessage: faqTrack?.latest_error ?? discoveryTrack?.latest_error ?? stats.errorMessage,
+    };
+  }, [discoveryTrack, faqTrack, stats]);
+
   // Update elapsed time every second
   useEffect(() => {
     const timer = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+      const now = Date.now();
+      setElapsedSeconds(Math.floor((now - startTime) / 1000));
+      setNowTick(now);
     }, 1000);
     return () => clearInterval(timer);
   }, [startTime]);
@@ -275,6 +519,7 @@ export function CompetitorPipelineProgress({
   // Poll for job progress
   useEffect(() => {
     if (!jobId) return;
+    if (onboardingProgress?.tracks) return;
 
     const fetchStats = async () => {
       const { data } = await supabase
@@ -336,7 +581,21 @@ export function CompetitorPipelineProgress({
     const interval = setInterval(fetchStats, 10000);
 
     return () => clearInterval(interval);
-  }, [extractionStartTime, jobId, startTime]);
+  }, [extractionStartTime, jobId, onboardingProgress?.tracks, startTime]);
+
+  useEffect(() => {
+    if (
+      (effectiveStats.phase === 'extracting' || effectiveStats.phase === 'deduplicating') &&
+      !extractionStartTime
+    ) {
+      setExtractionStartTime(Date.now());
+      return;
+    }
+
+    if (effectiveStats.phase !== 'extracting' && effectiveStats.phase !== 'deduplicating') {
+      setExtractionStartTime(null);
+    }
+  }, [effectiveStats.phase, extractionStartTime]);
 
   // Derive stage statuses from phase
   const getStageStatuses = (): {
@@ -346,11 +605,11 @@ export function CompetitorPipelineProgress({
     extract: StageStatus;
     refine: StageStatus;
   } => {
-    const { phase } = stats;
+    const { phase } = effectiveStats;
 
     if (phase === 'error') {
       // Determine which stage errored
-      if (stats.sitesDiscovered === 0) {
+      if (effectiveStats.sitesDiscovered === 0) {
         return {
           discover: 'error',
           validate: 'pending',
@@ -359,7 +618,7 @@ export function CompetitorPipelineProgress({
           refine: 'pending',
         };
       }
-      if (stats.sitesValidated === 0) {
+      if (effectiveStats.sitesValidated === 0) {
         return {
           discover: 'done',
           validate: 'error',
@@ -368,7 +627,7 @@ export function CompetitorPipelineProgress({
           refine: 'pending',
         };
       }
-      if (stats.sitesScraped === 0) {
+      if (effectiveStats.sitesScraped === 0) {
         return {
           discover: 'done',
           validate: 'done',
@@ -377,7 +636,7 @@ export function CompetitorPipelineProgress({
           refine: 'pending',
         };
       }
-      if (stats.faqsExtracted === 0) {
+      if (effectiveStats.faqsExtracted === 0) {
         return {
           discover: 'done',
           validate: 'done',
@@ -395,8 +654,27 @@ export function CompetitorPipelineProgress({
       };
     }
 
+    if (phase === 'queued') {
+      if (effectiveStats.sitesValidated > 0) {
+        return {
+          discover: 'done',
+          validate: 'done',
+          scrape: 'queued',
+          extract: 'pending',
+          refine: 'pending',
+        };
+      }
+
+      return {
+        discover: 'queued',
+        validate: 'pending',
+        scrape: 'pending',
+        extract: 'pending',
+        refine: 'pending',
+      };
+    }
+
     switch (phase) {
-      case 'queued':
       case 'discovering':
       case 'filtering':
         return {
@@ -482,7 +760,9 @@ export function CompetitorPipelineProgress({
 
   // Calculate scrape progress
   const scrapePercent =
-    stats.sitesValidated > 0 ? Math.round((stats.sitesScraped / stats.sitesValidated) * 100) : 0;
+    effectiveStats.sitesValidated > 0
+      ? Math.round((effectiveStats.sitesScraped / effectiveStats.sitesValidated) * 100)
+      : 0;
 
   // Estimate time remaining
   const estimateTime = (): string => {
@@ -491,9 +771,37 @@ export function CompetitorPipelineProgress({
     return '30-45 min';
   };
 
-  const isError = stats.phase === 'error' || stats.phase === 'failed';
-  const isComplete = stats.phase === 'completed';
-  const isReviewReady = stats.phase === 'review_ready';
+  const isError = effectiveStats.phase === 'error' || effectiveStats.phase === 'failed';
+  const isComplete = effectiveStats.phase === 'completed';
+  const isReviewReady = effectiveStats.phase === 'review_ready';
+  const activeTrack =
+    faqTrack && (faqTrack.agent_status !== 'pending' || faqTrack.current_step)
+      ? faqTrack
+      : discoveryTrack;
+  const heartbeatAgeMs = useMemo(() => {
+    const raw = activeTrack?.last_heartbeat_at ?? activeTrack?.updated_at ?? null;
+    if (!raw) return null;
+    const parsed = new Date(raw).getTime();
+    if (Number.isNaN(parsed)) return null;
+    return Math.max(0, nowTick - parsed);
+  }, [activeTrack?.last_heartbeat_at, activeTrack?.updated_at, nowTick]);
+  const heartbeatLabel = formatHeartbeatAge(heartbeatAgeMs);
+  const currentStepLabel = describeCompetitorCurrentStep(discoveryTrack, faqTrack);
+  const isQueued = activeTrack?.agent_status === 'queued';
+  const looksStalled =
+    activeTrack?.agent_status === 'running' &&
+    heartbeatAgeMs !== null &&
+    heartbeatAgeMs > 90 * 1000 &&
+    effectiveStats.sitesScraped === 0 &&
+    effectiveStats.faqsExtracted === 0;
+  const lastNudgeLabel = formatHeartbeatAge(
+    nudgeState.lastRunAt ? Math.max(0, nowTick - nudgeState.lastRunAt) : null,
+  );
+
+  useEffect(() => {
+    if (!onboardingProgress?.tracks) return;
+    setIsStale(heartbeatAgeMs !== null && heartbeatAgeMs > STALE_THRESHOLD_MS);
+  }, [heartbeatAgeMs, onboardingProgress?.tracks]);
 
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -525,13 +833,72 @@ export function CompetitorPipelineProgress({
     }
   };
 
+  useEffect(() => {
+    if (!workspaceId || !faqTrack?.run_id) return;
+    if (faqTrack.agent_status !== 'queued') return;
+    if (heartbeatAgeMs == null || heartbeatAgeMs < 12_000) return;
+
+    const now = Date.now();
+    if (nudgeState.running || now - lastNudgeRef.current < 20_000) return;
+
+    let cancelled = false;
+    lastNudgeRef.current = now;
+    setNudgeState((current) => ({ ...current, running: true, error: null }));
+
+    void supabase.functions
+      .invoke('onboarding-worker-nudge', {
+        body: {
+          workspace_id: workspaceId,
+          run_id: faqTrack.run_id,
+          workflow_key: 'faq_generation',
+        },
+      })
+      .then(async ({ error }) => {
+        if (cancelled) return;
+        if (error) {
+          setNudgeState({
+            running: false,
+            lastRunAt: Date.now(),
+            error: error.message || 'Failed to recheck the competitor worker',
+          });
+          return;
+        }
+
+        setNudgeState({
+          running: false,
+          lastRunAt: Date.now(),
+          error: null,
+        });
+        await refreshOnboardingProgress();
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNudgeState({
+          running: false,
+          lastRunAt: Date.now(),
+          error: error instanceof Error ? error.message : 'Failed to recheck the competitor worker',
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    faqTrack?.agent_status,
+    faqTrack?.run_id,
+    heartbeatAgeMs,
+    nudgeState.running,
+    refreshOnboardingProgress,
+    workspaceId,
+  ]);
+
   // Check if extraction is stalled.
   // Two paths:
   // 1) "Local" timer: user has been on this screen > 15 min
   // 2) "Global" stale heartbeat: job has been stuck previously (e.g. days)
   const isExtractionStalled =
-    (stats.phase === 'extracting' || stats.phase === 'deduplicating') &&
-    stats.faqsExtracted === 0 &&
+    (effectiveStats.phase === 'extracting' || effectiveStats.phase === 'deduplicating') &&
+    effectiveStats.faqsExtracted === 0 &&
     ((extractionStartTime && Date.now() - extractionStartTime > EXTRACTION_STALL_MS) || isStale);
 
   // Handle job recovery
@@ -562,8 +929,8 @@ export function CompetitorPipelineProgress({
 
   const handleContinue = () => {
     onComplete({
-      sitesScraped: stats.sitesScraped,
-      faqsGenerated: stats.faqsAdded,
+      sitesScraped: effectiveStats.sitesScraped,
+      faqsGenerated: effectiveStats.faqsAdded,
     });
   };
 
@@ -602,7 +969,114 @@ export function CompetitorPipelineProgress({
           <span className="font-medium text-foreground">{nicheQuery}</span>
           {serviceArea && <span className="text-muted-foreground"> in {serviceArea}</span>}
         </p>
+        {(activeTrack?.agent_status || activeTrack?.current_step) && (
+          <div
+            className={cn(
+              'mx-auto max-w-xl rounded-lg border px-4 py-3 text-left',
+              looksStalled
+                ? 'border-amber-300 bg-amber-50'
+                : isQueued
+                  ? 'border-amber-200 bg-amber-50/60'
+                  : 'border-border bg-muted/30',
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">{currentStepLabel}</p>
+                <p className="text-xs text-muted-foreground">
+                  Agent status: {activeTrack?.agent_status ?? 'pending'}
+                  {heartbeatLabel ? ` • last heartbeat ${heartbeatLabel} ago` : ''}
+                </p>
+              </div>
+              {activeTrack?.agent_status === 'running' && !looksStalled ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+              ) : null}
+              {looksStalled ? <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" /> : null}
+            </div>
+            {isQueued ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {nudgeState.running
+                  ? 'Rechecking the competitor worker now so this run can start moving.'
+                  : lastNudgeLabel
+                    ? `We rechecked the worker ${lastNudgeLabel} ago and will keep doing that while it is queued.`
+                    : 'Queued jobs are rechecked automatically, so you do not need to restart the whole run just because the queue is slow.'}
+              </p>
+            ) : looksStalled ? (
+              <p className="mt-2 text-xs text-amber-700">
+                The worker still looks active, but it has not advanced for a while. Use recovery
+                below if it does not move again soon.
+              </p>
+            ) : nudgeState.error ? (
+              <p className="mt-2 text-xs text-amber-700">
+                We tried to wake the competitor worker again, but it still needs attention.
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
+
+      {(activeTrack?.agent_status ||
+        effectiveStats.sitesDiscovered > 0 ||
+        effectiveStats.sitesScraped > 0 ||
+        effectiveStats.faqsExtracted > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Worker state
+            </p>
+            <p className="mt-2 text-sm font-semibold capitalize text-foreground">
+              {activeTrack?.agent_status ?? 'pending'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {heartbeatLabel
+                ? `Last heartbeat ${heartbeatLabel} ago`
+                : 'Waiting for first worker ping'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Competitors found
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.sitesDiscovered}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Businesses discovered so far</p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Sites scraped
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.sitesScraped}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {effectiveStats.currentSite
+                ? `Currently ${effectiveStats.currentSite}`
+                : 'Approved sites processed so far'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              FAQ candidates
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.faqsExtracted}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Questions extracted before dedupe</p>
+          </div>
+          <div className="rounded-lg border bg-background px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              FAQs added
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {effectiveStats.faqsAdded}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Final competitor FAQs now in BizzyBee
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stage Cards */}
       <div className="space-y-3">
@@ -618,9 +1092,11 @@ export function CompetitorPipelineProgress({
           status={stageStatuses.discover}
           icon={Search}
         >
-          {stageStatuses.discover === 'done' && stats.sitesDiscovered > 0 && (
+          {stageStatuses.discover === 'done' && effectiveStats.sitesDiscovered > 0 && (
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-sm text-success">{stats.sitesDiscovered} competitors found</p>
+              <p className="text-sm text-success">
+                {effectiveStats.sitesDiscovered} competitors found
+              </p>
               <CompetitorListDialog
                 jobId={jobId}
                 workspaceId={workspaceId}
@@ -629,20 +1105,36 @@ export function CompetitorPipelineProgress({
               />
             </div>
           )}
+          {stageStatuses.discover === 'queued' && (
+            <div className="space-y-2 text-sm text-amber-700">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Queued for competitor discovery worker pickup.</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                We keep rechecking the worker automatically so this can start moving without a full
+                restart.
+              </p>
+            </div>
+          )}
           {stageStatuses.discover === 'in_progress' && (
             <div className="space-y-3">
               {/* Always show progress bar with target count */}
               <div className="space-y-1.5">
                 <Progress
-                  value={Math.min((stats.sitesDiscovered / targetCount) * 100, 100)}
+                  value={Math.min((effectiveStats.sitesDiscovered / targetCount) * 100, 100)}
                   className="h-2"
                 />
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
-                    {stats.sitesDiscovered} / {targetCount} competitors found
+                    {effectiveStats.sitesDiscovered} / {targetCount} competitors found
                   </span>
                   <span className="font-medium">
-                    {Math.min(Math.round((stats.sitesDiscovered / targetCount) * 100), 100)}%
+                    {Math.min(
+                      Math.round((effectiveStats.sitesDiscovered / targetCount) * 100),
+                      100,
+                    )}
+                    %
                   </span>
                 </div>
               </div>
@@ -655,7 +1147,7 @@ export function CompetitorPipelineProgress({
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                   </span>
                   <span>
-                    {stats.sitesDiscovered === 0
+                    {effectiveStats.sitesDiscovered === 0
                       ? 'Searching Google Maps...'
                       : `Finding more businesses...`}
                   </span>
@@ -720,11 +1212,13 @@ export function CompetitorPipelineProgress({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
               </span>
-              <span>Validating websites... {stats.sitesValidated} valid</span>
+              <span>Validating websites... {effectiveStats.sitesValidated} valid</span>
             </div>
           )}
           {stageStatuses.validate === 'done' && (
-            <p className="text-sm text-success">{stats.sitesValidated} valid websites confirmed</p>
+            <p className="text-sm text-success">
+              {effectiveStats.sitesValidated} valid websites confirmed
+            </p>
           )}
         </StageCard>
 
@@ -745,27 +1239,39 @@ export function CompetitorPipelineProgress({
           {stageStatuses.scrape === 'pending' && (
             <p className="text-sm text-muted-foreground">Waiting for validation...</p>
           )}
+          {stageStatuses.scrape === 'queued' && (
+            <div className="space-y-2 text-sm text-amber-700">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Queued to start scraping the approved competitor sites.</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The worker is being rechecked automatically so the live scrape can begin without a
+                manual restart.
+              </p>
+            </div>
+          )}
           {stageStatuses.scrape === 'in_progress' && (
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Progress value={scrapePercent} className="h-2" />
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">
-                    {stats.sitesScraped} / {stats.sitesValidated} sites
+                    {effectiveStats.sitesScraped} / {effectiveStats.sitesValidated} sites
                   </span>
                   <span className="font-medium">{scrapePercent}%</span>
                 </div>
               </div>
-              {stats.currentSite && (
+              {effectiveStats.currentSite && (
                 <p className="text-xs text-muted-foreground truncate">
-                  Currently: {stats.currentSite}
+                  Currently: {effectiveStats.currentSite}
                 </p>
               )}
             </div>
           )}
           {stageStatuses.scrape === 'done' && (
             <p className="text-sm text-success">
-              {stats.sitesScraped} sites, {stats.pagesScraped} pages scraped
+              {effectiveStats.sitesScraped} sites, {effectiveStats.pagesScraped} pages scraped
             </p>
           )}
         </StageCard>
@@ -795,10 +1301,11 @@ export function CompetitorPipelineProgress({
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 <span>
-                  {stats.faqsExtracted > 0
-                    ? `${stats.faqsExtracted} FAQs extracted`
+                  {effectiveStats.faqsExtracted > 0
+                    ? `${effectiveStats.faqsExtracted} FAQs extracted`
                     : 'Processing content...'}
-                  {stats.faqsAfterDedup > 0 && `, ${stats.faqsAfterDedup} after dedup`}
+                  {effectiveStats.faqsAfterDedup > 0 &&
+                    `, ${effectiveStats.faqsAfterDedup} after dedup`}
                 </span>
               </div>
 
@@ -849,7 +1356,7 @@ export function CompetitorPipelineProgress({
           {stageStatuses.extract === 'error' && (
             <div className="space-y-2">
               <p className="text-sm text-destructive">
-                {stats.errorMessage || 'Extraction failed'}
+                {effectiveStats.errorMessage || 'Extraction failed'}
               </p>
               <Button
                 size="sm"
@@ -874,7 +1381,7 @@ export function CompetitorPipelineProgress({
           )}
           {stageStatuses.extract === 'done' && (
             <p className="text-sm text-success">
-              {stats.faqsExtracted} FAQs, {stats.faqsAfterDedup} unique
+              {effectiveStats.faqsExtracted} FAQs, {effectiveStats.faqsAfterDedup} unique
             </p>
           )}
         </StageCard>
@@ -903,12 +1410,15 @@ export function CompetitorPipelineProgress({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
               </span>
               <span>
-                Personalising FAQs... {stats.faqsRefined > 0 && `${stats.faqsRefined} refined`}
+                Personalising FAQs...{' '}
+                {effectiveStats.faqsRefined > 0 && `${effectiveStats.faqsRefined} refined`}
               </span>
             </div>
           )}
           {stageStatuses.refine === 'done' && (
-            <p className="text-sm text-success">{stats.faqsAdded} FAQs added to knowledge base</p>
+            <p className="text-sm text-success">
+              {effectiveStats.faqsAdded} FAQs added to knowledge base
+            </p>
           )}
         </StageCard>
       </div>
@@ -917,13 +1427,13 @@ export function CompetitorPipelineProgress({
       <ProgressLine currentStage={getCurrentStage()} />
 
       {/* Error State */}
-      {isError && stats.errorMessage && (
+      {isError && effectiveStats.errorMessage && (
         <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-destructive">Something went wrong</p>
-              <p className="text-xs text-muted-foreground mt-1">{stats.errorMessage}</p>
+              <p className="text-xs text-muted-foreground mt-1">{effectiveStats.errorMessage}</p>
             </div>
           </div>
           <Button onClick={onRetry} size="sm" variant="outline" className="mt-3 w-full gap-2">
@@ -939,8 +1449,8 @@ export function CompetitorPipelineProgress({
           <CheckCircle2 className="h-6 w-6 text-success mx-auto mb-2" />
           <p className="text-sm font-medium text-success">Competitor Research Complete!</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {stats.faqsAdded} FAQs from {stats.sitesScraped} competitor websites added to your
-            knowledge base.
+            {effectiveStats.faqsAdded} FAQs from {effectiveStats.sitesScraped} competitor websites
+            added to your knowledge base.
           </p>
         </div>
       )}

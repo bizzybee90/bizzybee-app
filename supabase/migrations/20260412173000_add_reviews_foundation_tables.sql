@@ -25,13 +25,10 @@ create table if not exists public.review_locations (
     provider_location_ref
   )
 );
-
 create index if not exists review_locations_workspace_provider_idx
   on public.review_locations (workspace_id, provider, created_at desc);
-
 create index if not exists review_locations_workspace_primary_idx
   on public.review_locations (workspace_id, is_primary, created_at desc);
-
 create table if not exists public.review_items (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -67,16 +64,12 @@ create table if not exists public.review_items (
     provider_review_id
   )
 );
-
 create index if not exists review_items_workspace_provider_created_idx
   on public.review_items (workspace_id, provider, created_at_provider desc);
-
 create index if not exists review_items_workspace_status_idx
   on public.review_items (workspace_id, status, created_at_provider desc);
-
 create index if not exists review_items_location_idx
   on public.review_items (location_id, created_at_provider desc);
-
 create table if not exists public.review_sync_runs (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -96,40 +89,32 @@ create table if not exists public.review_sync_runs (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-
 create index if not exists review_sync_runs_workspace_provider_idx
   on public.review_sync_runs (workspace_id, provider, started_at desc);
-
 alter table public.review_locations enable row level security;
 alter table public.review_items enable row level security;
 alter table public.review_sync_runs enable row level security;
-
 drop policy if exists "Users can view review locations for workspace" on public.review_locations;
 create policy "Users can view review locations for workspace"
   on public.review_locations
   for select
   to authenticated
   using (public.bb_user_in_workspace(workspace_id));
-
 drop policy if exists "Users can view review items for workspace" on public.review_items;
 create policy "Users can view review items for workspace"
   on public.review_items
   for select
   to authenticated
   using (public.bb_user_in_workspace(workspace_id));
-
 drop policy if exists "Users can view review sync runs for workspace" on public.review_sync_runs;
 create policy "Users can view review sync runs for workspace"
   on public.review_sync_runs
   for select
   to authenticated
   using (public.bb_user_in_workspace(workspace_id));
-
 comment on table public.review_locations is
   'Canonical review-source locations for BizzyBee review modules, starting with Google Reviews & Business Profile.';
-
 comment on table public.review_items is
   'Workspace-scoped review objects used by the Reviews module inbox, ownership, draft, and reply flows.';
-
 comment on table public.review_sync_runs is
   'Sync history for review imports and preview seeding so the Reviews module has a truthful run log.';

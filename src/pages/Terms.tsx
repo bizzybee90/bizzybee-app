@@ -19,15 +19,17 @@ export default function Terms() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">1. Agreement to Terms</h2>
             <p className="text-muted-foreground">
-              By accessing or using BizzyBee ("the Service"), you agree to be bound by these Terms of Service. 
-              If you disagree with any part of these terms, you may not access the Service.
+              By accessing or using BizzyBee ("the Service"), you agree to be bound by these Terms
+              of Service. If you disagree with any part of these terms, you may not access the
+              Service.
             </p>
           </section>
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">2. Description of Service</h2>
             <p className="text-muted-foreground mb-2">
-              BizzyBee is an AI-powered email assistant that helps small businesses manage customer communications. The Service:
+              BizzyBee is an AI-powered email assistant that helps small businesses manage customer
+              communications. The Service:
             </p>
             <ul className="list-disc list-inside text-muted-foreground space-y-1">
               <li>Connects to your email account (with your permission)</li>
@@ -52,7 +54,7 @@ export default function Terms() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">4. Acceptable Use</h2>
-            
+
             <div>
               <h3 className="text-lg font-medium mb-2">You May</h3>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
@@ -76,7 +78,7 @@ export default function Terms() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">5. Email Access & Permissions</h2>
-            
+
             <div>
               <h3 className="text-lg font-medium mb-2">What You're Granting</h3>
               <p className="text-muted-foreground mb-2">
@@ -101,7 +103,7 @@ export default function Terms() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">6. AI-Generated Content</h2>
-            
+
             <div>
               <h3 className="text-lg font-medium mb-2">No Guarantee of Accuracy</h3>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
@@ -114,7 +116,7 @@ export default function Terms() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">7. Intellectual Property</h2>
-            
+
             <div>
               <h3 className="text-lg font-medium mb-2">Our Property</h3>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
@@ -135,16 +137,16 @@ export default function Terms() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">8. Limitation of Liability</h2>
             <p className="text-muted-foreground">
-              THE SERVICE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND. 
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE ARE NOT LIABLE FOR INDIRECT, 
-              INCIDENTAL, OR CONSEQUENTIAL DAMAGES.
+              THE SERVICE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND. TO THE MAXIMUM EXTENT
+              PERMITTED BY LAW, WE ARE NOT LIABLE FOR INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+              DAMAGES.
             </p>
           </section>
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">9. Termination</h2>
             <p className="text-muted-foreground mb-2">
-              You may cancel anytime through your account settings or by emailing support@bizzybee.ai.
+              You may cancel anytime through your account settings or by emailing support@bizzyb.ee.
             </p>
             <p className="text-muted-foreground">
               We may terminate accounts that violate these Terms or engage in abusive behavior.
@@ -160,17 +162,15 @@ export default function Terms() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold">11. Contact Us</h2>
+            <p className="text-muted-foreground">Questions about these Terms? Contact us:</p>
             <p className="text-muted-foreground">
-              Questions about these Terms? Contact us:
-            </p>
-            <p className="text-muted-foreground">
-              <strong>Email:</strong> support@bizzybee.ai
+              <strong>Email:</strong> support@bizzyb.ee
             </p>
           </section>
 
           <section className="pt-4 border-t">
             <p className="text-sm text-muted-foreground italic">
-              We may update these Terms from time to time. We will notify you of material changes 
+              We may update these Terms from time to time. We will notify you of material changes
               via email or through the Service. Continued use after changes constitutes acceptance.
             </p>
           </section>

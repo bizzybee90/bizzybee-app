@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { AppRole } from '@/lib/types';
 import { isPreviewModeEnabled } from '@/lib/previewMode';
 
+const rolePriority: Record<AppRole, number> = {
+  reviewer: 1,
+  manager: 2,
+  admin: 3,
+};
+
 export const useUserRole = () => {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,15 +42,23 @@ export const useUserRole = () => {
         const { data, error } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+          .eq('user_id', user.id);
 
         if (error) {
           throw error;
         }
 
+        const resolvedRole =
+          (data ?? []).reduce<AppRole | null>((bestRole, row) => {
+            const nextRole = row.role as AppRole;
+            if (!bestRole || rolePriority[nextRole] > rolePriority[bestRole]) {
+              return nextRole;
+            }
+            return bestRole;
+          }, null) ?? null;
+
         if (isMounted) {
-          setRole((data?.role as AppRole | undefined) ?? null);
+          setRole(resolvedRole);
         }
       } catch (error) {
         console.error('Error fetching user role:', error);

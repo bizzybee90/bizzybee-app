@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { resolveWorkspaceIdForChannel } from '../_shared/channel-routing.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,10 +32,8 @@ function timingSafeEqual(a: string, b: string): boolean {
 function verifyGoogleBusinessToken(req: Request): void {
   const expectedToken = Deno.env.get('GOOGLE_BUSINESS_WEBHOOK_TOKEN')?.trim();
   if (!expectedToken) {
-    console.warn(
-      '[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set - skipping token verification',
-    );
-    return;
+    console.error('[google-business-webhook] GOOGLE_BUSINESS_WEBHOOK_TOKEN not set');
+    throw new WebhookAuthError('Server misconfigured', 500);
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -222,6 +221,10 @@ Deno.serve(async (req) => {
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[google-business-webhook] Error:', errorMessage);
+    await captureEdgeException({
+      functionName: 'google-business-webhook',
+      error,
+    });
 
     // Return 200 to prevent retries from Google
     return new Response(JSON.stringify({ status: 'ok' }), {

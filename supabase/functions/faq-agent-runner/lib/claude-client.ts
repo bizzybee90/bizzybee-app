@@ -1,6 +1,7 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
+const REQUEST_TIMEOUT_MS = 75_000;
 
 export interface ToolDefinition {
   name: string;
@@ -42,6 +43,9 @@ export async function callClaude(
   model = MODEL,
   maxTokens = MAX_TOKENS,
 ): Promise<ClaudeResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
@@ -56,7 +60,15 @@ export async function callClaude(
       messages,
       tools,
     }),
+    signal: controller.signal,
+  }).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Claude API timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw error;
   });
+
+  clearTimeout(timeout);
 
   if (!response.ok) {
     const errorText = await response.text();

@@ -107,6 +107,7 @@ describe('resolveWorkspaceEntitlements', () => {
     expect(entitlements.decisions.capabilities.aiPhone.wouldBlock).toBe(true);
     expect(entitlements.decisions.capabilities.aiPhone.source).toBe('override');
     expect(entitlements.resolution.intentionalBypass).toBe(true);
+    expect(entitlements.limits.emailHistoryImportLimit).toBe(30_000);
   });
 
   it('keeps connect routing behavior available with paid AI still blocked in hard mode', () => {

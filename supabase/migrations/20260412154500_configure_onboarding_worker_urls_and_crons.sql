@@ -84,7 +84,6 @@ begin
   end if;
 end;
 $$;
-
 create or replace function public.bb_schedule_onboarding_crons()
 returns void
 language plpgsql
@@ -119,5 +118,4 @@ begin
   );
 end;
 $$;
-
 select public.bb_schedule_onboarding_crons();

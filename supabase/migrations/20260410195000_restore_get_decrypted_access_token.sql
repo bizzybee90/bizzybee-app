@@ -7,7 +7,6 @@
 -- send-reply.
 
 DROP FUNCTION IF EXISTS public.get_decrypted_access_token(uuid);
-
 CREATE OR REPLACE FUNCTION public.get_decrypted_access_token(p_config_id uuid)
 RETURNS text
 LANGUAGE plpgsql
@@ -63,7 +62,6 @@ BEGIN
   RETURN v_access_token;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.get_decrypted_access_token(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_decrypted_access_token(uuid) FROM anon;
 REVOKE ALL ON FUNCTION public.get_decrypted_access_token(uuid) FROM authenticated;

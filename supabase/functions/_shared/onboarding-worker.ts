@@ -64,12 +64,18 @@ export async function loadRunRecord(
   };
 }
 
-export async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch {
-    return await fn();
-  }
+// Real retry with exponential backoff + jitter + Retry-After + retryable-status
+// classification. Extracted to retry.ts so it can be unit-tested under vitest
+// (this file cannot be tested directly — it imports esm.sh URLs).
+export { withTransientRetry } from './retry.ts';
+
+export function resolveQueueAttempt(record: {
+  read_ct?: number | null;
+  message?: Record<string, unknown> | null;
+}): number {
+  const queuedAttempt = Math.max(1, Number(record.message?.attempt || 1));
+  const deliveryAttempt = Math.max(1, Number(record.read_ct || 1));
+  return queuedAttempt + deliveryAttempt - 1;
 }
 
 export async function requeueStepJob(
@@ -78,7 +84,7 @@ export async function requeueStepJob(
   record: { msg_id: number; read_ct: number; message: Record<string, unknown> },
   errorMessage: string,
 ): Promise<void> {
-  const attempt = Number(record.message.attempt || 1) + 1;
+  const attempt = resolveQueueAttempt(record) + 1;
   const retryPayload = {
     ...record.message,
     attempt,

@@ -20,11 +20,13 @@ export function SettingsSection({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="rounded-xl border border-bb-border bg-bb-white shadow-sm">
-        <CollapsibleTrigger className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-bb-linen/60 rounded-xl transition-colors">
+      <div className="overflow-hidden rounded-[24px] border border-bb-border bg-gradient-to-b from-bb-white to-bb-cream/60 shadow-[0_14px_32px_rgba(28,21,16,0.04)]">
+        <CollapsibleTrigger className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-bb-linen/40">
           <div>
-            <h3 className="font-medium text-sm text-bb-text">{title}</h3>
-            {description && <p className="text-xs text-bb-warm-gray mt-0.5">{description}</p>}
+            <h3 className="text-[15px] font-medium text-bb-text">{title}</h3>
+            {description && (
+              <p className="mt-1 text-xs leading-5 text-bb-warm-gray">{description}</p>
+            )}
           </div>
           <ChevronRight
             className={cn(
@@ -34,7 +36,9 @@ export function SettingsSection({
           />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-bb-border-light px-4 pb-4 pt-3">{children}</div>
+          <div className="border-t border-bb-border-light/80 bg-bb-white/80 px-5 pb-5 pt-4">
+            {children}
+          </div>
         </CollapsibleContent>
       </div>
     </Collapsible>

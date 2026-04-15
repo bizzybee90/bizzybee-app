@@ -10,6 +10,7 @@ import {
   jsonResponse,
   RateLimitError,
 } from '../_shared/pipeline.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
@@ -266,6 +267,13 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('aurinko-webhook error', error);
+
+    if (!(error instanceof HttpError) && !(error instanceof RateLimitError)) {
+      await captureEdgeException({
+        functionName: 'aurinko-webhook',
+        error,
+      });
+    }
 
     if (error instanceof HttpError) {
       return jsonResponse({ ok: false, error: error.message }, error.status);

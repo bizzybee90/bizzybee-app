@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendResendEmail } from '../_shared/resend.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -75,8 +76,10 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY');
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const gdprSecret = Deno.env.get('GDPR_TOKEN_SECRET');
+    const resendFrom =
+      Deno.env.get('RESEND_TRANSACTIONAL_FROM')?.trim() || 'BizzyBee <noreply@bizzyb.ee>';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (!gdprSecret) {
@@ -194,7 +197,7 @@ Deno.serve(async (req) => {
     const verificationUrl = `${appUrl}/gdpr-portal?token=${encodeURIComponent(verificationToken)}&action=${request_type}`;
 
     // Send verification email
-    if (postmarkApiKey) {
+    if (resendApiKey) {
       const emailSubject =
         request_type === 'export'
           ? 'Verify Your Data Export Request'
@@ -219,31 +222,26 @@ Deno.serve(async (req) => {
         </p>
       `;
 
-      const emailResponse = await fetch('https://api.postmarkapp.com/email', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'X-Postmark-Server-Token': postmarkApiKey,
+      await sendResendEmail(
+        resendApiKey,
+        {
+          from: resendFrom,
+          to: email,
+          subject: emailSubject,
+          html: emailBody,
+          tags: [
+            { name: 'category', value: 'gdpr' },
+            { name: 'kind', value: `verify_${request_type}` },
+          ],
         },
-        body: JSON.stringify({
-          From: 'noreply@bizzybee.ai',
-          To: email,
-          Subject: emailSubject,
-          HtmlBody: emailBody,
-          MessageStream: 'outbound',
-        }),
-      });
-
-      if (!emailResponse.ok) {
-        const errorText = await emailResponse.text();
-        console.error('Postmark error:', errorText);
-        throw new Error('Failed to send verification email');
-      }
+        {
+          idempotencyKey: `gdpr-request:${request_type}:${normalizedEmail}:${expiresAt.toISOString()}`,
+        },
+      );
 
       console.log('Verification email sent to:', maskedEmail);
     } else {
-      console.warn('POSTMARK_API_KEY not configured, skipping email');
+      console.warn('RESEND_API_KEY not configured, skipping email');
       // In development, log the verification URL
       console.log('Verification URL:', verificationUrl);
     }

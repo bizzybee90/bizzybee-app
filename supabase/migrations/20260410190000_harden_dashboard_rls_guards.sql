@@ -42,7 +42,6 @@ BEGIN
     RAISE NOTICE 'Skipping leads RLS hardening: table or workspace_id column not present';
   END IF;
 END $$;
-
 DO $$
 DECLARE
   lead_events_exists boolean := to_regclass('public.lead_events') IS NOT NULL;
@@ -132,7 +131,6 @@ BEGIN
     RAISE NOTICE 'Skipping lead_events RLS hardening: table shape did not match expected workspace/lead relation';
   END IF;
 END $$;
-
 DO $$
 DECLARE
   dashboard_users_exists boolean := to_regclass('public.dashboard_users') IS NOT NULL;

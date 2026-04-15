@@ -11,7 +11,6 @@ BEGIN
     EXECUTE 'DROP POLICY IF EXISTS "Anon can read leads" ON public.leads';
   END IF;
 END $$;
-
 DO $$
 BEGIN
   IF to_regclass('public.lead_events') IS NOT NULL THEN

@@ -43,12 +43,12 @@ export const ThreeColumnLayout = ({ sidebar, main }: ThreeColumnLayoutProps) => 
 
   return (
     <div className="flex h-[100dvh] min-h-[100dvh] w-full overflow-hidden bg-bb-linen">
-      <aside className="relative z-50 flex h-full min-h-0 flex-shrink-0 overflow-y-auto bg-bb-espresso shadow-[inset_-1px_0_0_rgba(255,255,255,0.04)]">
+      <aside className="relative z-50 flex h-full min-h-0 flex-shrink-0 overflow-hidden shadow-[inset_-1px_0_0_rgba(255,255,255,0.04)]">
         {sidebar}
       </aside>
 
-      <main className="flex min-w-0 min-h-0 flex-1 flex-col overflow-y-auto bg-bb-linen p-5 lg:p-6">
-        <div className="flex-1 overflow-y-auto rounded-[24px] border border-[rgba(28,21,16,0.08)] bg-bb-white shadow-[0_18px_40px_rgba(28,21,16,0.06)]">
+      <main className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-bb-linen p-3 lg:p-4">
+        <div className="flex-1 min-h-0 overflow-auto rounded-[30px] border border-[rgba(28,21,16,0.08)] bg-bb-white shadow-[0_18px_40px_rgba(28,21,16,0.06)]">
           {main}
         </div>
       </main>

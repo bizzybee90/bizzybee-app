@@ -45,7 +45,12 @@ interface UseEmailImportStatusResult {
 function isRateLimitError(err: string | null | undefined): boolean {
   if (!err) return false;
   const s = err.toLowerCase();
-  return s.includes('429') || s.includes('toomanyrequests') || s.includes('limit exceeded') || s.includes('rate limit');
+  return (
+    s.includes('429') ||
+    s.includes('toomanyrequests') ||
+    s.includes('limit exceeded') ||
+    s.includes('rate limit')
+  );
 }
 
 export function useEmailImportStatus(workspaceId: string | null): UseEmailImportStatusResult {
@@ -56,18 +61,19 @@ export function useEmailImportStatus(workspaceId: string | null): UseEmailImport
 
       const { data, error } = await supabase
         .from('email_provider_configs')
-        .select('id, sync_status, sync_stage, sync_progress, inbound_emails_found, outbound_emails_found, inbound_total, outbound_total, sync_error, sync_started_at, sync_completed_at')
+        .select(
+          'id, sync_status, sync_stage, sync_progress, inbound_emails_found, outbound_emails_found, inbound_total, outbound_total, sync_error, sync_started_at, sync_completed_at',
+        )
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
 
       if (error) {
         console.error('Error fetching email config:', error);
         return null;
       }
 
-      return data as EmailProviderConfig | null;
+      return (data?.[0] as EmailProviderConfig | undefined) ?? null;
     },
     enabled: !!workspaceId,
     refetchInterval: (query) => {
@@ -96,7 +102,10 @@ export function useEmailImportStatus(workspaceId: string | null): UseEmailImport
     return 'fetching_inbox';
   };
 
-  const calculateProgress = (config: EmailProviderConfig | null, phase: UseEmailImportStatusResult['phase']): number => {
+  const calculateProgress = (
+    config: EmailProviderConfig | null,
+    phase: UseEmailImportStatusResult['phase'],
+  ): number => {
     if (!config) return 0;
     if (phase === 'complete') return 100;
     if (phase === 'error') return 0;
@@ -126,7 +135,10 @@ export function useEmailImportStatus(workspaceId: string | null): UseEmailImport
     return config.sync_progress || 0;
   };
 
-  const getStatusMessage = (config: EmailProviderConfig | null, phase: UseEmailImportStatusResult['phase']): string => {
+  const getStatusMessage = (
+    config: EmailProviderConfig | null,
+    phase: UseEmailImportStatusResult['phase'],
+  ): string => {
     if (!config) return '';
 
     const inboxFound = config.inbound_emails_found || 0;
@@ -172,4 +184,3 @@ export function useEmailImportStatus(workspaceId: string | null): UseEmailImport
     hasSentEmails: (config?.outbound_emails_found || 0) > 0,
   };
 }
-

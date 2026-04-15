@@ -94,6 +94,16 @@ vi.mock('@/hooks/useChannelSetup', () => ({
   useChannelSetup: () => testState.channelSetup,
 }));
 
+vi.mock('@/hooks/useUserRole', () => ({
+  useUserRole: () => ({
+    role: 'admin',
+    loading: false,
+    isAdmin: true,
+    isManager: true,
+    isReviewer: true,
+  }),
+}));
+
 vi.mock('@/hooks/useInboxEmails', () => ({
   useInboxCounts: () => testState.inboxCounts,
 }));
@@ -216,8 +226,8 @@ describe('critical route smoke checks', () => {
   it('renders the settings shell', () => {
     renderWithProviders(<Settings />);
 
-    expect(screen.getByText('Workspace & Access')).toBeInTheDocument();
-    expect(screen.getByText('Channels & Integrations')).toBeInTheDocument();
+    expect(screen.getAllByText('Workspace & Access').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Channels & Integrations').length).toBeGreaterThan(0);
   });
 
   it('renders the knowledge base lock state', () => {

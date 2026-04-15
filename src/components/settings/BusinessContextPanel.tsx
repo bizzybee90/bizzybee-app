@@ -35,7 +35,9 @@ export function BusinessContextPanel() {
 
   const fetchContext = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: userData } = await supabase
@@ -76,7 +78,9 @@ export function BusinessContextPanel() {
   const saveContext = async (updates: Partial<BusinessContext>) => {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data: userData } = await supabase
@@ -90,28 +94,29 @@ export function BusinessContextPanel() {
       const newContext = { ...context, ...updates };
       setContext(newContext);
 
-      const { error } = await supabase
-        .from('business_context')
-        .upsert({
+      const { error } = await supabase.from('business_context').upsert(
+        {
           workspace_id: userData.workspace_id,
           is_hiring: newContext.is_hiring,
           active_stripe_case: newContext.active_stripe_case,
           active_insurance_claim: newContext.active_insurance_claim,
           custom_flags: newContext.custom_flags,
           updated_at: new Date().toISOString(),
-        }, {
+        },
+        {
           onConflict: 'workspace_id',
-        });
+        },
+      );
 
       if (error) throw error;
 
       toast({ title: 'Business context updated' });
     } catch (error) {
       console.error('Error saving business context:', error);
-      toast({ 
-        title: 'Failed to save', 
+      toast({
+        title: 'Failed to save',
         description: 'Please try again',
-        variant: 'destructive' 
+        variant: 'destructive',
       });
     } finally {
       setSaving(false);
@@ -150,18 +155,29 @@ export function BusinessContextPanel() {
   }
 
   return (
-    <Card>
+    <Card className="rounded-[28px] border-[0.5px] border-bb-border bg-gradient-to-b from-bb-white to-bb-cream/60 shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Briefcase className="h-5 w-5" />
           Business Context
         </CardTitle>
         <CardDescription>
-          Tell the AI about your current business situation to improve email triage accuracy.
-          When enabled, relevant emails will be flagged for action instead of auto-triaged.
+          Tell the AI about your current business situation to improve email triage accuracy. When
+          enabled, relevant emails will be flagged for action instead of auto-triaged.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="rounded-2xl border border-bb-border bg-bb-white/80 p-4">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-bb-warm-gray">
+            How this helps
+          </p>
+          <p className="mt-2 text-sm leading-6 text-bb-warm-gray">
+            Use these flags for temporary moments that change how BizzyBee should treat incoming
+            messages. Good examples are hiring drives, a Stripe dispute, an insurance claim, or a
+            one-off operational issue that should send matching emails straight to action review.
+          </p>
+        </div>
+
         {/* Built-in Flags */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -220,19 +236,33 @@ export function BusinessContextPanel() {
         </div>
 
         {/* Custom Flags */}
-        <div className="border-t pt-4">
-          <Label className="text-sm font-medium">Custom Flags</Label>
-          <p className="text-xs text-muted-foreground mb-3">
-            Add your own business context flags for specific situations
-          </p>
-          
+        <div className="border-t border-bb-border-light pt-4">
+          <div className="rounded-2xl border border-dashed border-bb-border bg-bb-linen/50 p-4">
+            <Label className="text-sm font-medium text-bb-text">Custom Flags</Label>
+            <p className="mt-1 text-xs leading-5 text-bb-warm-gray">
+              Add a temporary business state in plain language, like{' '}
+              <span className="font-medium text-bb-text">pending tender</span>,{' '}
+              <span className="font-medium text-bb-text">equipment recall</span>, or{' '}
+              <span className="font-medium text-bb-text">franchise launch</span>. These are binary
+              flags today, so use names that are self-explanatory at a glance.
+            </p>
+          </div>
+
           {Object.entries(context.custom_flags).length > 0 && (
-            <div className="space-y-2 mb-4">
+            <div className="mb-4 mt-4 space-y-2">
               {Object.entries(context.custom_flags).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
-                  <Label htmlFor={`custom-${key}`} className="text-sm capitalize">
-                    {key.replace(/_/g, ' ')}
-                  </Label>
+                <div
+                  key={key}
+                  className="flex items-center justify-between rounded-xl border border-bb-border bg-bb-white px-3 py-3"
+                >
+                  <div>
+                    <Label htmlFor={`custom-${key}`} className="text-sm capitalize text-bb-text">
+                      {key.replace(/_/g, ' ')}
+                    </Label>
+                    <p className="mt-1 text-xs text-bb-warm-gray">
+                      When enabled, matching messages should stay visible for human review.
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch
                       id={`custom-${key}`}
@@ -254,9 +284,9 @@ export function BusinessContextPanel() {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="mt-4 flex gap-2">
             <Input
-              placeholder="New flag name (e.g., 'pending lawsuit')"
+              placeholder="New flag name (e.g., pending lawsuit)"
               value={newFlagName}
               onChange={(e) => setNewFlagName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addCustomFlag()}

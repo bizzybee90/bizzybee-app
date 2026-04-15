@@ -5,31 +5,45 @@ import { useOnboardingProgress } from '../useOnboardingProgress';
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   loggerError: vi.fn(),
+  loggerWarn: vi.fn(),
+  getSession: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     rpc: mocks.rpc,
+    auth: {
+      getSession: mocks.getSession,
+    },
   },
 }));
 
 vi.mock('@/lib/logger', () => ({
   logger: {
     error: mocks.loggerError,
+    warn: mocks.loggerWarn,
   },
 }));
 
 describe('useOnboardingProgress', () => {
   const setIntervalSpy = vi.spyOn(window, 'setInterval');
+  const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
   beforeEach(() => {
     mocks.rpc.mockReset();
     mocks.loggerError.mockReset();
+    mocks.loggerWarn.mockReset();
+    mocks.getSession.mockReset();
     setIntervalSpy.mockClear();
+    fetchSpy.mockReset();
+    mocks.getSession.mockResolvedValue({
+      data: { session: { access_token: 'token-123' } },
+    });
   });
 
   afterEach(() => {
     setIntervalSpy.mockClear();
+    fetchSpy.mockReset();
   });
 
   it('loads onboarding progress via the bb_get_onboarding_progress RPC and refreshes on a timer', async () => {
@@ -100,7 +114,7 @@ describe('useOnboardingProgress', () => {
     expect(result.current.data).toEqual(firstPayload);
     expect(result.current.error).toBeNull();
 
-    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 10000);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 2000);
 
     mocks.rpc.mockResolvedValueOnce({ data: secondPayload, error: null });
 
@@ -120,6 +134,7 @@ describe('useOnboardingProgress', () => {
       data: null,
       error: { message: 'RPC exploded' },
     });
+    fetchSpy.mockRejectedValueOnce(new Error('RPC exploded'));
 
     const { result } = renderHook(() => useOnboardingProgress('ws-2'));
 
@@ -129,6 +144,10 @@ describe('useOnboardingProgress', () => {
 
     expect(result.current.data).toBeNull();
     expect(result.current.error).toBe('RPC exploded');
+    expect(mocks.loggerWarn).toHaveBeenCalledWith(
+      'RPC onboarding progress failed, retrying with bearer fetch',
+      expect.objectContaining({ message: 'RPC exploded' }),
+    );
     expect(mocks.loggerError).toHaveBeenCalledWith(
       'Failed to load onboarding progress',
       expect.objectContaining({ message: 'RPC exploded' }),

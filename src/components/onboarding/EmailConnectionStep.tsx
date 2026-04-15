@@ -9,8 +9,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { ImapConnectionModal } from './ImapConnectionModal';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { getPlanDefinition } from '@/lib/billing/plans';
 import {
   deriveEmailImportState,
+  shouldKickEmailImport,
   type EmailImportPhase,
   type EmailImportProgressRow,
   type EmailPipelineRunStatus,
@@ -74,9 +76,7 @@ function mapDerivedStateToMakeProgress(
   };
 }
 
-function getConnectionProgressCopy(
-  progress: MakeProgress | null,
-): {
+function getConnectionProgressCopy(progress: MakeProgress | null): {
   icon:
     | typeof Clock
     | typeof Loader2
@@ -327,11 +327,19 @@ export function EmailConnectionStep({
   const pollIntervalRef = useRef<number | undefined>(undefined);
   const aiInboxEnabled = entitlements?.canUseAiInbox ?? true;
   const emailHistoryImportLimit = entitlements?.limits.emailHistoryImportLimit ?? 30_000;
+  const currentPlan = getPlanDefinition(entitlements?.plan ?? 'connect');
   const allowedImportModes = useMemo(
     () => getAllowedImportModes(emailHistoryImportLimit, aiInboxEnabled),
     [emailHistoryImportLimit, aiInboxEnabled],
   );
   const importLimitLabel = formatEmailHistoryLimit(emailHistoryImportLimit);
+  const isNewEmailsOnlyPlan =
+    allowedImportModes.length === 1 && allowedImportModes[0]?.value === 'new_only';
+  const importLimitCopy = aiInboxEnabled
+    ? importLimitLabel === 'new emails only'
+      ? 'Your current plan starts with new emails only. You can upgrade later to import historical inbox context.'
+      : `Your current plan includes up to ${importLimitLabel} of email history for AI learning.`
+    : 'Connect includes the unified inbox only. You can start receiving new emails now, and upgrade later to train BizzyBee on history.';
 
   useEffect(() => {
     if (!allowedImportModes.some((mode) => mode.value === importMode)) {
@@ -352,12 +360,11 @@ export function EmailConnectionStep({
           supabase
             .from('email_provider_configs')
             .select(
-              'id, import_mode, email_address, sync_status, sync_error, sync_started_at, sync_completed_at',
+              'id, import_mode, email_address, sync_status, sync_stage, sync_progress, inbound_emails_found, outbound_emails_found, inbound_total, outbound_total, sync_error, sync_started_at, sync_completed_at',
             )
             .eq('workspace_id', workspaceId)
             .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
+            .limit(1),
           supabase
             .from('email_import_progress')
             .select('*')
@@ -374,13 +381,20 @@ export function EmailConnectionStep({
             .maybeSingle(),
         ]);
 
+        const latestConfig = !configResult.error
+          ? ((configResult.data?.[0] as
+              | (EmailProviderConfigStatus & {
+                  id?: string | null;
+                  email_address?: string | null;
+                })
+              | undefined) ?? null)
+          : null;
+
         const derivedState = deriveEmailImportState({
           progress: !progressResult.error
             ? (progressResult.data as EmailImportProgressRow | null)
             : null,
-          config: !configResult.error
-            ? (configResult.data as EmailProviderConfigStatus | null)
-            : null,
+          config: latestConfig,
           activeRun: !pipelineResult.error
             ? (pipelineResult.data as EmailPipelineRunStatus | null)
             : null,
@@ -397,9 +411,9 @@ export function EmailConnectionStep({
           ),
         );
 
-        if (!configResult.error && configResult.data?.email_address) {
-          setEmailConfigId(configResult.data.id);
-          const email = configResult.data.email_address;
+        if (latestConfig?.email_address) {
+          setEmailConfigId(latestConfig.id ?? null);
+          const email = latestConfig.email_address;
           setConnectedEmail(email);
           onEmailConnected(email);
 
@@ -569,19 +583,18 @@ export function EmailConnectionStep({
       let configId = emailConfigId;
 
       if (!configId) {
-        const { data: latestConfig, error: lookupError } = await supabase
+        const { data: latestConfigs, error: lookupError } = await supabase
           .from('email_provider_configs')
           .select('id')
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
         if (lookupError) {
           throw lookupError;
         }
 
-        configId = latestConfig?.id ?? null;
+        configId = latestConfigs?.[0]?.id ?? null;
       }
 
       if (!configId) {
@@ -617,18 +630,18 @@ export function EmailConnectionStep({
     if (isPreview) return;
 
     try {
-      const { data: existingConfig, error: lookupError } = await supabase
+      const { data: existingConfigs, error: lookupError } = await supabase
         .from('email_provider_configs')
         .select('id, provider')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
 
       if (lookupError) {
         throw lookupError;
       }
 
+      const existingConfig = existingConfigs?.[0];
       if (existingConfig?.id) {
         const { data, error } = await supabase.functions.invoke('aurinko-reset-account', {
           body: {
@@ -687,10 +700,11 @@ export function EmailConnectionStep({
   const handleContinue = () => {
     if (!connectedEmail) return;
 
-    const progressStatus = progress?.status ?? 'idle';
-    const shouldKickImport = progressStatus === 'idle' || progressStatus === 'error';
-
-    if (shouldKickImport) {
+    // IMAP connect now seeds current_phase='queued' (see aurinko-create-imap-account).
+    // If we don't treat 'queued' as kickable, new IMAP connections would silently
+    // never start their import. start-email-import dedupes so this is safe to call
+    // even if a run is already queued.
+    if (shouldKickEmailImport(progress?.status)) {
       void startImport();
     }
 
@@ -815,15 +829,31 @@ export function EmailConnectionStep({
           {/* Import Mode Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">
-              {aiInboxEnabled
-                ? 'How much email history should we learn from?'
-                : 'How should we start your inbox?'}
+              {isNewEmailsOnlyPlan
+                ? 'How should we start your inbox?'
+                : aiInboxEnabled
+                  ? 'How much email history should we learn from?'
+                  : 'How should we start your inbox?'}
             </Label>
-            <p className="text-sm text-muted-foreground">
-              {aiInboxEnabled
-                ? `Your current plan includes up to ${importLimitLabel} of email history for AI learning.`
-                : 'Connect includes the unified inbox only. You can start receiving new emails now, and upgrade later to train BizzyBee on history.'}
-            </p>
+            <p className="text-sm text-muted-foreground">{importLimitCopy}</p>
+            {isNewEmailsOnlyPlan ? (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {currentPlan.name} starts with new emails only
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      This keeps setup light on day one. Historical inbox learning unlocks on
+                      Starter and above once you want BizzyBee to train on older conversations.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-primary/20 bg-background px-3 py-1 text-xs font-medium text-primary">
+                    {currentPlan.name} plan
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <RadioGroup
               value={importMode}
               onValueChange={(v) => setImportMode(v as ImportMode)}
@@ -893,9 +923,17 @@ export function EmailConnectionStep({
             </div>
           </div>
 
-          <Button variant="outline" onClick={onBack} className="w-full">
-            Back
-          </Button>
+          <div className="space-y-3">
+            <Button variant="outline" onClick={onNext} className="w-full">
+              Skip email for now
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              You can finish the rest of onboarding now and connect the inbox later from settings.
+            </p>
+            <Button variant="outline" onClick={onBack} className="w-full">
+              Back
+            </Button>
+          </div>
         </div>
       )}
 

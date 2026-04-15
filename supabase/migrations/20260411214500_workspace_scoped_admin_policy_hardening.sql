@@ -11,7 +11,6 @@ begin
   end if;
 end
 $$;
-
 do $$
 begin
   if to_regclass('public.workspace_channels') is null then
@@ -39,7 +38,6 @@ begin
   $sql$;
 end
 $$;
-
 do $$
 begin
   if to_regclass('public.sla_configs') is null then
@@ -73,7 +71,6 @@ begin
   $sql$;
 end
 $$;
-
 do $$
 begin
   if to_regclass('public.business_facts') is null then
@@ -101,7 +98,6 @@ begin
   $sql$;
 end
 $$;
-
 do $$
 begin
   if to_regclass('public.price_list') is null then
@@ -129,7 +125,6 @@ begin
   $sql$;
 end
 $$;
-
 do $$
 declare
   target_table text;

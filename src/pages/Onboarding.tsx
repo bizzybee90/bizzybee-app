@@ -24,6 +24,14 @@ export default function Onboarding() {
   const shouldForceFreshOnboarding = isReset || isRepair;
   const forcedWorkspaceIdRef = useRef<string | null>(null);
 
+  const resetStoredOnboardingDraft = (targetWorkspaceId: string) => {
+    try {
+      window.localStorage.removeItem(`bizzybee:onboarding:${targetWorkspaceId}`);
+    } catch {
+      // ignore local draft reset failures
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -65,6 +73,30 @@ export default function Onboarding() {
           });
           clearSafetyTimeout(loadingSafetyTimeout);
           navigate('/', { replace: true });
+          return;
+        }
+
+        if (workspace?.id && shouldForceFreshOnboarding) {
+          logger.debug('Resetting onboarding on existing shared workspace', {
+            workspaceId: workspace.id,
+          });
+
+          resetStoredOnboardingDraft(workspace.id);
+
+          await supabase
+            .from('users')
+            .update({
+              workspace_id: workspace.id,
+              onboarding_completed: false,
+              onboarding_step: 'welcome',
+            })
+            .eq('id', authUser.id);
+
+          if (isMounted) {
+            clearSafetyTimeout(loadingSafetyTimeout);
+            setWorkspaceId(workspace.id);
+            setLoading(false);
+          }
           return;
         }
 
@@ -111,6 +143,30 @@ export default function Onboarding() {
           logger.debug('Already completed, going home');
           clearSafetyTimeout(loadingSafetyTimeout);
           navigate('/', { replace: true });
+          return;
+        }
+
+        if (userData?.workspace_id && shouldForceFreshOnboarding) {
+          logger.debug('Resetting onboarding on existing user workspace', {
+            workspaceId: userData.workspace_id,
+          });
+
+          resetStoredOnboardingDraft(userData.workspace_id);
+
+          await supabase
+            .from('users')
+            .update({
+              workspace_id: userData.workspace_id,
+              onboarding_completed: false,
+              onboarding_step: 'welcome',
+            })
+            .eq('id', authUser.id);
+
+          if (isMounted) {
+            clearSafetyTimeout(loadingSafetyTimeout);
+            setWorkspaceId(userData.workspace_id);
+            setLoading(false);
+          }
           return;
         }
 
@@ -253,13 +309,13 @@ export default function Onboarding() {
 
         if (userData?.workspace_id) {
           // Look up the email provider config for this workspace
-          const { data: emailConfig } = await supabase
+          const { data: emailConfigs } = await supabase
             .from('email_provider_configs')
             .select('id')
             .eq('workspace_id', userData.workspace_id)
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
 
+          const emailConfig = emailConfigs?.[0];
           if (emailConfig?.id) {
             supabase.functions
               .invoke('start-email-import', {
@@ -269,7 +325,7 @@ export default function Onboarding() {
                   mode: 'backfill',
                 },
               })
-            .catch((err) => logger.error('Deep backfill trigger failed (non-blocking)', err));
+              .catch((err) => logger.error('Deep backfill trigger failed (non-blocking)', err));
           }
         }
       }
@@ -340,5 +396,11 @@ export default function Onboarding() {
     );
   }
 
-  return <OnboardingWizard workspaceId={workspaceId} onComplete={handleComplete} />;
+  return (
+    <OnboardingWizard
+      workspaceId={workspaceId}
+      forceFresh={shouldForceFreshOnboarding}
+      onComplete={handleComplete}
+    />
+  );
 }

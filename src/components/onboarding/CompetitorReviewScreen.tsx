@@ -37,6 +37,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  bulkSetOnboardingCompetitorSelection,
+  deleteOnboardingCompetitor,
+  listOnboardingCompetitors,
+  toggleOnboardingCompetitorSelection,
+} from '@/lib/onboarding/competitors';
 
 interface Competitor {
   id: string;
@@ -115,18 +121,8 @@ export function CompetitorReviewScreen({
     const fetchCompetitors = async () => {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('competitor_sites')
-          .select(
-            'id, business_name, domain, url, rating, reviews_count, is_selected, discovery_source, location_data, distance_miles, match_reason, validation_status, relevance_score',
-          )
-          .eq('job_id', jobId)
-          // Sort by distance first (closest competitors at top), then by relevance
-          .order('distance_miles', { ascending: true, nullsFirst: false })
-          .order('relevance_score', { ascending: false, nullsFirst: false });
-
-        if (error) throw error;
-        setCompetitors(data || []);
+        const response = await listOnboardingCompetitors(workspaceId, jobId);
+        setCompetitors((response.competitors || []) as Competitor[]);
       } catch (err) {
         logger.error('Error fetching competitors', err);
         toast.error('Failed to load competitors');
@@ -136,7 +132,7 @@ export function CompetitorReviewScreen({
     };
 
     fetchCompetitors();
-  }, [jobId]);
+  }, [jobId, workspaceId]);
 
   // Fetch exact search queries used for this job (stored on the job record)
   useEffect(() => {
@@ -235,12 +231,9 @@ export function CompetitorReviewScreen({
     );
 
     // Persist to database
-    const { error } = await supabase
-      .from('competitor_sites')
-      .update({ is_selected: newValue })
-      .eq('id', competitorId);
-
-    if (error) {
+    try {
+      await toggleOnboardingCompetitorSelection(workspaceId, competitorId, newValue);
+    } catch (error) {
       // Revert on error
       setCompetitors((prev) =>
         prev.map((c) => (c.id === competitorId ? { ...c, is_selected: !newValue } : c)),
@@ -269,15 +262,11 @@ export function CompetitorReviewScreen({
     );
 
     // Persist to database
-    const { error } = await supabase
-      .from('competitor_sites')
-      .update({ is_selected: true })
-      .in('id', ids);
-
-    if (error) {
-      toast.error('Failed to update selections');
-    } else {
+    try {
+      await bulkSetOnboardingCompetitorSelection(workspaceId, ids, true);
       toast.success(`Selected ${toSelect.length} competitors`);
+    } catch (error) {
+      toast.error('Failed to update selections');
     }
   };
 
@@ -289,12 +278,9 @@ export function CompetitorReviewScreen({
     setCompetitors((prev) => prev.map((c) => ({ ...c, is_selected: false })));
 
     // Persist to database
-    const { error } = await supabase
-      .from('competitor_sites')
-      .update({ is_selected: false })
-      .in('id', ids);
-
-    if (error) {
+    try {
+      await bulkSetOnboardingCompetitorSelection(workspaceId, ids, false);
+    } catch (error) {
       toast.error('Failed to clear selections');
     }
   };
@@ -304,9 +290,9 @@ export function CompetitorReviewScreen({
     // Optimistic update
     setCompetitors((prev) => prev.filter((c) => c.id !== competitorId));
 
-    const { error } = await supabase.from('competitor_sites').delete().eq('id', competitorId);
-
-    if (error) {
+    try {
+      await deleteOnboardingCompetitor(workspaceId, competitorId);
+    } catch (error) {
       toast.error('Failed to delete competitor');
     }
   };
@@ -344,32 +330,29 @@ export function CompetitorReviewScreen({
 
     setIsAddingUrl(true);
     try {
-      const { data, error } = await supabase
-        .from('competitor_sites')
-        .insert({
-          job_id: jobId,
+      const { data, error } = await supabase.functions.invoke('add-manual-competitor', {
+        body: {
           workspace_id: workspaceId,
-          business_name: hostname,
+          job_id: jobId,
           url: cleanUrl,
-          domain: hostname,
-          discovery_source: 'manual',
-          status: 'approved',
-          scrape_status: 'pending',
-          is_selected: true,
-          validation_status: 'pending',
-          relevance_score: 100, // Manual entries get highest priority
-        })
-        .select()
-        .single();
+        },
+      });
 
-      if (error) throw error;
+      if (error || data?.ok === false || !data?.competitor) {
+        throw error || new Error(data?.error || 'Failed to add competitor');
+      }
 
-      setCompetitors((prev) => [data as Competitor, ...prev]);
+      const competitor = data.competitor as Competitor;
+      setCompetitors((prev) =>
+        prev.some((item) => item.id === competitor.id) ? prev : [competitor, ...prev],
+      );
       setManualUrl('');
-      toast.success('Competitor added');
+      toast.success(
+        data?.reused ? 'Competitor already existed and has been loaded' : 'Competitor added',
+      );
     } catch (err) {
       logger.error('Error adding URL', err);
-      toast.error('Failed to add competitor');
+      toast.error(err instanceof Error ? err.message : 'Failed to add competitor');
     } finally {
       setIsAddingUrl(false);
     }
@@ -403,7 +386,9 @@ export function CompetitorReviewScreen({
         throw new Error(data?.error || 'Failed to start scraping');
       }
 
-      toast.success(`Deep analysis started for ${data.sitesCount} websites`);
+      toast.success(
+        `Deep analysis started for ${Number(data?.sitesCountAnalysed || data?.sitesCount || selectedCount)} websites`,
+      );
       onConfirm(selectedCount);
     } catch (err) {
       logger.error('Error starting scrape', err);

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { validateAuth, AuthError, authErrorResponse } from '../_shared/auth.ts';
+import { queueSend, wakeWorker } from '../_shared/pipeline.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -253,7 +254,18 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Create webhook subscription for incoming mail
+    // Create webhook subscription for incoming mail.
+    //
+    // IMPORTANT: the notificationUrl MUST include ?apikey=<anon-key> and the body MUST
+    // specify events. Without the apikey, inbound Aurinko webhook POSTs are 401'd at the
+    // Supabase gateway. Without events, Aurinko's defaults may drop message.updated
+    // (read-status changes). See refresh-aurinko-subscriptions/index.ts:130,184-188
+    // for the canonical shape; this path was previously missing both.
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const webhookUrl = SUPABASE_ANON_KEY
+      ? `${SUPABASE_URL}/functions/v1/aurinko-webhook?apikey=${SUPABASE_ANON_KEY}`
+      : `${SUPABASE_URL}/functions/v1/aurinko-webhook`;
+
     let subscriptionId: string | null = null;
     try {
       const subResponse = await fetchWithTimeout('https://api.aurinko.io/v1/subscriptions', {
@@ -264,12 +276,20 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           resource: '/email/messages',
-          notificationUrl: `${SUPABASE_URL}/functions/v1/aurinko-webhook`,
+          notificationUrl: webhookUrl,
+          events: ['message.created', 'message.updated'],
         }),
       });
       if (subResponse.ok) {
         const subData = await subResponse.json();
         subscriptionId = subData.id?.toString() ?? null;
+      } else {
+        const errorText = await subResponse.text().catch(() => '');
+        console.error(
+          '[aurinko-create-imap-account] Aurinko subscription create failed:',
+          subResponse.status,
+          errorText,
+        );
       }
     } catch (subErr) {
       console.error('[aurinko-create-imap-account] Subscription failed:', subErr);
@@ -326,14 +346,101 @@ Deno.serve(async (req) => {
     await supabase.from('email_import_progress').upsert(
       {
         workspace_id: workspaceId,
-        current_phase: 'importing',
+        current_phase: 'queued',
         emails_received: 0,
         emails_classified: 0,
+        last_error: null,
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'workspace_id' },
     );
+
+    // Server-side kick: create a pipeline_runs row + enqueue bb_import_jobs so the
+    // import begins immediately. The frontend Continue-button gate (see
+    // shouldKickEmailImport in src/lib/email/importStatus.ts) is a second line of
+    // defence. Without this server-side enqueue, a user closing the tab after
+    // connect but before Continue would leave the mailbox in 'queued' forever.
+    // start-email-import and pipeline-worker-import both dedupe on
+    // (workspace_id, config_id, state='running'), so calling this when a run is
+    // already in flight is harmless.
+    try {
+      const { data: existingRun } = await supabase
+        .from('pipeline_runs')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('config_id', configData.id)
+        .eq('state', 'running')
+        .limit(1)
+        .maybeSingle();
+
+      if (!existingRun) {
+        const defaultCap = 2500;
+        const { data: runRow, error: runError } = await supabase
+          .from('pipeline_runs')
+          .insert({
+            workspace_id: workspaceId,
+            config_id: configData.id,
+            channel: 'email',
+            mode: 'onboarding',
+            state: 'running',
+            params: {
+              cap: defaultCap,
+              folder_order: ['SENT', 'INBOX'],
+              speed_phase: 'fast',
+            },
+            metrics: {
+              fetched_so_far: 0,
+              pages: 0,
+              rate_limit_count: 0,
+              import_done: false,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (!runError && runRow?.id) {
+          await queueSend(
+            supabase,
+            'bb_import_jobs',
+            {
+              job_type: 'IMPORT_FETCH',
+              workspace_id: workspaceId,
+              run_id: runRow.id,
+              config_id: configData.id,
+              folder: 'SENT',
+              pageToken: null,
+              cap: defaultCap,
+              fetched_so_far: 0,
+              pages: 0,
+              rate_limit_count: 0,
+            },
+            0,
+          );
+
+          // Best-effort worker wake. If this fails the pg_cron worker tick (10s)
+          // will pick it up, so swallowing the error is intentional.
+          try {
+            await wakeWorker(supabase, 'pipeline-worker-import');
+          } catch (wakeErr) {
+            console.warn(
+              '[aurinko-create-imap-account] wakeWorker pipeline-worker-import failed (pg_cron will retry):',
+              wakeErr,
+            );
+          }
+        } else if (runError) {
+          console.error(
+            '[aurinko-create-imap-account] Failed to create pipeline_runs row (frontend Continue will retry):',
+            runError,
+          );
+        }
+      }
+    } catch (kickErr) {
+      console.error(
+        '[aurinko-create-imap-account] Server-side import kick failed (frontend Continue will retry):',
+        kickErr,
+      );
+    }
 
     return new Response(JSON.stringify({ success: true, email }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -3,39 +3,30 @@
 
 ALTER TABLE public.pipeline_runs
   DROP CONSTRAINT IF EXISTS pipeline_runs_channel_check;
-
 ALTER TABLE public.pipeline_runs
   ADD CONSTRAINT pipeline_runs_channel_check
   CHECK (channel IN ('email', 'whatsapp', 'sms', 'facebook', 'instagram', 'google_business', 'voice', 'webchat', 'phone'));
-
 ALTER TABLE public.message_events
   DROP CONSTRAINT IF EXISTS message_events_channel_check;
-
 ALTER TABLE public.message_events
   ADD CONSTRAINT message_events_channel_check
   CHECK (channel IN ('email', 'whatsapp', 'sms', 'facebook', 'instagram', 'google_business', 'voice', 'webchat', 'phone'));
-
 ALTER TABLE public.conversation_refs
   DROP CONSTRAINT IF EXISTS conversation_refs_channel_check;
-
 ALTER TABLE public.conversation_refs
   ADD CONSTRAINT conversation_refs_channel_check
   CHECK (channel IN ('email', 'whatsapp', 'sms', 'facebook', 'instagram', 'google_business', 'voice', 'webchat', 'phone'));
-
 ALTER TABLE public.customer_identities
   DROP CONSTRAINT IF EXISTS customer_identities_identifier_type_check;
-
 ALTER TABLE public.customer_identities
   ADD CONSTRAINT customer_identities_identifier_type_check
   CHECK (identifier_type IN ('email', 'phone', 'whatsapp', 'facebook', 'instagram', 'google_business', 'webchat', 'other'));
-
 CREATE OR REPLACE FUNCTION public.bb_materialize_event(p_event_id uuid)
 RETURNS TABLE(did_work boolean, workspace_id uuid, run_id uuid, channel text, config_id uuid, conversation_id uuid, message_id uuid, needs_classify boolean, target_message_id uuid)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-#variable_conflict use_column
 declare
   v_event public.message_events%rowtype;
   v_identifier_type text;
@@ -359,7 +350,6 @@ begin
   return next;
 end;
 $$;
-
 CREATE OR REPLACE FUNCTION public.bb_ingest_unified_messages(p_workspace_id uuid, p_config_id uuid, p_run_id uuid, p_channel text, p_messages jsonb)
 RETURNS TABLE(received_count integer, enqueued_count integer, run_id uuid)
 LANGUAGE plpgsql

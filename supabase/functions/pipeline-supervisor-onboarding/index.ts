@@ -7,6 +7,7 @@ import {
   queueDelete,
   queueSend,
   readQueue,
+  wakeWorker,
   withinBudget,
 } from '../_shared/pipeline.ts';
 import {
@@ -18,15 +19,30 @@ import {
 } from '../_shared/onboarding.ts';
 import { deadletterStepJob, requeueStepJob } from '../_shared/onboarding-worker.ts';
 import { loadRunRecord } from '../_shared/onboarding-worker.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
 
 const QUEUE_NAME = ONBOARDING_SUPERVISOR_QUEUE;
 const VT_SECONDS = 120;
 const MAX_ATTEMPTS = 5;
 const STALL_THRESHOLD_MS = 5 * 60 * 1000;
+const QUEUED_RETRY_THRESHOLD_MS = 30 * 1000;
 // Keep a small early-warning window so degraded runs show up in the event stream
 // before they cross the hard stall cutoff.
 const WARNING_THRESHOLD_MS = 4 * 60 * 1000;
-const HEARTBEAT_CHECK_DELAY_SECONDS = 300;
+const HEARTBEAT_CHECK_DELAY_SECONDS = 30;
+
+function resolveWorkerSlug(workflowKey: OnboardingSupervisorJob['workflow_key']): string | null {
+  switch (workflowKey) {
+    case 'competitor_discovery':
+      return 'pipeline-worker-onboarding-discovery';
+    case 'own_website_scrape':
+      return 'pipeline-worker-onboarding-website';
+    case 'faq_generation':
+      return 'pipeline-worker-onboarding-faq';
+    default:
+      return null;
+  }
+}
 
 async function processJob(record: {
   msg_id: number;
@@ -87,6 +103,55 @@ async function processJob(record: {
   }
 
   const isStalled = heartbeatAgeMs === null || heartbeatAgeMs > STALL_THRESHOLD_MS;
+  const shouldRetryQueuedWorker =
+    run.status === 'queued' &&
+    heartbeatAgeMs !== null &&
+    heartbeatAgeMs >= QUEUED_RETRY_THRESHOLD_MS &&
+    heartbeatAgeMs < STALL_THRESHOLD_MS;
+
+  if (job.action === 'retry_stalled' || shouldRetryQueuedWorker) {
+    const workerSlug = resolveWorkerSlug(run.workflow_key);
+
+    if (workerSlug) {
+      await wakeWorker(supabase, workerSlug);
+      await recordRunEvent(supabase, {
+        runId: run.id,
+        workspaceId: run.workspace_id,
+        level: 'warning',
+        eventType: 'supervisor:worker_retriggered',
+        message:
+          job.action === 'retry_stalled'
+            ? 'Supervisor retriggered the stalled onboarding worker'
+            : 'Supervisor retriggered the queued onboarding worker',
+        payload: {
+          ...observabilityContext,
+          retriggered_worker: workerSlug,
+          queued_retry_threshold_ms: QUEUED_RETRY_THRESHOLD_MS,
+        },
+      });
+    }
+
+    await queueSend(
+      supabase,
+      QUEUE_NAME,
+      {
+        run_id: run.id,
+        workflow_key: run.workflow_key,
+        action: 'heartbeat_check',
+        observed_status: run.status,
+        observed_step_key: run.current_step_key,
+        observed_last_heartbeat_at: run.last_heartbeat_at,
+        heartbeat_age_ms: heartbeatAgeMs,
+        threshold_ms: STALL_THRESHOLD_MS,
+        warning_threshold_ms: WARNING_THRESHOLD_MS,
+        checked_at: observedAt,
+        queue_name: QUEUE_NAME,
+      },
+      HEARTBEAT_CHECK_DELAY_SECONDS,
+    );
+    await queueDelete(supabase, QUEUE_NAME, record.msg_id);
+    return;
+  }
 
   if (job.action === 'fail_stalled' || isStalled) {
     await failRun(supabase, {
@@ -167,6 +232,20 @@ Deno.serve(async (req) => {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (record.read_ct >= MAX_ATTEMPTS) {
+          await captureEdgeException({
+            functionName: 'pipeline-supervisor-onboarding',
+            error,
+            tags: {
+              queue: QUEUE_NAME,
+              workflow: record.message.workflow_key,
+              action: record.message.action,
+            },
+            extra: {
+              run_id: record.message.run_id,
+              attempts: record.read_ct,
+              deadlettered: true,
+            },
+          });
           await deadletterStepJob(supabase, {
             queueName: QUEUE_NAME,
             workflowKey: record.message.workflow_key,
@@ -202,6 +281,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error('pipeline-supervisor-onboarding fatal', error);
+    await captureEdgeException({
+      functionName: 'pipeline-supervisor-onboarding',
+      error,
+      tags: { queue: QUEUE_NAME, scope: 'fatal' },
+    });
     if (error instanceof HttpError) {
       return jsonResponse({ ok: false, error: error.message }, error.status);
     }

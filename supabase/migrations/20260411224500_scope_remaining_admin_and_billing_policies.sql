@@ -5,7 +5,6 @@ begin
   end if;
 end
 $$;
-
 drop policy if exists "Admins can view workspace security incidents" on public.security_incidents;
 create policy "Admins can view workspace security incidents"
   on public.security_incidents
@@ -17,7 +16,6 @@ create policy "Admins can view workspace security incidents"
     and workspace_id is not null
     and public.bb_user_in_workspace(workspace_id)
   );
-
 drop policy if exists "Admins can manage security incidents" on public.security_incidents;
 create policy "Admins can manage security incidents"
   on public.security_incidents
@@ -35,7 +33,6 @@ create policy "Admins can manage security incidents"
     and workspace_id is not null
     and public.bb_user_in_workspace(workspace_id)
   );
-
 drop policy if exists "Admins can update deletion requests" on public.data_deletion_requests;
 create policy "Admins can update deletion requests"
   on public.data_deletion_requests
@@ -63,7 +60,6 @@ create policy "Admins can update deletion requests"
         and public.bb_user_in_workspace(customers.workspace_id)
     )
   );
-
 drop policy if exists "Admins can manage retention policies" on public.data_retention_policies;
 create policy "Admins can manage retention policies"
   on public.data_retention_policies
@@ -81,7 +77,6 @@ create policy "Admins can manage retention policies"
     and workspace_id is not null
     and public.bb_user_in_workspace(workspace_id)
   );
-
 drop policy if exists "Admins can manage allowed IPs" on public.allowed_webhook_ips;
 create policy "Admins can manage allowed IPs"
   on public.allowed_webhook_ips
@@ -99,7 +94,6 @@ create policy "Admins can manage allowed IPs"
     and workspace_id is not null
     and public.bb_user_in_workspace(workspace_id)
   );
-
 drop policy if exists "Users can view workspace subscriptions" on public.workspace_subscriptions;
 create policy "Users can view workspace subscriptions"
   on public.workspace_subscriptions
@@ -109,7 +103,6 @@ create policy "Users can view workspace subscriptions"
     auth.uid() is not null
     and public.bb_user_in_workspace(workspace_id)
   );
-
 drop policy if exists "Users can view workspace addons" on public.workspace_addons;
 create policy "Users can view workspace addons"
   on public.workspace_addons

@@ -74,6 +74,39 @@ export function isRateLimitError(err: string | null | undefined): boolean {
   );
 }
 
+export function isMailboxWarmupError(err: string | null | undefined): boolean {
+  if (!err) return false;
+  const s = err.toLowerCase();
+  return (
+    s.includes('mailbox_warmup_retry') ||
+    s.includes('mailbox.unavailable') ||
+    s.includes('loading imap folders') ||
+    s.includes('mailbox folders') ||
+    (s.includes('aurinko') && s.includes('try again later'))
+  );
+}
+
+export function isMailboxWarmupStuckError(err: string | null | undefined): boolean {
+  if (!err) return false;
+  return err.toLowerCase().includes('mailbox_warmup_stuck');
+}
+
+/**
+ * Decide whether the onboarding "Continue" button should trigger start-email-import.
+ *
+ * The set of kickable statuses INTENTIONALLY includes 'queued' — aurinko-create-imap-account
+ * seeds email_import_progress.current_phase='queued' immediately on connect, but the
+ * IMAP connect flow does NOT itself create a pipeline_runs row or enqueue bb_import_jobs.
+ * Treating 'queued' as kickable here is the defence that restarts the pipeline at
+ * Continue time. start-email-import has its own double-import prevention
+ * (supabase/functions/start-email-import/index.ts:152-187), so calling it on an
+ * already-running account is a harmless no-op.
+ */
+export function shouldKickEmailImport(progressStatus: string | null | undefined): boolean {
+  const status = progressStatus ?? 'idle';
+  return status === 'idle' || status === 'error' || status === 'queued';
+}
+
 export function deriveEmailImportState(params: {
   progress?: EmailImportProgressRow | null;
   config?: EmailProviderConfigStatus | null;
@@ -105,9 +138,35 @@ export function deriveEmailImportState(params: {
   );
   const syncProgress = toWholeNumber(config?.sync_progress);
 
+  if (isMailboxWarmupStuckError(errorMessage)) {
+    return {
+      phase: 'error',
+      errorMessage,
+      inboxCount,
+      sentCount,
+      emailsReceived,
+      emailsClassified,
+      estimatedTotal,
+      syncProgress,
+    };
+  }
+
   if (isRateLimitError(errorMessage)) {
     return {
       phase: 'rate_limited',
+      errorMessage,
+      inboxCount,
+      sentCount,
+      emailsReceived,
+      emailsClassified,
+      estimatedTotal,
+      syncProgress,
+    };
+  }
+
+  if (isMailboxWarmupError(errorMessage)) {
+    return {
+      phase: 'queued',
       errorMessage,
       inboxCount,
       sentCount,
@@ -150,9 +209,7 @@ export function deriveEmailImportState(params: {
     phase = 'classifying';
   } else if (progressPhase === 'importing') {
     phase =
-      currentFolder.includes('sent') ||
-      currentFolder.includes('outbound') ||
-      sentCount > 0
+      currentFolder.includes('sent') || currentFolder.includes('outbound') || sentCount > 0
         ? 'fetching_sent'
         : 'fetching_inbox';
   } else if (
@@ -226,6 +283,10 @@ export function getEmailImportProgressPercent(state: DerivedEmailImportState): n
 }
 
 export function getEmailImportStatusMessage(state: DerivedEmailImportState): string {
+  if (isMailboxWarmupStuckError(state.errorMessage)) {
+    return 'The inbox connection stalled before import could begin. Disconnect and reconnect this mailbox to restart the historical import.';
+  }
+
   switch (state.phase) {
     case 'queued':
       return 'Email import is queued. Waiting for BizzyBee to start the worker.';

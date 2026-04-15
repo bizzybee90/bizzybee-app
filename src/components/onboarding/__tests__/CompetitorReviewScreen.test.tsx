@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CompetitorReviewScreen } from '../CompetitorReviewScreen';
 
-const { mockFrom, mockInvoke, mockToast } = vi.hoisted(() => {
+const { mockFrom, mockInvoke, mockToast, mockListOnboardingCompetitors } = vi.hoisted(() => {
   const competitors = [
     {
       id: 'competitor-1',
@@ -37,14 +37,6 @@ const { mockFrom, mockInvoke, mockToast } = vi.hoisted(() => {
     },
   ];
 
-  const competitorSitesQuery = {
-    eq: vi.fn().mockReturnValue({
-      order: vi.fn().mockReturnValue({
-        order: vi.fn().mockResolvedValue({ data: competitors, error: null }),
-      }),
-    }),
-  };
-
   const competitorJobsQuery = {
     eq: vi.fn().mockReturnValue({
       maybeSingle: vi.fn().mockResolvedValue({
@@ -56,12 +48,6 @@ const { mockFrom, mockInvoke, mockToast } = vi.hoisted(() => {
 
   return {
     mockFrom: vi.fn((table: string) => {
-      if (table === 'competitor_sites') {
-        return {
-          select: vi.fn(() => competitorSitesQuery),
-        };
-      }
-
       if (table === 'competitor_research_jobs') {
         return {
           select: vi.fn(() => competitorJobsQuery),
@@ -69,6 +55,11 @@ const { mockFrom, mockInvoke, mockToast } = vi.hoisted(() => {
       }
 
       throw new Error(`Unexpected table: ${table}`);
+    }),
+    mockListOnboardingCompetitors: vi.fn().mockResolvedValue({
+      competitors,
+      selected_count: 1,
+      job_id: 'job-1',
     }),
     mockInvoke: vi.fn(),
     mockToast: {
@@ -89,6 +80,13 @@ vi.mock('@/integrations/supabase/client', () => ({
 
 vi.mock('sonner', () => ({
   toast: mockToast,
+}));
+
+vi.mock('@/lib/onboarding/competitors', () => ({
+  listOnboardingCompetitors: mockListOnboardingCompetitors,
+  toggleOnboardingCompetitorSelection: vi.fn(),
+  bulkSetOnboardingCompetitorSelection: vi.fn(),
+  deleteOnboardingCompetitor: vi.fn(),
 }));
 
 describe('CompetitorReviewScreen', () => {

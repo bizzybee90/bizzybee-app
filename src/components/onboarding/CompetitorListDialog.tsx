@@ -26,6 +26,11 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  deleteOnboardingCompetitor,
+  listOnboardingCompetitors,
+  rescrapeOnboardingCompetitor,
+} from '@/lib/onboarding/competitors';
 
 type CompetitorRow = {
   id: string;
@@ -99,19 +104,18 @@ export function CompetitorListDialog({
 
     const load = async () => {
       setIsLoading(true);
-      const { data, error } = await supabase
-        .from('competitor_sites')
-        .select('id,business_name,url,domain,rating,reviews_count,discovery_source,scrape_status')
-        .eq('job_id', jobId)
-        .order('rating', { ascending: false, nullsFirst: false })
-        .limit(200);
+      try {
+        const response = await listOnboardingCompetitors(workspaceId || '', jobId);
+        if (!cancelled) {
+          setRows((response.competitors ?? []) as CompetitorRow[]);
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setRows([]);
+        }
+      }
 
       if (!cancelled) {
-        if (error) {
-          setRows([]);
-        } else {
-          setRows((data ?? []) as CompetitorRow[]);
-        }
         setIsLoading(false);
       }
     };
@@ -120,7 +124,7 @@ export function CompetitorListDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, jobId]);
+  }, [open, jobId, workspaceId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -206,25 +210,19 @@ export function CompetitorListDialog({
 
     setIsAddingUrl(true);
     try {
-      const { data, error } = await supabase
-        .from('competitor_sites')
-        .insert({
-          job_id: jobId,
+      const { data, error } = await supabase.functions.invoke('add-manual-competitor', {
+        body: {
           workspace_id: workspaceId,
-          business_name: suggestion.title || suggestion.domain,
+          job_id: jobId,
           url: suggestion.url,
-          domain: suggestion.domain,
-          discovery_source: 'search',
-          status: 'approved',
-          scrape_status: 'pending',
-          is_selected: true,
-        })
-        .select('id,business_name,url,domain,rating,reviews_count,discovery_source,scrape_status')
-        .single();
+        },
+      });
 
-      if (error) throw error;
+      if (error || data?.ok === false || !data?.competitor) {
+        throw error || new Error(data?.error || 'Failed to add competitor');
+      }
 
-      setRows((prev) => [data as CompetitorRow, ...prev]);
+      setRows((prev) => [data.competitor as CompetitorRow, ...prev]);
       setSearchInput('');
       setSuggestions([]);
       setShowSuggestions(false);
@@ -261,25 +259,19 @@ export function CompetitorListDialog({
 
     setIsAddingUrl(true);
     try {
-      const { data, error } = await supabase
-        .from('competitor_sites')
-        .insert({
-          job_id: jobId,
+      const { data, error } = await supabase.functions.invoke('add-manual-competitor', {
+        body: {
           workspace_id: workspaceId,
-          business_name: hostname,
+          job_id: jobId,
           url: cleanUrl,
-          domain: hostname,
-          discovery_source: 'manual',
-          status: 'approved',
-          scrape_status: 'pending',
-          is_selected: true,
-        })
-        .select('id,business_name,url,domain,rating,reviews_count,discovery_source,scrape_status')
-        .single();
+        },
+      });
 
-      if (error) throw error;
+      if (error || data?.ok === false || !data?.competitor) {
+        throw error || new Error(data?.error || 'Failed to add competitor');
+      }
 
-      setRows((prev) => [data as CompetitorRow, ...prev]);
+      setRows((prev) => [data.competitor as CompetitorRow, ...prev]);
       setSearchInput('');
       setSuggestions([]);
       setShowSuggestions(false);
@@ -302,22 +294,22 @@ export function CompetitorListDialog({
     // Optimistic update
     setRows((prev) => prev.filter((r) => r.id !== competitorId));
 
-    const { error } = await supabase.from('competitor_sites').delete().eq('id', competitorId);
-
-    if (error) {
+    try {
+      await deleteOnboardingCompetitor(workspaceId || '', competitorId);
+    } catch (error) {
       // Refetch on error
       toast.error('Failed to remove competitor');
       // Reload data
-      const { data } = await supabase
-        .from('competitor_sites')
-        .select('id,business_name,url,domain,rating,reviews_count,discovery_source,scrape_status')
-        .eq('job_id', jobId)
-        .order('rating', { ascending: false, nullsFirst: false })
-        .limit(200);
-      if (data) setRows(data as CompetitorRow[]);
-    } else {
-      toast.success('Competitor removed');
+      try {
+        const response = await listOnboardingCompetitors(workspaceId || '', jobId);
+        setRows((response.competitors ?? []) as CompetitorRow[]);
+      } catch {
+        // Ignore secondary refresh failure
+      }
+      return;
     }
+
+    toast.success('Competitor removed');
   };
 
   const handleRescrape = async (competitorId: string, e: MouseEvent) => {
@@ -329,23 +321,18 @@ export function CompetitorListDialog({
       prev.map((r) => (r.id === competitorId ? { ...r, scrape_status: 'pending' } : r)),
     );
 
-    const { error } = await supabase
-      .from('competitor_sites')
-      .update({ scrape_status: 'pending', scraped_at: null, pages_scraped: 0 })
-      .eq('id', competitorId);
-
-    if (error) {
+    try {
+      await rescrapeOnboardingCompetitor(workspaceId || '', competitorId);
+      toast.success('Queued for rescrape');
+    } catch (error) {
       toast.error('Failed to queue rescrape');
       // Reload data
-      const { data } = await supabase
-        .from('competitor_sites')
-        .select('id,business_name,url,domain,rating,reviews_count,discovery_source,scrape_status')
-        .eq('job_id', jobId)
-        .order('rating', { ascending: false, nullsFirst: false })
-        .limit(200);
-      if (data) setRows(data as CompetitorRow[]);
-    } else {
-      toast.success('Queued for rescrape');
+      try {
+        const response = await listOnboardingCompetitors(workspaceId || '', jobId);
+        setRows((response.competitors ?? []) as CompetitorRow[]);
+      } catch {
+        // Ignore secondary refresh failure
+      }
     }
   };
 

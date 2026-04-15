@@ -15,16 +15,12 @@ CREATE TABLE IF NOT EXISTS public.workspace_subscriptions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(workspace_id)
 );
-
 CREATE INDEX IF NOT EXISTS idx_workspace_subscriptions_workspace_status
   ON public.workspace_subscriptions(workspace_id, status);
-
 CREATE INDEX IF NOT EXISTS idx_workspace_subscriptions_stripe_customer
   ON public.workspace_subscriptions(stripe_customer_id);
-
 CREATE INDEX IF NOT EXISTS idx_workspace_subscriptions_stripe_subscription
   ON public.workspace_subscriptions(stripe_subscription_id);
-
 CREATE TABLE IF NOT EXISTS public.workspace_addons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
@@ -40,48 +36,39 @@ CREATE TABLE IF NOT EXISTS public.workspace_addons (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(workspace_id, addon_key)
 );
-
 CREATE INDEX IF NOT EXISTS idx_workspace_addons_workspace_status
   ON public.workspace_addons(workspace_id, status);
-
 CREATE INDEX IF NOT EXISTS idx_workspace_addons_stripe_item
   ON public.workspace_addons(stripe_subscription_item_id);
-
 ALTER TABLE public.workspace_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspace_addons ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Users can view workspace subscriptions" ON public.workspace_subscriptions;
 CREATE POLICY "Users can view workspace subscriptions"
   ON public.workspace_subscriptions
   FOR SELECT
   USING (workspace_id IN (SELECT workspace_id FROM public.users WHERE id = auth.uid()));
-
 DROP POLICY IF EXISTS "Service role full access to workspace subscriptions" ON public.workspace_subscriptions;
 CREATE POLICY "Service role full access to workspace subscriptions"
   ON public.workspace_subscriptions
   FOR ALL
   USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
-
 DROP POLICY IF EXISTS "Users can view workspace addons" ON public.workspace_addons;
 CREATE POLICY "Users can view workspace addons"
   ON public.workspace_addons
   FOR SELECT
   USING (workspace_id IN (SELECT workspace_id FROM public.users WHERE id = auth.uid()));
-
 DROP POLICY IF EXISTS "Service role full access to workspace addons" ON public.workspace_addons;
 CREATE POLICY "Service role full access to workspace addons"
   ON public.workspace_addons
   FOR ALL
   USING (auth.role() = 'service_role')
   WITH CHECK (auth.role() = 'service_role');
-
 DROP TRIGGER IF EXISTS trg_workspace_subscriptions_updated_at ON public.workspace_subscriptions;
 CREATE TRIGGER trg_workspace_subscriptions_updated_at
   BEFORE UPDATE ON public.workspace_subscriptions
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
-
 DROP TRIGGER IF EXISTS trg_workspace_addons_updated_at ON public.workspace_addons;
 CREATE TRIGGER trg_workspace_addons_updated_at
   BEFORE UPDATE ON public.workspace_addons

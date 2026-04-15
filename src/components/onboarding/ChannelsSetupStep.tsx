@@ -53,11 +53,11 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bb-gold/10 text-bb-gold">
           <Sparkles className="h-5 w-5" />
         </div>
-        <CardTitle className="text-2xl text-bb-text">Choose your channels</CardTitle>
+        <CardTitle className="text-2xl text-bb-text">Expand beyond inbox and phone</CardTitle>
         <CardDescription className="mx-auto max-w-xl text-sm text-bb-warm-gray">
-          Pick the places your customers contact you. Email stays on its own step, phone has its own
-          module, and the selections here save straight into workspace setup so onboarding and
-          Settings stay in sync.
+          The core BizzyBee setup is your inbox and AI Phone. Everything here is the optional next
+          layer for customers who also message you across SMS, WhatsApp, Instagram, Facebook, or
+          Google surfaces.
         </CardDescription>
       </div>
 
@@ -81,8 +81,8 @@ export function ChannelsSetupStep({ workspaceId, onNext, onBack }: ChannelsSetup
       </div>
 
       <PanelNotice
-        title="Enable the channels you want BizzyBee ready for"
-        description="Email connects separately, AI Phone has its own provisioning flow, and the options below cover messaging channels plus the provider setup BizzyBee will still need to finish."
+        title="Switch on supporting channels only when they matter"
+        description="Email and AI Phone stay the flagship channels. Use the options below when you want BizzyBee to widen out into messaging and profile surfaces too."
       />
 
       <div className="grid gap-3 sm:grid-cols-3">

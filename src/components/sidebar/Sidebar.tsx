@@ -13,9 +13,12 @@ import {
   Zap,
   FileEdit,
   Phone,
+  PanelLeftClose,
+  PanelLeftOpen,
   Star,
   type LucideIcon,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { NavLink } from '@/components/NavLink';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +30,9 @@ import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { resolveWorkspaceEntitlements } from '@/lib/billing/entitlements';
 import { resolveModuleLockState, type ModuleLockState } from '@/components/ProtectedRoute';
+import { Button } from '@/components/ui/button';
+
+const SIDEBAR_COLLAPSE_KEY = 'bizzybee.sidebarCollapsed';
 
 interface SidebarProps {
   forceCollapsed?: boolean;
@@ -50,8 +56,15 @@ export const Sidebar = ({
   onFiltersClick,
   isMobileDrawer = false,
 }: SidebarProps = {}) => {
-  const isCollapsed = !isMobileDrawer && forceCollapsed;
+  const [userCollapsed, setUserCollapsed] = useState(() => {
+    if (typeof window === 'undefined' || forceCollapsed) {
+      return forceCollapsed;
+    }
+
+    return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === '1';
+  });
   const isPreviewMode = isPreviewModeEnabled();
+  const isCollapsed = !isMobileDrawer && (forceCollapsed || userCollapsed);
   const { workspace, needsOnboarding, loading: workspaceLoading, entitlements } = useWorkspace();
   const activeEntitlements = entitlements ?? resolveWorkspaceEntitlements(null, []);
   const aiPhoneDecision = activeEntitlements.decisions.capabilities.aiPhone;
@@ -200,6 +213,19 @@ export const Sidebar = ({
       : !workspace?.id || needsOnboarding
         ? 'Workspace setup incomplete'
         : workspace.name;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || isMobileDrawer || forceCollapsed) {
+      return;
+    }
+
+    window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, userCollapsed ? '1' : '0');
+  }, [forceCollapsed, isMobileDrawer, userCollapsed]);
+
+  const toggleSidebar = () => {
+    if (forceCollapsed || isMobileDrawer) return;
+    setUserCollapsed((prev) => !prev);
+  };
   const primaryItems: NavItem[] = [
     { to: '/', icon: Home, label: 'Home', end: true },
     { to: '/inbox', icon: Inbox, label: 'Inbox' },
@@ -330,22 +356,38 @@ export const Sidebar = ({
       <TooltipProvider>
         <div
           className={cn(
-            'flex h-full min-h-[100dvh] w-[240px] self-stretch flex-col overflow-y-auto px-4 py-5 text-[#FDF8EC]',
+            'flex h-full min-h-[100dvh] w-[228px] self-stretch flex-col overflow-y-auto px-4 py-5 text-[#FDF8EC]',
             isMobileDrawer && 'w-full px-0 py-0',
           )}
-          style={{ backgroundColor: 'var(--bb-espresso)' }}
+          style={{
+            background: 'linear-gradient(180deg, rgba(50,40,33,1) 0%, rgba(42,34,29,1) 100%)',
+          }}
         >
-          <div
-            className={cn('mb-6 flex flex-col items-start gap-3', isMobileDrawer && 'px-0 pt-1')}
-          >
-            <BizzyBeeLogo
-              variant="full"
-              size="md"
-              chip="light"
-              className="max-w-full"
-              imgClassName="max-w-[138px]"
-            />
-            <div className="min-w-0 px-1">
+          <div className={cn('mb-6', isMobileDrawer && 'px-0 pt-1')}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <BizzyBeeLogo
+                  variant="full"
+                  size="md"
+                  chip="light"
+                  className="max-w-full"
+                  imgClassName="max-w-[138px]"
+                />
+              </div>
+              {!isMobileDrawer ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleSidebar}
+                  className="h-9 w-9 rounded-xl border border-white/10 text-[rgba(253,248,236,0.78)] hover:bg-white/10 hover:text-[#FDF8EC]"
+                  aria-label="Collapse sidebar"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 min-w-0 px-1">
               <p className="truncate text-[11px] uppercase tracking-[0.18em] text-bb-gold/90">
                 Workspace
               </p>
@@ -421,33 +463,57 @@ export const Sidebar = ({
   return (
     <TooltipProvider>
       <div
-        className="flex h-full min-h-[100dvh] w-16 self-stretch flex-col items-center gap-1 py-3"
-        style={{ backgroundColor: 'var(--bb-espresso)' }}
+        className="flex h-full min-h-[100dvh] w-[88px] self-stretch flex-col items-center py-4"
+        style={{
+          background: 'linear-gradient(180deg, rgba(50,40,33,1) 0%, rgba(42,34,29,1) 100%)',
+        }}
       >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="mb-3 cursor-pointer transition-transform hover:scale-105">
-              <BizzyBeeLogo variant="full" size="xs" chip="light" imgClassName="max-w-[40px]" />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <p className="font-medium">BizzyBee</p>
-          </TooltipContent>
-        </Tooltip>
+        <div className="mb-4 flex flex-col items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="cursor-pointer transition-transform hover:scale-105">
+                <BizzyBeeLogo variant="full" size="xs" chip="light" imgClassName="max-w-[40px]" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-medium">BizzyBee</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
-        <nav className="flex flex-col items-center gap-1">
-          {primaryItems.map((item) => (
-            <IconRailItem key={item.to} item={item} />
-          ))}
-        </nav>
+        <div className="flex min-h-0 flex-1 flex-col items-center">
+          <div className="flex min-h-0 w-[64px] flex-1 flex-col items-center rounded-[999px] border border-white/10 bg-[rgba(255,255,255,0.06)] px-2 py-3 shadow-[0_20px_40px_rgba(16,12,8,0.28)] backdrop-blur-sm">
+            {!forceCollapsed ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                className="mb-2 h-10 w-10 rounded-full border border-white/10 text-[rgba(253,248,236,0.72)] hover:bg-white/10 hover:text-[#FDF8EC]"
+                aria-label="Expand sidebar"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            ) : null}
 
-        <EmailImportIndicator workspaceId={viewData?.workspaceId || null} isCollapsed={true} />
-        <div className="flex-1" />
-        <nav className="flex flex-col items-center gap-1 pt-2 border-t border-[rgba(255,255,255,0.08)]">
-          {secondaryItems.map((item) => (
-            <IconRailItem key={item.to} item={item} />
-          ))}
-        </nav>
+            <nav className="flex flex-col items-center gap-1.5">
+              {primaryItems.map((item) => (
+                <IconRailItem key={item.to} item={item} />
+              ))}
+            </nav>
+
+            <div className="my-3 h-px w-8 bg-[rgba(255,255,255,0.12)]" />
+
+            <EmailImportIndicator workspaceId={viewData?.workspaceId || null} isCollapsed={true} />
+            <div className="flex-1" />
+
+            <nav className="flex flex-col items-center gap-1.5 pt-3">
+              {secondaryItems.map((item) => (
+                <IconRailItem key={item.to} item={item} />
+              ))}
+            </nav>
+          </div>
+        </div>
       </div>
     </TooltipProvider>
   );

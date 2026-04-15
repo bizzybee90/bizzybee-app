@@ -8,7 +8,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { ChevronLeft, ChevronRight, Loader2, X, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { isPreviewModeEnabled } from '@/lib/previewMode';
 import { BUSINESS_TYPES } from '@/lib/constants/business-types';
 import {
   Select,
@@ -69,7 +68,7 @@ export function BusinessContextStep({
   onNext,
   onBack,
 }: BusinessContextStepProps) {
-  const isPreviewMode = isPreviewModeEnabled();
+  const isPreviewMode = workspaceId === 'preview-workspace';
   const [isSaving, setIsSaving] = useState(false);
   const [businessTypeSearch, setBusinessTypeSearch] = useState('');
   const [serviceAreaSearch, setServiceAreaSearch] = useState('');
@@ -315,7 +314,7 @@ export function BusinessContextStep({
     onChange({ ...value, serviceArea: serialized });
   };
 
-  const isPreview = workspaceId === 'preview-workspace';
+  const isPreview = isPreviewMode;
 
   const handleSave = async () => {
     if (!value.companyName || selectedBusinessTypes.length === 0) {
@@ -424,279 +423,317 @@ export function BusinessContextStep({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold">Tell us about your business</h2>
+        <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.08em]">
+          Website-first
+        </Badge>
+        <h2 className="text-xl font-semibold">Start with the basics</h2>
         <p className="text-sm text-muted-foreground">
-          This helps BizzyBee understand your business and answer customer questions
+          BizzyBee uses your website and a few simple details to learn your services, tone, and
+          local language before we widen out.
         </p>
       </div>
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Your company name *</Label>
-          <Input
-            placeholder="e.g., Sarah's Dog Grooming"
-            value={value.companyName}
-            onChange={(e) => onChange({ ...value, companyName: e.target.value })}
-          />
-          <p className="text-xs text-muted-foreground">Used to identify your business in emails</p>
-        </div>
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="rounded-3xl border border-border/60 bg-background p-5 shadow-sm shadow-black/5">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Core business details
+            </p>
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <div className="space-y-2 xl:col-span-2">
+                <Label>Your website URL (optional)</Label>
+                <Input
+                  placeholder="e.g., https://sarahsdoggrooming.co.uk"
+                  value={value.websiteUrl || ''}
+                  onChange={(e) => onChange({ ...value, websiteUrl: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll read your services, tone, and policies from here first.
+                </p>
+              </div>
 
-        <div className="space-y-2">
-          <Label>What type of business is this? *</Label>
-          {selectedBusinessTypes.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {selectedBusinessTypes.map((typeLabel) => (
-                <Badge key={typeLabel} variant="secondary" className="gap-1 pr-1">
-                  {typeLabel}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveBusinessType(typeLabel)}
-                    className="ml-1 hover:bg-muted rounded-full p-0.5"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+              <div className="space-y-2">
+                <Label>Your company name *</Label>
+                <Input
+                  placeholder="e.g., Sarah's Dog Grooming"
+                  value={value.companyName}
+                  onChange={(e) => onChange({ ...value, companyName: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shown in BizzyBee and customer-facing emails.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Your business email domain</Label>
+                <Input
+                  placeholder="e.g., sarahsdoggrooming.co.uk"
+                  value={value.emailDomain}
+                  onChange={(e) => onChange({ ...value, emailDomain: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Helps BizzyBee spot internal messages and supplier emails.
+                </p>
+              </div>
             </div>
-          )}
-          <div className="relative">
-            <Input
-              placeholder="Start typing your trade or business..."
-              value={businessTypeSearch}
-              onChange={(e) => setBusinessTypeSearch(e.target.value)}
-              onKeyDown={handleBusinessTypeKeyDown}
-              onFocus={() => setBusinessTypeFocused(true)}
-              onBlur={() => setTimeout(() => setBusinessTypeFocused(false), 150)}
-            />
-            {businessTypeFocused &&
-              (filteredBusinessTypes.length > 0 ||
-                (businessTypeSearch.trim() &&
-                  !filteredBusinessTypes.some(
-                    (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
-                  ))) && (
-                <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                  {businessTypeSearch.trim() &&
-                    !filteredBusinessTypes.some(
-                      (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
-                    ) && (
+          </div>
+
+          <div className="rounded-3xl border border-border/60 bg-background p-5 shadow-sm shadow-black/5">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Service shape
+            </p>
+            <div className="mt-4 space-y-2">
+              <Label>What type of business is this? *</Label>
+              {selectedBusinessTypes.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {selectedBusinessTypes.map((typeLabel) => (
+                    <Badge key={typeLabel} variant="secondary" className="gap-1 pr-1">
+                      {typeLabel}
                       <button
                         type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleAddBusinessType(businessTypeSearch);
-                        }}
+                        onClick={() => handleRemoveBusinessType(typeLabel)}
+                        className="ml-1 rounded-full p-0.5 hover:bg-muted"
                       >
-                        Add "{businessTypeSearch.trim()}"
+                        <X className="h-3 w-3" />
                       </button>
-                    )}
-                  {filteredBusinessTypes.map((type) => (
-                    <button
-                      key={type.value}
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectBusinessType(type);
-                      }}
-                    >
-                      {type.label}
-                    </button>
+                    </Badge>
                   ))}
                 </div>
               )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Type any business type and press Enter, or select from suggestions
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Your website URL (optional)</Label>
-          <Input
-            placeholder="e.g., https://sarahsdoggrooming.co.uk"
-            value={value.websiteUrl || ''}
-            onChange={(e) => onChange({ ...value, websiteUrl: e.target.value })}
-          />
-          <p className="text-xs text-muted-foreground">
-            We'll extract your prices, services, and policies automatically
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <Label>Primary service location &amp; radius (optional)</Label>
-            {isPreviewMode && (
-              <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.08em]">
-                Preview mode
-              </Badge>
-            )}
-          </div>
-          {selectedAreas.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {selectedAreas.map((area) => (
-                <div
-                  key={area.name}
-                  className="flex items-center gap-0 rounded-lg border border-border overflow-hidden bg-background"
-                >
-                  {/* Location name */}
-                  <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
-                    <span className="text-sm font-medium">{area.name}</span>
-                  </div>
-                  {/* Radius selector - visually separated */}
-                  <Select
-                    value={area.radius?.toString() || 'exact'}
-                    onValueChange={(val) =>
-                      handleUpdateRadius(area.name, val === 'exact' ? undefined : parseInt(val, 10))
-                    }
-                  >
-                    <SelectTrigger className="h-auto min-w-[80px] text-xs font-medium border-0 border-l border-border rounded-none bg-muted/50 px-2.5 py-1.5 hover:bg-muted transition-colors">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="exact">Exact area</SelectItem>
-                      <SelectItem value="5">+5 miles</SelectItem>
-                      <SelectItem value="10">+10 miles</SelectItem>
-                      <SelectItem value="15">+15 miles</SelectItem>
-                      <SelectItem value="20">+20 miles</SelectItem>
-                      <SelectItem value="30">+30 miles</SelectItem>
-                      <SelectItem value="50">+50 miles</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {/* Remove button */}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveLocation(area.name)}
-                    className="px-2 py-1.5 border-l border-border hover:bg-destructive/10 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                placeholder={
-                  isPreviewMode ? 'Search for a town or city...' : 'Search with Google Places...'
-                }
-                value={serviceAreaSearch}
-                onChange={(e) => setServiceAreaSearch(e.target.value)}
-                onKeyDown={handleLocationKeyDown}
-                onFocus={() => setServiceAreaFocused(true)}
-                onBlur={() => setTimeout(() => setServiceAreaFocused(false), 200)}
-              />
-              {serviceAreaFocused &&
-                (isLoadingPlaces ||
-                  placePredictions.length > 0 ||
-                  (serviceAreaSearch.trim().length >= 2 &&
-                    !placePredictions.some(
-                      (p) => p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
-                    ))) && (
-                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
-                    {isLoadingPlaces ? (
-                      <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Searching...
-                      </div>
-                    ) : (
-                      <>
-                        {serviceAreaSearch.trim().length >= 2 &&
-                          !placePredictions.some(
-                            (p) => p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
-                          ) && (
-                            <button
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground border-b"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                handleSelectLocation(serviceAreaSearch);
-                              }}
-                            >
-                              Add "{serviceAreaSearch.trim()}" with a {newAreaRadius}-mile radius
-                            </button>
-                          )}
-                        {placePredictions.map((prediction) => (
+              <div className="relative">
+                <Input
+                  placeholder="Start typing your trade or business..."
+                  value={businessTypeSearch}
+                  onChange={(e) => setBusinessTypeSearch(e.target.value)}
+                  onKeyDown={handleBusinessTypeKeyDown}
+                  onFocus={() => setBusinessTypeFocused(true)}
+                  onBlur={() => setTimeout(() => setBusinessTypeFocused(false), 150)}
+                />
+                {businessTypeFocused &&
+                  (filteredBusinessTypes.length > 0 ||
+                    (businessTypeSearch.trim() &&
+                      !filteredBusinessTypes.some(
+                        (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
+                      ))) && (
+                    <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                      {businessTypeSearch.trim() &&
+                        !filteredBusinessTypes.some(
+                          (t) => t.label.toLowerCase() === businessTypeSearch.toLowerCase(),
+                        ) && (
                           <button
-                            key={prediction.place_id}
                             type="button"
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            className="w-full border-b px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
                             onMouseDown={(e) => {
                               e.preventDefault();
-                              handleSelectLocation(prediction.description);
+                              handleAddBusinessType(businessTypeSearch);
                             }}
                           >
-                            {prediction.description}
+                            Add "{businessTypeSearch.trim()}"
                           </button>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
+                        )}
+                      {filteredBusinessTypes.map((type) => (
+                        <button
+                          key={type.value}
+                          type="button"
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectBusinessType(type);
+                          }}
+                        >
+                          {type.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Type any business type and press Enter, or select from suggestions. We use this to
+                sharpen the language BizzyBee uses about your services.
+              </p>
             </div>
-            <Select value={newAreaRadius} onValueChange={setNewAreaRadius}>
-              <SelectTrigger className="w-[132px] shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 miles</SelectItem>
-                <SelectItem value="10">10 miles</SelectItem>
-                <SelectItem value="15">15 miles</SelectItem>
-                <SelectItem value="20">20 miles</SelectItem>
-                <SelectItem value="30">30 miles</SelectItem>
-                <SelectItem value="40">40 miles</SelectItem>
-                <SelectItem value="50">50 miles</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {isPreviewMode
-              ? 'Preview mode uses local place suggestions. In the live app, this field searches Google Places.'
-              : 'Choose the main town or city customers associate with you, then set how many miles around it you cover.'}
-          </p>
-          {placesError ? <p className="text-xs text-amber-600">{placesError}</p> : null}
         </div>
 
-        <div className="space-y-2">
-          <Label>Your business email domain</Label>
-          <Input
-            placeholder="e.g., sarahsdoggrooming.co.uk"
-            value={value.emailDomain}
-            onChange={(e) => onChange({ ...value, emailDomain: e.target.value })}
-          />
-          <p className="text-xs text-muted-foreground">
-            Helps identify internal vs external emails
-          </p>
-        </div>
+        <div className="space-y-6">
+          <div className="rounded-3xl border border-border/60 bg-background p-5 shadow-sm shadow-black/5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Service area
+              </p>
+              {isPreviewMode && (
+                <Badge variant="secondary" className="text-[10px] uppercase tracking-[0.08em]">
+                  Preview mode
+                </Badge>
+              )}
+            </div>
+            <div className="mt-4 space-y-4">
+              {selectedAreas.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {selectedAreas.map((area) => (
+                    <div
+                      key={area.name}
+                      className="flex items-center gap-0 overflow-hidden rounded-lg border border-border bg-background"
+                    >
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-sm font-medium">{area.name}</span>
+                      </div>
+                      <Select
+                        value={area.radius?.toString() || 'exact'}
+                        onValueChange={(val) =>
+                          handleUpdateRadius(
+                            area.name,
+                            val === 'exact' ? undefined : parseInt(val, 10),
+                          )
+                        }
+                      >
+                        <SelectTrigger className="h-auto min-w-[80px] rounded-none border-0 border-l border-border bg-muted/50 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-muted">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="exact">Exact area</SelectItem>
+                          <SelectItem value="5">+5 miles</SelectItem>
+                          <SelectItem value="10">+10 miles</SelectItem>
+                          <SelectItem value="15">+15 miles</SelectItem>
+                          <SelectItem value="20">+20 miles</SelectItem>
+                          <SelectItem value="30">+30 miles</SelectItem>
+                          <SelectItem value="50">+50 miles</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLocation(area.name)}
+                        className="border-l border-border px-2 py-1.5 transition-colors hover:bg-destructive/10"
+                      >
+                        <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    placeholder={
+                      isPreviewMode
+                        ? 'Search for a town or city...'
+                        : 'Search with Google Places...'
+                    }
+                    value={serviceAreaSearch}
+                    onChange={(e) => setServiceAreaSearch(e.target.value)}
+                    onKeyDown={handleLocationKeyDown}
+                    onFocus={() => setServiceAreaFocused(true)}
+                    onBlur={() => setTimeout(() => setServiceAreaFocused(false), 200)}
+                  />
+                  {serviceAreaFocused &&
+                    (isLoadingPlaces ||
+                      placePredictions.length > 0 ||
+                      (serviceAreaSearch.trim().length >= 2 &&
+                        !placePredictions.some(
+                          (p) => p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
+                        ))) && (
+                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover shadow-lg">
+                        {isLoadingPlaces ? (
+                          <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Searching...
+                          </div>
+                        ) : (
+                          <>
+                            {serviceAreaSearch.trim().length >= 2 &&
+                              !placePredictions.some(
+                                (p) =>
+                                  p.description.toLowerCase() === serviceAreaSearch.toLowerCase(),
+                              ) && (
+                                <button
+                                  type="button"
+                                  className="w-full border-b px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleSelectLocation(serviceAreaSearch);
+                                  }}
+                                >
+                                  Add "{serviceAreaSearch.trim()}" with a {newAreaRadius}-mile
+                                  radius
+                                </button>
+                              )}
+                            {placePredictions.map((prediction) => (
+                              <button
+                                key={prediction.place_id}
+                                type="button"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectLocation(prediction.description);
+                                }}
+                              >
+                                {prediction.description}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                </div>
+                <Select value={newAreaRadius} onValueChange={setNewAreaRadius}>
+                  <SelectTrigger className="w-[132px] shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5 miles</SelectItem>
+                    <SelectItem value="10">10 miles</SelectItem>
+                    <SelectItem value="15">15 miles</SelectItem>
+                    <SelectItem value="20">20 miles</SelectItem>
+                    <SelectItem value="30">30 miles</SelectItem>
+                    <SelectItem value="40">40 miles</SelectItem>
+                    <SelectItem value="50">50 miles</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isPreviewMode
+                  ? 'Preview mode uses local place suggestions. In the live app, this field searches Google Places.'
+                  : 'Choose the main town or city customers associate with you, then set the mile radius you cover.'}
+              </p>
+              {placesError ? <p className="text-xs text-amber-600">{placesError}</p> : null}
+            </div>
+          </div>
 
-        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-          <div className="space-y-0.5">
-            <Label>Are you currently hiring?</Label>
-            <p className="text-xs text-muted-foreground">
-              Helps us flag job applications separately
+          <div className="rounded-3xl border border-border/60 bg-background p-5 shadow-sm shadow-black/5">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Operational context
             </p>
-          </div>
-          <Switch
-            checked={value.isHiring}
-            onCheckedChange={(checked) => onChange({ ...value, isHiring: checked })}
-          />
-        </div>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl bg-muted/30 p-4">
+                <div className="space-y-0.5">
+                  <Label>Are you currently hiring?</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Only if you want BizzyBee to recognise job-related emails.
+                  </p>
+                </div>
+                <Switch
+                  checked={value.isHiring}
+                  onCheckedChange={(checked) => onChange({ ...value, isHiring: checked })}
+                />
+              </div>
 
-        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-          <div className="space-y-0.5">
-            <Label>Do you receive invoices by email?</Label>
-            <p className="text-xs text-muted-foreground">
-              Auto-sorts invoices from Xero, QuickBooks, etc.
-            </p>
+              <div className="flex items-center justify-between rounded-2xl bg-muted/30 p-4">
+                <div className="space-y-0.5">
+                  <Label>Do you receive invoices by email?</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Helps BizzyBee group supplier invoices more reliably.
+                  </p>
+                </div>
+                <Switch
+                  checked={value.receivesInvoices}
+                  onCheckedChange={(checked) => onChange({ ...value, receivesInvoices: checked })}
+                />
+              </div>
+            </div>
           </div>
-          <Switch
-            checked={value.receivesInvoices}
-            onCheckedChange={(checked) => onChange({ ...value, receivesInvoices: checked })}
-          />
         </div>
       </div>
 

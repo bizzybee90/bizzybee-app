@@ -7,10 +7,12 @@ import {
   queueDelete,
   queueSend,
   readQueue,
+  wakeWorker,
   withinBudget,
 } from '../_shared/pipeline.ts';
 import {
   ONBOARDING_DISCOVERY_QUEUE,
+  failRun,
   recordRunArtifact,
   resolveStepModel,
   succeedRun,
@@ -20,11 +22,13 @@ import {
 import {
   deadletterStepJob,
   loadRunRecord,
+  resolveQueueAttempt,
   requeueStepJob,
   withTransientRetry,
 } from '../_shared/onboarding-worker.ts';
 import { beginStep, failStep, succeedStep } from '../faq-agent-runner/lib/step-recorder.ts';
 import {
+  buildHeuristicCompetitorFallback,
   qualifyCompetitorCandidates,
   searchCompetitorCandidates,
   type QualifiedCandidate,
@@ -35,6 +39,18 @@ import {
 const QUEUE_NAME = ONBOARDING_DISCOVERY_QUEUE;
 const VT_SECONDS = 180;
 const MAX_ATTEMPTS = 5;
+
+function resolveCompetitorResearchJobId(run: {
+  source_job_id?: string | null;
+  input_snapshot?: Record<string, unknown> | null;
+}): string | null {
+  if (typeof run.source_job_id === 'string' && run.source_job_id.trim().length > 0) {
+    return run.source_job_id;
+  }
+
+  const fromSnapshot = run.input_snapshot?.competitor_research_job_id;
+  return typeof fromSnapshot === 'string' && fromSnapshot.trim().length > 0 ? fromSnapshot : null;
+}
 
 async function loadArtifact<T>(
   runId: string,
@@ -72,9 +88,20 @@ async function processJob(
     return;
   }
 
-  const sourceJobId = run.source_job_id;
+  const sourceJobId = resolveCompetitorResearchJobId(run);
   if (!sourceJobId) {
-    throw new Error('competitor_discovery run is missing source_job_id');
+    await failRun(supabase, {
+      runId: run.id,
+      workspaceId: run.workspace_id,
+      workflowKey: 'competitor_discovery',
+      reason: 'Competitor discovery run is missing its research job reference',
+      details: {
+        step: job.step,
+        queue: QUEUE_NAME,
+      },
+    });
+    await queueDelete(supabase, QUEUE_NAME, record.msg_id);
+    return;
   }
 
   const searchQueries = Array.isArray(run.input_snapshot.search_queries)
@@ -84,6 +111,7 @@ async function processJob(
     : [];
   const targetCount = Math.max(5, Math.min(25, Number(run.input_snapshot.target_count || 15)));
   const model = resolveStepModel(run.input_snapshot, job.step);
+  const effectiveAttempt = resolveQueueAttempt(record);
   const now = new Date().toISOString();
 
   await touchAgentRun(supabase, {
@@ -98,7 +126,7 @@ async function processJob(
       runId: run.id,
       workspaceId: run.workspace_id,
       stepKey: 'discover:acquire',
-      attempt: job.attempt,
+      attempt: effectiveAttempt,
       provider: 'apify',
       model,
       inputPayload: {
@@ -121,7 +149,7 @@ async function processJob(
         stepId: step.id,
       });
 
-      await supabase
+      const { error: updateAcquireError } = await supabase
         .from('competitor_research_jobs')
         .update({
           status: 'discovering',
@@ -132,6 +160,12 @@ async function processJob(
           updated_at: now,
         })
         .eq('id', sourceJobId);
+
+      if (updateAcquireError) {
+        throw new Error(
+          `Failed to update competitor research job after acquire: ${updateAcquireError.message}`,
+        );
+      }
 
       await succeedStep(supabase, step.id, { candidate_count: candidates.length });
       await queueSend(
@@ -145,6 +179,11 @@ async function processJob(
         },
         0,
       );
+      try {
+        await wakeWorker(supabase, 'pipeline-worker-onboarding-discovery');
+      } catch (workerKickError) {
+        console.warn('Failed to chain onboarding discovery qualify step', workerKickError);
+      }
       await queueDelete(supabase, QUEUE_NAME, record.msg_id);
       return;
     } catch (error) {
@@ -159,7 +198,7 @@ async function processJob(
       runId: run.id,
       workspaceId: run.workspace_id,
       stepKey: 'discover:qualify',
-      attempt: job.attempt,
+      attempt: effectiveAttempt,
       provider: 'claude',
       model,
     });
@@ -217,7 +256,7 @@ async function processJob(
         stepId: step.id,
       });
 
-      await supabase
+      const { error: updateQualifyError } = await supabase
         .from('competitor_research_jobs')
         .update({
           status: 'validating',
@@ -225,6 +264,12 @@ async function processJob(
           updated_at: now,
         })
         .eq('id', sourceJobId);
+
+      if (updateQualifyError) {
+        throw new Error(
+          `Failed to update competitor research job after qualify: ${updateQualifyError.message}`,
+        );
+      }
 
       await succeedStep(supabase, step.id, {
         approved_count: qualified.approved.length,
@@ -241,6 +286,11 @@ async function processJob(
         },
         0,
       );
+      try {
+        await wakeWorker(supabase, 'pipeline-worker-onboarding-discovery');
+      } catch (workerKickError) {
+        console.warn('Failed to chain onboarding discovery persist step', workerKickError);
+      }
       await queueDelete(supabase, QUEUE_NAME, record.msg_id);
       return;
     } catch (error) {
@@ -255,22 +305,66 @@ async function processJob(
       runId: run.id,
       workspaceId: run.workspace_id,
       stepKey: 'discover:persist',
-      attempt: job.attempt,
+      attempt: effectiveAttempt,
       provider: 'supabase',
       model,
     });
 
     try {
-      const qualified = await loadArtifact<{
+      let qualified = await loadArtifact<{
         approved: QualifiedCandidate[];
         rejected: RejectedCandidate[];
       }>(run.id, run.workspace_id, 'qualified_candidates');
 
       if (!qualified.approved.length) {
-        throw new Error('No competitors qualified for review');
+        const { candidates } = await loadArtifact<{ candidates: SearchCandidate[] }>(
+          run.id,
+          run.workspace_id,
+          'acquired_candidates',
+        );
+        const { data: workspace } = await supabase
+          .from('workspaces')
+          .select('name')
+          .eq('id', run.workspace_id)
+          .maybeSingle();
+        const { data: businessContext } = await supabase
+          .from('business_context')
+          .select('industry, service_area, business_type, website_url')
+          .eq('workspace_id', run.workspace_id)
+          .maybeSingle();
+
+        qualified = buildHeuristicCompetitorFallback(
+          {
+            workspace_name: workspace?.name || 'BizzyBee workspace',
+            industry: businessContext?.industry ?? null,
+            service_area: businessContext?.service_area ?? null,
+            business_type: businessContext?.business_type ?? null,
+            workspace_domain:
+              typeof businessContext?.website_url === 'string'
+                ? new URL(
+                    businessContext.website_url.startsWith('http')
+                      ? businessContext.website_url
+                      : `https://${businessContext.website_url}`,
+                  ).hostname.replace(/^www\\./i, '')
+                : null,
+          },
+          candidates,
+          targetCount,
+        );
+
+        if (!qualified.approved.length) {
+          throw new Error('No competitors qualified for review');
+        }
       }
 
-      await supabase.from('competitor_sites').delete().eq('job_id', sourceJobId);
+      const { error: deleteSitesError } = await supabase
+        .from('competitor_sites')
+        .delete()
+        .eq('workspace_id', run.workspace_id);
+
+      if (deleteSitesError) {
+        throw new Error(`Failed to clear prior competitor sites: ${deleteSitesError.message}`);
+      }
 
       const approvedRows = qualified.approved.map((candidate) => ({
         job_id: sourceJobId,
@@ -288,7 +382,7 @@ async function processJob(
         is_selected: true,
         is_valid: true,
         relevance_score: candidate.relevance_score,
-        quality_score: Number((candidate.relevance_score / 100).toFixed(2)),
+        quality_score: candidate.relevance_score,
         priority_tier:
           candidate.relevance_score >= 80
             ? 'high'
@@ -316,14 +410,30 @@ async function processJob(
       }));
 
       if (approvedRows.length > 0) {
-        await supabase.from('competitor_sites').insert(approvedRows);
+        const { error: insertApprovedError } = await supabase
+          .from('competitor_sites')
+          .insert(approvedRows);
+
+        if (insertApprovedError) {
+          throw new Error(
+            `Failed to insert approved competitor sites: ${insertApprovedError.message}`,
+          );
+        }
       }
 
       if (rejectedRows.length > 0) {
-        await supabase.from('competitor_sites').insert(rejectedRows);
+        const { error: insertRejectedError } = await supabase
+          .from('competitor_sites')
+          .insert(rejectedRows);
+
+        if (insertRejectedError) {
+          throw new Error(
+            `Failed to insert rejected competitor sites: ${insertRejectedError.message}`,
+          );
+        }
       }
 
-      await supabase
+      const { error: updatePersistError } = await supabase
         .from('competitor_research_jobs')
         .update({
           status: 'review_ready',
@@ -335,6 +445,12 @@ async function processJob(
           updated_at: now,
         })
         .eq('id', sourceJobId);
+
+      if (updatePersistError) {
+        throw new Error(
+          `Failed to finalize competitor research job: ${updatePersistError.message}`,
+        );
+      }
 
       await succeedStep(supabase, step.id, {
         approved_count: approvedRows.length,
@@ -373,6 +489,7 @@ Deno.serve(async (req) => {
     const jobs = await readQueue<OnboardingDiscoveryJob>(supabase, QUEUE_NAME, VT_SECONDS, 4);
 
     let processed = 0;
+    const failures: Array<{ run_id: string; step: string; attempt: number; error: string }> = [];
     for (const record of jobs) {
       if (!withinBudget(startMs, DEFAULT_TIME_BUDGET_MS)) break;
 
@@ -381,6 +498,12 @@ Deno.serve(async (req) => {
         processed += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        failures.push({
+          run_id: typeof record.message?.run_id === 'string' ? record.message.run_id : 'unknown',
+          step: typeof record.message?.step === 'string' ? record.message.step : 'unknown',
+          attempt: Number(record.message?.attempt || 0),
+          error: message,
+        });
         if (record.read_ct >= MAX_ATTEMPTS) {
           await deadletterStepJob(supabase, {
             queueName: QUEUE_NAME,
@@ -413,6 +536,7 @@ Deno.serve(async (req) => {
       queue: QUEUE_NAME,
       fetched_jobs: jobs.length,
       processed,
+      failures,
       elapsed_ms: Date.now() - startMs,
     });
   } catch (error) {

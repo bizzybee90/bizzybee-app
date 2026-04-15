@@ -1,5 +1,33 @@
 project_id = "atukvssploxwyqpwjmrc"
 
+[auth]
+site_url = "https://bizzybee-app.pages.dev"
+additional_redirect_urls = [
+  "https://bizzybee-app.pages.dev/auth",
+  "https://bizzybee-app.pages.dev/**",
+  "https://*.bizzybee-app.pages.dev/**",
+  "https://bizzybee.app/**",
+  "https://bizzyb.ee/**",
+  "https://app.bizzyb.ee/**",
+  "https://app.bizzybee.co.uk/**",
+  "http://localhost:4176/**",
+  "http://127.0.0.1:4176/**",
+  "http://localhost:5173/**",
+  "http://localhost:8080/**",
+]
+
+[auth.rate_limit]
+email_sent = 30
+
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_AUTH_SMTP_KEY)"
+admin_email = "noreply@bizzyb.ee"
+sender_name = "BizzyBee"
+
 # =============================================================================
 # PIPELINE — Core email processing pipeline (new unified pipeline)
 # =============================================================================
@@ -31,6 +59,15 @@ verify_jwt = false
 [functions.start-faq-generation]
 verify_jwt = false
 
+[functions.add-manual-competitor]
+verify_jwt = false
+
+[functions.manage-onboarding-competitors]
+verify_jwt = false
+
+[functions.onboarding-competitors]
+verify_jwt = false
+
 [functions.unified-ingest]
 verify_jwt = false
 
@@ -59,10 +96,26 @@ verify_jwt = false
 [functions.email-send]
 verify_jwt = false
 
+[functions.send-lifecycle-email]
+verify_jwt = false
+
 [functions.fetch-email-body]
 verify_jwt = false
 
 [functions.mark-email-read]
+verify_jwt = false
+
+# =============================================================================
+# BILLING / STRIPE
+# =============================================================================
+
+[functions.stripe-create-checkout-session]
+verify_jwt = false
+
+[functions.stripe-create-portal-session]
+verify_jwt = false
+
+[functions.stripe-webhook]
 verify_jwt = false
 
 # =============================================================================
@@ -109,6 +162,12 @@ verify_jwt = false
 [functions.request-deletion]
 verify_jwt = false
 
+[functions.workspace-gdpr-settings]
+verify_jwt = false
+
+[functions.developer-cost-insights]
+verify_jwt = false
+
 # =============================================================================
 # n8n / WORKFLOWS
 # =============================================================================
@@ -147,6 +206,9 @@ verify_jwt = false
 [functions.pipeline-supervisor-onboarding]
 verify_jwt = false
 
+[functions.onboarding-worker-nudge]
+verify_jwt = false
+
 # =============================================================================
 # AI / MEDIA PROCESSING
 # =============================================================================
@@ -158,6 +220,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.audio-process]
+verify_jwt = false
+
+[functions.elevenlabs-voice-preview]
 verify_jwt = false
 
 [functions.google-places-autocomplete]

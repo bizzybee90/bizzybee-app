@@ -1,4 +1,10 @@
-import { HttpError, createServiceClient, isUuidLike, queueSend } from '../_shared/pipeline.ts';
+import {
+  HttpError,
+  createServiceClient,
+  isUuidLike,
+  queueSend,
+  wakeWorker,
+} from '../_shared/pipeline.ts';
 import {
   ONBOARDING_SUPERVISOR_QUEUE,
   ONBOARDING_WEBSITE_QUEUE,
@@ -69,6 +75,52 @@ Deno.serve(async (req) => {
       throw new HttpError(400, 'website_url is required');
     }
 
+    const { data: previousRuns, error: previousRunsError } = await supabase
+      .from('agent_runs')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('workflow_key', 'own_website_scrape');
+
+    if (previousRunsError) {
+      throw new Error(`Failed to load previous website scrape runs: ${previousRunsError.message}`);
+    }
+
+    if (previousRuns?.length) {
+      const { error: cleanupRunsError } = await supabase
+        .from('agent_runs')
+        .delete()
+        .in(
+          'id',
+          previousRuns.map((run) => run.id),
+        );
+
+      if (cleanupRunsError) {
+        throw new Error(
+          `Failed to clear previous website scrape runs: ${cleanupRunsError.message}`,
+        );
+      }
+    }
+
+    const { error: cleanupFaqError } = await supabase
+      .from('faq_database')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('is_own_content', true);
+
+    if (cleanupFaqError) {
+      throw new Error(`Failed to clear previous website FAQs: ${cleanupFaqError.message}`);
+    }
+
+    const { error: cleanupJobsError } = await supabase
+      .from('scraping_jobs')
+      .delete()
+      .eq('workspace_id', workspaceId)
+      .eq('job_type', 'own_website_scrape');
+
+    if (cleanupJobsError) {
+      throw new Error(`Failed to clear previous scrape jobs: ${cleanupJobsError.message}`);
+    }
+
     const { data: scrapeJob, error: scrapeJobError } = await supabase
       .from('scraping_jobs')
       .insert({
@@ -114,6 +166,12 @@ Deno.serve(async (req) => {
       0,
     );
 
+    try {
+      await wakeWorker(supabase, 'pipeline-worker-onboarding-website');
+    } catch (workerKickError) {
+      console.warn('Failed to trigger onboarding website worker immediately', workerKickError);
+    }
+
     await queueSend(
       supabase,
       ONBOARDING_SUPERVISOR_QUEUE,
@@ -122,7 +180,7 @@ Deno.serve(async (req) => {
         workflow_key: 'own_website_scrape',
         action: 'heartbeat_check',
       },
-      300,
+      30,
     );
 
     return corsResponse({

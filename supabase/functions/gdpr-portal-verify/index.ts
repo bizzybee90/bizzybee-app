@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { sendResendEmail } from '../_shared/resend.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,8 +99,10 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const postmarkApiKey = Deno.env.get('POSTMARK_API_KEY');
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const gdprSecret = Deno.env.get('GDPR_TOKEN_SECRET');
+    const resendFrom =
+      Deno.env.get('RESEND_TRANSACTIONAL_FROM')?.trim() || 'BizzyBee <noreply@bizzyb.ee>';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (!gdprSecret) {
@@ -295,21 +298,16 @@ Deno.serve(async (req) => {
         }
 
         // Send export via email
-        if (postmarkApiKey && exportData?.data) {
+        if (resendApiKey && exportData?.data) {
           const exportJson = JSON.stringify(exportData.data, null, 2);
 
-          await fetch('https://api.postmarkapp.com/email', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey,
-            },
-            body: JSON.stringify({
-              From: 'noreply@bizzybee.ai',
-              To: tokenEmail,
-              Subject: 'Your Data Export',
-              HtmlBody: `
+          await sendResendEmail(
+            resendApiKey,
+            {
+              from: resendFrom,
+              to: tokenEmail,
+              subject: 'Your Data Export',
+              html: `
                 <h2>Your Data Export</h2>
                 <p>Hello${customer.name ? ` ${customer.name}` : ''},</p>
                 <p>As requested, here is a copy of all your personal data we have on file.</p>
@@ -323,16 +321,22 @@ Deno.serve(async (req) => {
                   <li><strong>Right to Portability:</strong> This export is in JSON format for portability</li>
                 </ul>
               `,
-              Attachments: [
+              attachments: [
                 {
-                  Name: 'my-data-export.json',
-                  Content: btoa(exportJson),
-                  ContentType: 'application/json',
+                  filename: 'my-data-export.json',
+                  content: btoa(exportJson),
+                  type: 'application/json',
                 },
               ],
-              MessageStream: 'outbound',
-            }),
-          });
+              tags: [
+                { name: 'category', value: 'gdpr' },
+                { name: 'kind', value: 'export_completed' },
+              ],
+            },
+            {
+              idempotencyKey: `gdpr-export:${tokenEmail}:${customer.id}`,
+            },
+          );
         }
 
         // Log the completed export
@@ -346,27 +350,28 @@ Deno.serve(async (req) => {
         });
       } else {
         // No customer found - send email saying no data
-        if (postmarkApiKey) {
-          await fetch('https://api.postmarkapp.com/email', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey,
-            },
-            body: JSON.stringify({
-              From: 'noreply@bizzybee.ai',
-              To: tokenEmail,
-              Subject: 'Your Data Export Request',
-              HtmlBody: `
+        if (resendApiKey) {
+          await sendResendEmail(
+            resendApiKey,
+            {
+              from: resendFrom,
+              to: tokenEmail,
+              subject: 'Your Data Export Request',
+              html: `
                 <h2>Data Export Request</h2>
                 <p>We received your data export request for this email address.</p>
                 <p>After searching our records, we did not find any personal data associated with this email address.</p>
                 <p>If you believe this is an error, please contact us.</p>
               `,
-              MessageStream: 'outbound',
-            }),
-          });
+              tags: [
+                { name: 'category', value: 'gdpr' },
+                { name: 'kind', value: 'export_no_data' },
+              ],
+            },
+            {
+              idempotencyKey: `gdpr-export-miss:${tokenEmail}`,
+            },
+          );
         }
       }
     } else if (action === 'deletion') {
@@ -386,21 +391,16 @@ Deno.serve(async (req) => {
         }
 
         // Send confirmation email
-        if (postmarkApiKey) {
+        if (resendApiKey) {
           const estimatedDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-          await fetch('https://api.postmarkapp.com/email', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey,
-            },
-            body: JSON.stringify({
-              From: 'noreply@bizzybee.ai',
-              To: tokenEmail,
-              Subject: 'Data Deletion Request Confirmed',
-              HtmlBody: `
+          await sendResendEmail(
+            resendApiKey,
+            {
+              from: resendFrom,
+              to: tokenEmail,
+              subject: 'Data Deletion Request Confirmed',
+              html: `
                 <h2>Data Deletion Request Confirmed</h2>
                 <p>Hello${customer.name ? ` ${customer.name}` : ''},</p>
                 <p>Your request to delete your personal data has been confirmed and queued for processing.</p>
@@ -411,9 +411,15 @@ Deno.serve(async (req) => {
                   If you did not make this request, please contact us immediately.
                 </p>
               `,
-              MessageStream: 'outbound',
-            }),
-          });
+              tags: [
+                { name: 'category', value: 'gdpr' },
+                { name: 'kind', value: 'deletion_confirmed' },
+              ],
+            },
+            {
+              idempotencyKey: `gdpr-deletion:${tokenEmail}:${customer.id}`,
+            },
+          );
         }
 
         // Log the deletion request
@@ -427,27 +433,28 @@ Deno.serve(async (req) => {
         });
       } else {
         // No customer found
-        if (postmarkApiKey) {
-          await fetch('https://api.postmarkapp.com/email', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              'X-Postmark-Server-Token': postmarkApiKey,
-            },
-            body: JSON.stringify({
-              From: 'noreply@bizzybee.ai',
-              To: tokenEmail,
-              Subject: 'Data Deletion Request',
-              HtmlBody: `
+        if (resendApiKey) {
+          await sendResendEmail(
+            resendApiKey,
+            {
+              from: resendFrom,
+              to: tokenEmail,
+              subject: 'Data Deletion Request',
+              html: `
                 <h2>Data Deletion Request</h2>
                 <p>We received your data deletion request for this email address.</p>
                 <p>After searching our records, we did not find any personal data associated with this email address.</p>
                 <p>No further action is required on your part.</p>
               `,
-              MessageStream: 'outbound',
-            }),
-          });
+              tags: [
+                { name: 'category', value: 'gdpr' },
+                { name: 'kind', value: 'deletion_no_data' },
+              ],
+            },
+            {
+              idempotencyKey: `gdpr-deletion-miss:${tokenEmail}`,
+            },
+          );
         }
       }
     }

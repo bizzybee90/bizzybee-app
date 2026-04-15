@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -14,7 +13,6 @@ import {
   Shield,
   FileText,
   Building2,
-  Mail,
   CheckCircle,
   AlertCircle,
   Plus,
@@ -22,7 +20,6 @@ import {
   Loader2,
   ExternalLink,
 } from 'lucide-react';
-import type { Database } from '@/integrations/supabase/types';
 import { PanelNotice } from './PanelNotice';
 
 interface SubProcessor {
@@ -45,6 +42,25 @@ interface GDPRSettings {
   sub_processors: SubProcessor[];
 }
 
+interface GDPRSettingsResponse {
+  success: boolean;
+  settings?: GDPRSettings;
+  error?: string;
+}
+
+const buildDefaultSettings = (workspaceId: string): GDPRSettings => ({
+  workspace_id: workspaceId,
+  dpa_version: 'v1.0',
+  dpa_accepted_at: null,
+  dpa_accepted_by: null,
+  privacy_policy_url: null,
+  custom_privacy_policy: null,
+  company_legal_name: null,
+  company_address: null,
+  data_protection_officer_email: null,
+  sub_processors: [],
+});
+
 export const WorkspaceGDPRSettingsPanel = () => {
   const { workspace, loading: workspaceLoading } = useWorkspace();
   const { isAdmin, loading: roleLoading } = useUserRole();
@@ -57,6 +73,22 @@ export const WorkspaceGDPRSettingsPanel = () => {
     location: '',
   });
 
+  const hydrateSettings = useCallback(
+    (incoming?: Partial<GDPRSettings> | null): GDPRSettings => ({
+      ...buildDefaultSettings(workspace?.id ?? ''),
+      ...incoming,
+      workspace_id: workspace?.id ?? incoming?.workspace_id ?? '',
+      sub_processors: Array.isArray(incoming?.sub_processors)
+        ? incoming.sub_processors.map((item) => ({
+            name: item.name ?? '',
+            purpose: item.purpose ?? '',
+            location: item.location ?? '',
+          }))
+        : [],
+    }),
+    [workspace?.id],
+  );
+
   const loadSettings = useCallback(async () => {
     if (!workspace?.id) {
       setLoading(false);
@@ -65,43 +97,29 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('workspace_gdpr_settings')
-        .select('*')
-        .eq('workspace_id', workspace.id)
-        .maybeSingle();
+      const { data, error } = await supabase.functions.invoke<GDPRSettingsResponse>(
+        'workspace-gdpr-settings',
+        {
+          body: { action: 'load' },
+        },
+      );
 
-      if (error && error.code !== 'PGRST116') throw error;
-
-      if (data) {
-        setSettings({
-          ...data,
-          sub_processors: Array.isArray(data.sub_processors)
-            ? (data.sub_processors as unknown as SubProcessor[])
-            : [],
-        });
-      } else {
-        // Create default settings
-        setSettings({
-          workspace_id: workspace.id,
-          dpa_version: 'v1.0',
-          dpa_accepted_at: null,
-          dpa_accepted_by: null,
-          privacy_policy_url: null,
-          custom_privacy_policy: null,
-          company_legal_name: null,
-          company_address: null,
-          data_protection_officer_email: null,
-          sub_processors: [],
-        });
+      if (error) {
+        throw error;
       }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Could not load GDPR settings');
+      }
+
+      setSettings(hydrateSettings(data.settings));
     } catch (error) {
       console.error('Error loading GDPR settings:', error);
       toast.error('Failed to load GDPR settings');
     } finally {
       setLoading(false);
     }
-  }, [workspace?.id]);
+  }, [hydrateSettings, workspace?.id]);
 
   useEffect(() => {
     if (workspace?.id) {
@@ -114,11 +132,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
     setSaving(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-
-      // Cast sub_processors to Json type for Supabase
-      type GDPRInsert = Database['public']['Tables']['workspace_gdpr_settings']['Insert'];
-      const settingsToSave: GDPRInsert = {
+      const settingsToSave = {
         workspace_id: workspace.id,
         dpa_version: settings.dpa_version,
         dpa_accepted_at: settings.dpa_accepted_at,
@@ -128,30 +142,28 @@ export const WorkspaceGDPRSettingsPanel = () => {
         company_legal_name: settings.company_legal_name,
         company_address: settings.company_address,
         data_protection_officer_email: settings.data_protection_officer_email,
-        sub_processors: JSON.parse(
-          JSON.stringify(settings.sub_processors),
-        ) as Database['public']['Tables']['workspace_gdpr_settings']['Insert']['sub_processors'],
-        updated_at: new Date().toISOString(),
+        sub_processors: settings.sub_processors,
       };
 
-      if (settings.id) {
-        const { error } = await supabase
-          .from('workspace_gdpr_settings')
-          .update(settingsToSave)
-          .eq('id', settings.id);
+      const { data, error } = await supabase.functions.invoke<GDPRSettingsResponse>(
+        'workspace-gdpr-settings',
+        {
+          body: {
+            action: 'save',
+            settings: settingsToSave,
+          },
+        },
+      );
 
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase
-          .from('workspace_gdpr_settings')
-          .insert(settingsToSave)
-          .select()
-          .single();
-
-        if (error) throw error;
-        setSettings({ ...settings, id: data.id });
+      if (error) {
+        throw error;
       }
 
+      if (!data?.success || !data.settings) {
+        throw new Error(data?.error || 'Could not save GDPR settings');
+      }
+
+      setSettings(hydrateSettings(data.settings));
       toast.success('GDPR settings saved successfully');
     } catch (error: any) {
       console.error('Error saving GDPR settings:', error);
@@ -164,15 +176,34 @@ export const WorkspaceGDPRSettingsPanel = () => {
   const acceptDPA = async () => {
     if (!settings) return;
 
-    const { data: userData } = await supabase.auth.getUser();
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<GDPRSettingsResponse>(
+        'workspace-gdpr-settings',
+        {
+          body: {
+            action: 'accept_dpa',
+            dpa_version: settings.dpa_version,
+          },
+        },
+      );
 
-    setSettings({
-      ...settings,
-      dpa_accepted_at: new Date().toISOString(),
-      dpa_accepted_by: userData.user?.id || null,
-    });
+      if (error) {
+        throw error;
+      }
 
-    toast.success('Data Processing Agreement accepted');
+      if (!data?.success || !data.settings) {
+        throw new Error(data?.error || 'Could not accept DPA');
+      }
+
+      setSettings(hydrateSettings(data.settings));
+      toast.success('Data Processing Agreement accepted');
+    } catch (error: any) {
+      console.error('Error accepting DPA:', error);
+      toast.error(error.message || 'Could not accept the DPA');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addSubProcessor = () => {
@@ -227,39 +258,53 @@ export const WorkspaceGDPRSettingsPanel = () => {
     );
   }
 
+  if (!settings) {
+    return (
+      <PanelNotice
+        icon={Shield}
+        title="GDPR settings are not ready yet"
+        description="BizzyBee could not load the compliance record for this workspace yet. Refresh the page and try again."
+      />
+    );
+  }
+
   return (
-    <Card className="p-6">
+    <Card className="rounded-[28px] border-[0.5px] border-bb-border bg-gradient-to-b from-bb-white to-bb-cream/60 p-6 shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-            <Shield className="h-5 w-5" />
+        <div className="rounded-2xl border border-bb-border bg-bb-white/80 p-5">
+          <Badge className="border-bb-gold/25 bg-bb-gold/10 text-bb-espresso hover:bg-bb-gold/10">
+            Compliance control
+          </Badge>
+          <h3 className="mt-3 flex items-center gap-2 text-lg font-semibold text-bb-text">
+            <Shield className="h-5 w-5 text-bb-gold" />
             GDPR & Privacy Settings
           </h3>
-          <p className="text-sm text-muted-foreground">
-            Configure your data protection agreement and privacy policies
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-bb-warm-gray">
+            Keep the legal and customer-facing privacy details in one place. This is the source
+            BizzyBee uses for your GDPR portal, export responses, and internal compliance checks.
           </p>
         </div>
 
         {/* DPA Acceptance */}
-        <Card className="p-4 border-2">
+        <Card className="border-[0.5px] border-bb-border bg-bb-white p-5 shadow-sm">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h4 className="font-semibold flex items-center gap-2">
-                <FileText className="h-4 w-4" />
+              <h4 className="flex items-center gap-2 font-semibold text-bb-text">
+                <FileText className="h-4 w-4 text-bb-gold" />
                 Data Processing Agreement (DPA)
               </h4>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="mt-1 text-sm text-bb-warm-gray">
                 Our DPA outlines how we process data on your behalf in compliance with GDPR.
               </p>
             </div>
             <div className="ml-4">
               {settings?.dpa_accepted_at ? (
-                <Badge variant="default" className="bg-green-500">
+                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
                   <CheckCircle className="h-3 w-3 mr-1" />
                   Accepted
                 </Badge>
               ) : (
-                <Badge variant="destructive">
+                <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
                   <AlertCircle className="h-3 w-3 mr-1" />
                   Not Accepted
                 </Badge>
@@ -273,7 +318,8 @@ export const WorkspaceGDPRSettingsPanel = () => {
               {settings.dpa_version})
             </p>
           ) : (
-            <Button onClick={acceptDPA} className="mt-3" size="sm">
+            <Button onClick={acceptDPA} className="mt-3" size="sm" disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Accept DPA (Version {settings?.dpa_version})
             </Button>
           )}
@@ -281,8 +327,8 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
         {/* Company Information */}
         <div className="space-y-4">
-          <h4 className="font-semibold flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
+          <h4 className="font-semibold flex items-center gap-2 text-bb-text">
+            <Building2 className="h-4 w-4 text-bb-gold" />
             Company Information
           </h4>
 
@@ -331,8 +377,8 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
         {/* Privacy Policy */}
         <div className="space-y-4">
-          <h4 className="font-semibold flex items-center gap-2">
-            <FileText className="h-4 w-4" />
+          <h4 className="font-semibold flex items-center gap-2 text-bb-text">
+            <FileText className="h-4 w-4 text-bb-gold" />
             Privacy Policy
           </h4>
 
@@ -380,18 +426,21 @@ export const WorkspaceGDPRSettingsPanel = () => {
 
         {/* Sub-processors */}
         <div className="space-y-4">
-          <h4 className="font-semibold">Sub-processors</h4>
-          <p className="text-sm text-muted-foreground">
+          <h4 className="font-semibold text-bb-text">Sub-processors</h4>
+          <p className="text-sm text-bb-warm-gray">
             List third-party services that process customer data on your behalf
           </p>
 
           {settings?.sub_processors && settings.sub_processors.length > 0 && (
             <div className="space-y-2">
               {settings.sub_processors.map((processor, index) => (
-                <Card key={index} className="p-3 flex items-center justify-between">
+                <Card
+                  key={index}
+                  className="flex items-center justify-between border-[0.5px] border-bb-border bg-bb-white p-3"
+                >
                   <div>
-                    <p className="font-medium">{processor.name}</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="font-medium text-bb-text">{processor.name}</p>
+                    <p className="text-sm text-bb-warm-gray">
                       {processor.purpose} • {processor.location}
                     </p>
                   </div>
@@ -403,7 +452,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
             </div>
           )}
 
-          <Card className="p-4 bg-muted/50">
+          <Card className="border-[0.5px] border-dashed border-bb-border bg-bb-white/70 p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Input
                 placeholder="Service name"
@@ -435,7 +484,7 @@ export const WorkspaceGDPRSettingsPanel = () => {
         </div>
 
         {/* Save Button */}
-        <div className="flex justify-end pt-4 border-t">
+        <div className="flex justify-end border-t border-bb-border-light pt-4">
           <Button onClick={saveSettings} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Save GDPR Settings

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildTransactionalEmailPayload, sendResendEmail } from '../_shared/resend.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,38 @@ const buildWorkspaceName = (email?: string | null) => {
   if (!localPart) return 'My Workspace';
   return `${localPart.charAt(0).toUpperCase()}${localPart.slice(1)} workspace`;
 };
+
+async function sendSignupWelcomeEmail(params: {
+  email: string | null | undefined;
+  name: string | null | undefined;
+  workspaceName: string;
+}) {
+  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim();
+  if (!apiKey || !params.email?.trim()) {
+    return;
+  }
+
+  const appUrl = Deno.env.get('APP_URL')?.trim() || 'https://bizzybee.app';
+  const supportEmail = Deno.env.get('BIZZYBEE_SUPPORT_EMAIL')?.trim() || 'support@bizzyb.ee';
+  const transactionalFrom =
+    Deno.env.get('RESEND_TRANSACTIONAL_FROM')?.trim() || 'BizzyBee <noreply@bizzyb.ee>';
+
+  const payload = buildTransactionalEmailPayload({
+    kind: 'signup_welcome',
+    recipientEmail: params.email,
+    recipientName: params.name,
+    workspaceName: params.workspaceName,
+    appUrl,
+    supportEmail,
+    fromName: transactionalFrom.split('<')[0]?.trim() || 'BizzyBee',
+    fromEmail: transactionalFrom.match(/<([^>]+)>/)?.[1]?.trim() || 'noreply@bizzyb.ee',
+    replyTo: supportEmail,
+  });
+
+  await sendResendEmail(apiKey, payload, {
+    idempotencyKey: `signup:${params.email.trim().toLowerCase()}`,
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -127,6 +160,16 @@ Deno.serve(async (req) => {
 
     if (insertWorkspaceMembershipError) {
       throw insertWorkspaceMembershipError;
+    }
+
+    try {
+      await sendSignupWelcomeEmail({
+        email: user.email,
+        name: typeof user.user_metadata?.name === 'string' ? user.user_metadata.name : null,
+        workspaceName,
+      });
+    } catch (emailError) {
+      console.error('[bootstrap-workspace] Failed to send signup welcome email:', emailError);
     }
 
     return json(200, {

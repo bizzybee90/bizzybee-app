@@ -241,12 +241,21 @@ function buildBaselineAddonMap(
   return normalized;
 }
 
+function getBypassedEmailHistoryImportLimit(): number {
+  return Math.max(
+    ...Object.values(BIZZYBEE_PLANS).map((plan) => plan.limits.emailHistoryImportLimit),
+  );
+}
+
 function resolveLimits(
   planLimits: BizzyBeePlanLimits,
   addons: Record<BizzyBeeAddonKey, boolean>,
+  allowPaidFeatures: boolean,
 ): WorkspaceEntitlements['limits'] {
   return {
-    emailHistoryImportLimit: planLimits.emailHistoryImportLimit,
+    emailHistoryImportLimit: allowPaidFeatures
+      ? getBypassedEmailHistoryImportLimit()
+      : planLimits.emailHistoryImportLimit,
     includedSms: addons.sms_ai ? (BIZZYBEE_ADDONS.sms_ai.includedUnits ?? 0) : 0,
     includedPhoneMinutes: addons.ai_phone ? (BIZZYBEE_ADDONS.ai_phone.includedUnits ?? 0) : 0,
   };
@@ -372,7 +381,7 @@ function buildResolvedEntitlements(input: {
       advanced_analytics: featureDecisions.advanced_analytics.isAllowed,
       priority_support: featureDecisions.priority_support.isAllowed,
     },
-    limits: resolveLimits(planDef.limits, addons),
+    limits: resolveLimits(planDef.limits, addons, allowPaidFeatures),
     canUseAiInbox: capabilityDecisions.aiInbox.isAllowed,
     canUseInstagramAi: capabilityDecisions.instagramAi.isAllowed,
     canUseFacebookAi: capabilityDecisions.facebookAi.isAllowed,

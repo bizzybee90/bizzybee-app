@@ -1,5 +1,7 @@
 import { createServiceClient } from '../_shared/pipeline.ts';
 import { EntitlementGuardError, requireEntitlement } from '../_shared/entitlements.ts';
+import { captureEdgeException } from '../_shared/sentry.ts';
+import { verifyElevenLabsSignatureValue } from '../_shared/elevenlabsWebhookAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,26 +17,11 @@ class WebhookAuthError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Signature verification
-// ---------------------------------------------------------------------------
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
 async function verifyElevenLabsSignature(rawBody: string, req: Request): Promise<void> {
   const secret = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET')?.trim();
   if (!secret) {
-    console.warn(
-      '[elevenlabs-webhook] ELEVENLABS_WEBHOOK_SECRET not set — skipping signature verification',
-    );
-    return;
+    console.error('[elevenlabs-webhook] ELEVENLABS_WEBHOOK_SECRET not set');
+    throw new WebhookAuthError('Server misconfigured', 500);
   }
 
   const provided = req.headers.get('ElevenLabs-Signature')?.trim();
@@ -43,28 +30,12 @@ async function verifyElevenLabsSignature(rawBody: string, req: Request): Promise
   }
 
   try {
-    const key = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign'],
-    );
-
-    const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
-    const hex = Array.from(new Uint8Array(signature))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-
-    const normalizedProvided = provided.toLowerCase().replace(/^sha256=/, '');
-    if (!timingSafeEqual(normalizedProvided, hex)) {
-      throw new WebhookAuthError('Invalid ElevenLabs signature');
-    }
+    await verifyElevenLabsSignatureValue({
+      header: provided,
+      rawBody,
+      secret,
+    });
   } catch (error) {
-    if (error instanceof WebhookAuthError) {
-      throw error;
-    }
-
     console.error('[elevenlabs-webhook] Signature verification failed:', error);
     throw new WebhookAuthError('Invalid ElevenLabs signature');
   }
@@ -281,8 +252,12 @@ Deno.serve(async (req: Request) => {
 
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[elevenlabs-webhook] Unhandled error: ${message}`);
+    await captureEdgeException({
+      functionName: 'elevenlabs-webhook',
+      error: err,
+    });
 
-    return new Response(JSON.stringify({ ok: false, error: message }), {
+    return new Response(JSON.stringify({ ok: false, error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

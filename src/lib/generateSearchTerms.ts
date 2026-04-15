@@ -93,26 +93,26 @@ export function normalizePrimaryServiceLocation(location: string): string {
 
 export function generateSearchTerms(businessType: string, location: string): string[] {
   const cleanType = businessType.split(',')[0].trim().toLowerCase().replace(/_/g, ' ');
-
   const cleanLocation = normalizePrimaryServiceLocation(location).toLowerCase();
 
-  if (!cleanType || !cleanLocation) return [];
+  if (!cleanType) return [];
 
   const terms: string[] = [];
+  const joinWithLocation = (term: string) => (cleanLocation ? `${term} ${cleanLocation}` : term);
 
   // 1. Service form + location
-  terms.push(`${cleanType} ${cleanLocation}`);
+  terms.push(joinWithLocation(cleanType));
 
   // 2. Practitioner form + location (only if naturally different)
   const practitioner = PRACTITIONER_MAP[cleanType];
   if (practitioner && practitioner !== cleanType) {
-    terms.push(`${practitioner} ${cleanLocation}`);
+    terms.push(joinWithLocation(practitioner));
   }
 
   // 3. One related service term (if available)
   const related = RELATED_SERVICES[cleanType];
   if (related && related.length > 0) {
-    terms.push(`${related[0]} ${cleanLocation}`);
+    terms.push(joinWithLocation(related[0]));
   }
 
   // 4. Review-intent term
@@ -123,11 +123,11 @@ export function generateSearchTerms(businessType: string, location: string): str
     : cleanType.endsWith('s')
       ? cleanType
       : cleanType + 's';
-  terms.push(`best rated ${pluralPractitioner} ${cleanLocation}`);
+  terms.push(joinWithLocation(`best rated ${pluralPractitioner}`));
 
   // 5. Commercial/specialty variant if applicable
   if (cleanType.includes('cleaning') && !cleanType.includes('commercial')) {
-    terms.push(`commercial ${cleanType} ${cleanLocation}`);
+    terms.push(joinWithLocation(`commercial ${cleanType}`));
   }
 
   // Deduplicate

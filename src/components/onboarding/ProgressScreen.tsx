@@ -20,14 +20,23 @@ import {
   Globe,
   Play,
   Trash2,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useOnboardingProgress } from '@/hooks/useOnboardingProgress';
+import { useOnboardingDiscoveryAutoTrigger } from '@/hooks/useOnboardingDiscoveryAutoTrigger';
+import { isMailboxWarmupError } from '@/lib/email/importStatus';
+import {
+  deleteOnboardingCompetitor,
+  listOnboardingCompetitors,
+  toggleOnboardingCompetitorSelection,
+} from '@/lib/onboarding/competitors';
 
 interface ProgressScreenProps {
   workspaceId: string;
+  connectedEmail?: string | null;
   onNext: () => void;
   onBack: () => void;
 }
@@ -36,6 +45,7 @@ interface TrackState {
   status: string;
   counts: { label: string; value: number }[];
   error?: string | null;
+  note?: string | null;
   currentCompetitor?: string | null;
   current?: number;
   total?: number;
@@ -83,6 +93,9 @@ const EMAIL_PHASES = [
   { key: 'failed', label: 'Failed', icon: AlertCircle },
 ];
 
+const WORKER_NUDGE_COOLDOWN_MS = 5_000;
+const WORKER_NUDGE_HEARTBEAT_MS = 5_000;
+
 function getPhaseIndex(phases: typeof DISCOVERY_PHASES, currentStatus: string): number {
   const index = phases.findIndex((p) => p.key === currentStatus);
   return index >= 0 ? index : 0;
@@ -94,6 +107,7 @@ function TrackProgress({
   currentStatus,
   counts,
   error,
+  note,
   currentCompetitor,
   current,
   total,
@@ -104,6 +118,7 @@ function TrackProgress({
   currentStatus: string;
   counts?: { label: string; value: number }[];
   error?: string | null;
+  note?: string | null;
   currentCompetitor?: string | null;
   current?: number;
   total?: number;
@@ -169,6 +184,7 @@ function TrackProgress({
           >
             {isFailed ? error || 'An error occurred' : currentLabel}
           </p>
+          {!isFailed && note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
           {(currentStatus === 'scraping' || currentStatus === 'extracting') &&
             currentCompetitor &&
             current &&
@@ -212,41 +228,67 @@ type OnboardingProgressTrack = {
   [key: string]: unknown;
 };
 
+function normalizeStepToken(value: string | null | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim().toLowerCase();
+  const colonIndex = trimmed.indexOf(':');
+  return colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
+}
+
 function mapDiscoveryStatus(track: OnboardingProgressTrack | undefined): string {
   if (!track) return 'pending';
   if (track.agent_status === 'failed' || track.latest_error) return 'failed';
-  if (track.agent_status === 'succeeded') return 'complete';
+  if (track.agent_status === 'succeeded' || track.agent_status === 'completed') return 'complete';
   if (track.agent_status === 'queued') return 'pending';
+  const discoveredCount = Number(track.counts?.sites_discovered || 0);
+  const approvedCount = Number(track.counts?.sites_approved || 0);
 
-  switch (track.current_step) {
+  if (approvedCount > 0) return 'complete';
+
+  switch (normalizeStepToken(track.current_step)) {
     case 'acquire':
-      return 'discovering';
+      return discoveredCount > 0 ? 'search_complete' : 'discovering';
     case 'qualify':
-      return 'search_complete';
+      return 'verification_complete';
     case 'persist':
       return 'health_check_complete';
     default:
-      return 'starting';
+      return discoveredCount > 0 ? 'search_complete' : 'starting';
   }
 }
 
 function mapFaqStatus(
   discoveryTrack: OnboardingProgressTrack | undefined,
   faqTrack: OnboardingProgressTrack | undefined,
+  competitorFaqCount: number,
 ): string {
+  const faqRunActive =
+    Boolean(faqTrack?.run_id) &&
+    !['failed', 'succeeded', 'completed'].includes(faqTrack?.agent_status || '');
+
+  if (!faqRunActive && (competitorFaqCount > 0 || Number(faqTrack?.counts?.faqs_added || 0) > 0)) {
+    return 'complete';
+  }
   if (faqTrack?.agent_status === 'failed' || faqTrack?.latest_error) return 'failed';
-  if (faqTrack?.agent_status === 'succeeded') return 'complete';
+  if (faqTrack?.agent_status === 'succeeded' || faqTrack?.agent_status === 'completed')
+    return 'complete';
   if (faqTrack?.agent_status === 'queued') return 'pending';
 
-  switch (faqTrack?.current_step) {
+  switch (normalizeStepToken(faqTrack?.current_step)) {
     case 'load_context':
+    case 'context_loaded':
       return 'validating';
     case 'fetch_pages':
+    case 'fetch_started':
       return 'scraping';
+    case 'fetch_complete':
     case 'generate_candidates':
+    case 'candidates_generated':
       return 'extracting';
     case 'dedupe':
+    case 'quality_review_complete':
     case 'finalize':
+    case 'finalized':
     case 'persist':
       return 'scrape_processing';
     default:
@@ -254,7 +296,7 @@ function mapFaqStatus(
   }
 
   if (mapDiscoveryStatus(discoveryTrack) === 'complete') {
-    return 'review_ready';
+    return faqTrack?.run_id ? 'pending' : 'review_ready';
   }
 
   return 'waiting';
@@ -262,6 +304,7 @@ function mapFaqStatus(
 
 function mapEmailImportStatus(track: OnboardingProgressTrack | undefined): string {
   if (!track) return 'pending';
+  if (isMailboxWarmupError(track.latest_error as string | null | undefined)) return 'importing';
   if (track.latest_error && (track.counts?.emails_received || 0) === 0) return 'failed';
   if ((track.counts?.emails_received || 0) > 0) return 'complete';
 
@@ -280,6 +323,7 @@ function mapEmailImportStatus(track: OnboardingProgressTrack | undefined): strin
 
 function mapEmailClassificationStatus(track: OnboardingProgressTrack | undefined): string {
   if (!track) return 'pending';
+  if (isMailboxWarmupError(track.latest_error as string | null | undefined)) return 'pending';
 
   const received = track.counts?.emails_received || 0;
   const classified = track.counts?.emails_classified || 0;
@@ -308,118 +352,125 @@ interface CompetitorItem {
   is_selected: boolean;
   discovery_source?: string | null;
   validation_status?: string | null;
+  temporary?: boolean;
+}
+
+function dedupeCompetitorItems(items: CompetitorItem[]): CompetitorItem[] {
+  const byStableKey = new Map<string, CompetitorItem>();
+
+  for (const item of items) {
+    const stableKey = item.temporary
+      ? `temp:${item.domain || item.url || item.id}`
+      : item.id || item.domain || item.url;
+    const existing = byStableKey.get(stableKey);
+
+    if (!existing) {
+      byStableKey.set(stableKey, item);
+      continue;
+    }
+
+    const existingIsTemporary = existing.temporary === true;
+    const nextIsTemporary = item.temporary === true;
+
+    if (existingIsTemporary && !nextIsTemporary) {
+      byStableKey.set(stableKey, item);
+      continue;
+    }
+
+    const existingSelected = existing.is_selected === true;
+    const nextSelected = item.is_selected === true;
+
+    if (!existingSelected && nextSelected) {
+      byStableKey.set(stableKey, item);
+    }
+  }
+
+  return Array.from(byStableKey.values());
 }
 
 function InlineCompetitorReview({
   workspaceId,
+  jobId,
+  runId,
   onStartAnalysis,
   autoStarted = false,
   scrapeComplete = false,
   canStartAnalysis = true,
   analysisStatusMessage,
+  onCompetitorSummaryChange,
 }: {
   workspaceId: string;
+  jobId?: string | null;
+  runId?: string | null;
   onStartAnalysis: () => void;
   autoStarted?: boolean;
   scrapeComplete?: boolean;
   canStartAnalysis?: boolean;
   analysisStatusMessage?: string;
+  onCompetitorSummaryChange?: (summary: {
+    loadedCount: number;
+    selectedCount: number;
+    persistedLoadedCount: number;
+    persistedSelectedCount: number;
+    temporaryCount: number;
+  }) => void;
 }) {
   const [competitors, setCompetitors] = useState<CompetitorItem[]>([]);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [manualUrl, setManualUrl] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRemovingId, setIsRemovingId] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   const loadCompetitors = useCallback(
     async (showLoading: boolean) => {
+      if (!jobId) {
+        setCompetitors([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const requestId = ++loadRequestIdRef.current;
       if (showLoading) {
         setIsLoading(true);
       }
 
-      const { data: latestJob, error: jobError } = await supabase
-        .from('competitor_research_jobs')
-        .select('id')
-        .eq('workspace_id', workspaceId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (jobError) {
-        logger.error('Failed to load latest competitor job', jobError);
-        setCompetitors([]);
-        setJobId(null);
-        setIsLoading(false);
-        return;
-      }
-
-      setJobId(latestJob?.id ?? null);
-
-      if (!latestJob?.id) {
-        setCompetitors([]);
-        setIsLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('competitor_sites')
-        .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
-        .eq('job_id', latestJob.id)
-        .not('status', 'eq', 'rejected')
-        .order('distance_miles', { ascending: true, nullsFirst: false })
-        .order('relevance_score', { ascending: false, nullsFirst: false });
-
-      if (error) {
+      try {
+        const response = await listOnboardingCompetitors(workspaceId, jobId, runId);
+        if (loadRequestIdRef.current !== requestId) return;
+        setCompetitors(
+          dedupeCompetitorItems(
+            (response.competitors || []).map((c) => ({
+              id: c.id,
+              business_name: c.business_name,
+              domain: c.domain,
+              url: c.url,
+              is_selected: c.is_selected ?? true,
+              discovery_source: c.discovery_source,
+              validation_status: c.validation_status,
+              temporary: c.temporary === true,
+            })),
+          ),
+        );
+      } catch (error) {
+        if (loadRequestIdRef.current !== requestId) return;
         logger.error('Failed to load discovered competitors', error);
         setCompetitors([]);
-      } else {
-        const mapped = (data || []).map((c) => ({
-          id: c.id,
-          business_name: c.business_name,
-          domain: c.domain,
-          url: c.url,
-          is_selected: c.is_selected ?? true,
-          discovery_source: c.discovery_source,
-          validation_status: c.validation_status,
-        }));
-
-        if (mapped.length > 0) {
-          setCompetitors(mapped);
-        } else {
-          const { data: fallbackData, error: fallbackError } = await supabase
-            .from('competitor_sites')
-            .select(
-              'id, business_name, domain, url, is_selected, discovery_source, validation_status',
-            )
-            .eq('workspace_id', workspaceId)
-            .not('status', 'eq', 'rejected')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-          if (fallbackError) {
-            logger.error('Failed to load fallback competitors', fallbackError);
-            setCompetitors([]);
-          } else {
-            setCompetitors(
-              (fallbackData || []).map((c) => ({
-                id: c.id,
-                business_name: c.business_name,
-                domain: c.domain,
-                url: c.url,
-                is_selected: c.is_selected ?? true,
-                discovery_source: c.discovery_source,
-                validation_status: c.validation_status,
-              })),
-            );
-          }
-        }
       }
+      if (loadRequestIdRef.current !== requestId) return;
       setIsLoading(false);
     },
-    [workspaceId],
+    [jobId, runId, workspaceId],
   );
+
+  useEffect(() => {
+    loadRequestIdRef.current += 1;
+    setCompetitors([]);
+    setIsLoading(Boolean(jobId));
+    setManualUrl('');
+    setIsRemovingId(null);
+  }, [jobId, runId]);
 
   useEffect(() => {
     let active = true;
@@ -448,94 +499,79 @@ function InlineCompetitorReview({
   }, [loadCompetitors, scrapeComplete]);
 
   const selectedCount = competitors.filter((c) => c.is_selected).length;
+  const persistedLoadedCount = competitors.filter((c) => !c.temporary).length;
+  const persistedSelectedCount = competitors.filter((c) => c.is_selected && !c.temporary).length;
+  const temporaryCount = competitors.filter((c) => c.temporary).length;
+  const allTemporary = competitors.length > 0 && persistedLoadedCount === 0;
+  const effectiveSelectedCount =
+    persistedSelectedCount > 0 ? persistedSelectedCount : selectedCount;
+
+  useEffect(() => {
+    onCompetitorSummaryChange?.({
+      loadedCount: competitors.length,
+      selectedCount,
+      persistedLoadedCount,
+      persistedSelectedCount,
+      temporaryCount,
+    });
+  }, [
+    competitors.length,
+    onCompetitorSummaryChange,
+    persistedLoadedCount,
+    persistedSelectedCount,
+    selectedCount,
+    temporaryCount,
+  ]);
 
   const toggleSelection = async (id: string, value: boolean) => {
+    const target = competitors.find((c) => c.id === id);
+    if (target?.temporary) {
+      toast.message('Still preparing this competitor', {
+        description:
+          'BizzyBee has discovered the site, but it is still turning it into a reviewable competitor row.',
+      });
+      return;
+    }
     setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, is_selected: value } : c)));
-    await supabase.from('competitor_sites').update({ is_selected: value }).eq('id', id);
+    try {
+      await toggleOnboardingCompetitorSelection(workspaceId, id, value);
+    } catch (error) {
+      logger.error('Failed to update competitor selection', error);
+      setCompetitors((prev) => prev.map((c) => (c.id === id ? { ...c, is_selected: !value } : c)));
+      toast.error('Failed to update selection');
+    }
   };
 
   const addManualUrl = async () => {
     if (!manualUrl.trim()) return;
-    if (!jobId) {
-      toast.error('Competitor discovery is still starting');
-      return;
-    }
-
-    let cleanUrl = manualUrl.trim();
-    if (!cleanUrl.startsWith('http')) cleanUrl = 'https://' + cleanUrl;
-    let hostname: string;
-    try {
-      hostname = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase();
-    } catch {
-      toast.error('Invalid URL');
-      return;
-    }
-
-    if (competitors.some((c) => c.domain === hostname)) {
-      toast.error('Already in the list');
-      return;
-    }
-
     setIsAdding(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('add-manual-competitor', {
+        body: {
+          workspace_id: workspaceId,
+          job_id: jobId,
+          url: manualUrl.trim(),
+        },
+      });
 
-    const { data: existingRows } = await supabase
-      .from('competitor_sites')
-      .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
-      .eq('workspace_id', workspaceId)
-      .or(`domain.eq.${hostname},url.eq.${cleanUrl}`)
-      .limit(1);
+      if (error || data?.ok === false || !data?.competitor) {
+        throw error || new Error(data?.error || 'Failed to add competitor');
+      }
 
-    if (existingRows && existingRows.length > 0) {
-      const existing = existingRows[0];
-      setCompetitors((prev) =>
-        prev.some((c) => c.id === existing.id)
-          ? prev
-          : [
-              {
-                id: existing.id,
-                business_name: existing.business_name,
-                domain: existing.domain,
-                url: existing.url,
-                is_selected: existing.is_selected ?? true,
-                discovery_source: existing.discovery_source,
-                validation_status: existing.validation_status,
-              },
-              ...prev,
-            ],
+      const competitor = data.competitor as CompetitorItem;
+      await loadCompetitors(false);
+      setManualUrl('');
+      toast.success(
+        data?.reused ? 'Competitor already existed and has been loaded' : 'Competitor added',
       );
-      setManualUrl('');
-      setIsAdding(false);
-      toast.success('Competitor already existed and has been loaded');
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('competitor_sites')
-      .insert({
-        job_id: jobId,
-        workspace_id: workspaceId,
-        business_name: hostname,
-        url: cleanUrl,
-        domain: hostname,
-        discovery_source: 'manual',
-        status: 'approved',
-        scrape_status: 'pending',
-        is_selected: true,
-        validation_status: 'pending',
-        relevance_score: 100,
-      })
-      .select('id, business_name, domain, url, is_selected, discovery_source, validation_status')
-      .single();
-
-    if (error) {
+    } catch (error) {
       logger.error('Failed to add manual competitor', error);
-      toast.error('Failed to add');
-    } else if (data) {
-      setCompetitors((prev) => [data as CompetitorItem, ...prev]);
-      setManualUrl('');
-      toast.success('Competitor added');
+      toast.error(
+        error instanceof Error && error.message ? error.message : 'Failed to add competitor',
+      );
+    } finally {
+      setIsAdding(false);
     }
-    setIsAdding(false);
   };
 
   const removeCompetitor = async (id: string) => {
@@ -545,39 +581,61 @@ function InlineCompetitorReview({
     setIsRemovingId(id);
     setCompetitors((prev) => prev.filter((c) => c.id !== id));
 
-    const { error } = await supabase.from('competitor_sites').delete().eq('id', id);
-
-    if (error) {
+    try {
+      await deleteOnboardingCompetitor(workspaceId, id);
+      toast.success('Competitor removed');
+    } catch (error) {
       logger.error('Failed to remove competitor', error);
       setCompetitors((prev) => [existing, ...prev]);
       toast.error('Failed to remove');
-    } else {
-      toast.success('Competitor removed');
     }
     setIsRemovingId(null);
   };
 
   const handleStart = async () => {
-    if (selectedCount === 0) {
-      toast.error('Select at least one competitor');
+    if (effectiveSelectedCount === 0) {
+      toast.error(
+        allTemporary
+          ? 'No discovered competitors are selected yet'
+          : 'Select at least one competitor',
+      );
       return;
     }
     setIsStarting(true);
     try {
       const selectedCompetitorIds = competitors
         .filter((competitor) => competitor.is_selected)
+        .filter((competitor) => !competitor.temporary)
         .map((competitor) => competitor.id);
 
       const { data, error } = await supabase.functions.invoke('start-faq-generation', {
         body: {
           workspace_id: workspaceId,
           selected_competitor_ids: selectedCompetitorIds,
-          target_count: selectedCount,
+          target_count: effectiveSelectedCount,
           trigger_source: 'onboarding_progress_inline_review',
+          discovery_job_id: jobId,
+          discovery_run_id: runId,
         },
       });
       if (error) throw error;
-      toast.success(`Analysis started for ${data?.sitesCount || selectedCount} competitors`);
+      const analysedCount = Number(
+        data?.sitesCountAnalysed || data?.sitesCount || effectiveSelectedCount,
+      );
+      if (data?.run_id) {
+        void supabase.functions
+          .invoke('onboarding-worker-nudge', {
+            body: {
+              workspace_id: workspaceId,
+              workflow_key: 'faq_generation',
+              run_id: data.run_id,
+            },
+          })
+          .catch((nudgeError) => {
+            logger.error('Failed to kick competitor FAQ worker after start', nudgeError);
+          });
+      }
+      toast.success(`Analysis started for ${analysedCount} competitors`);
       onStartAnalysis();
     } catch (err: any) {
       toast.error(err.message || 'Failed to start');
@@ -598,7 +656,9 @@ function InlineCompetitorReview({
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
           Review your competitors
-          <span className="text-muted-foreground font-normal ml-1">({selectedCount} selected)</span>
+          <span className="text-muted-foreground font-normal ml-1">
+            ({allTemporary ? `${temporaryCount} discovered` : `${selectedCount} selected`})
+          </span>
         </p>
       </div>
 
@@ -632,6 +692,12 @@ function InlineCompetitorReview({
           </div>
         ) : (
           <div className="space-y-1">
+            {allTemporary && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                These sites are already discovered and clickable now. BizzyBee can analyse them
+                immediately while it saves them as reviewable competitors in the background.
+              </div>
+            )}
             {competitors.map((c) => (
               <div
                 key={c.id}
@@ -639,22 +705,47 @@ function InlineCompetitorReview({
               >
                 <Checkbox
                   checked={c.is_selected}
+                  disabled={c.temporary}
                   onCheckedChange={(v) => toggleSelection(c.id, !!v)}
                 />
                 <Globe className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{c.business_name || c.domain}</div>
-                  <div className="truncate text-xs text-muted-foreground">{c.domain}</div>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block min-w-0"
+                  >
+                    <div className="truncate font-medium text-foreground group-hover:text-primary">
+                      {c.business_name || c.domain}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground group-hover:text-primary/80">
+                      {c.domain}
+                    </div>
+                  </a>
                 </div>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {c.discovery_source === 'manual' ? 'Manual' : 'Found'}
+                  {c.temporary
+                    ? 'Discovered'
+                    : c.discovery_source === 'manual'
+                      ? 'Manual'
+                      : 'Found'}
                 </div>
+                <a
+                  href={c.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  aria-label={`Open ${c.business_name || c.domain}`}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
                 <Button
                   size="icon"
                   type="button"
                   variant="ghost"
                   className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  disabled={isRemovingId === c.id}
+                  disabled={isRemovingId === c.id || c.temporary}
                   onClick={() => removeCompetitor(c.id)}
                 >
                   {isRemovingId === c.id ? (
@@ -673,14 +764,14 @@ function InlineCompetitorReview({
       {canStartAnalysis && (!autoStarted || scrapeComplete) && (
         <Button
           onClick={handleStart}
-          disabled={isStarting || selectedCount === 0}
+          disabled={isStarting || effectiveSelectedCount === 0}
           className="w-full gap-2"
           size="sm"
         >
           {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {scrapeComplete
-            ? `Re-run Analysis (${selectedCount} competitors)`
-            : `Start Analysis (${selectedCount} competitors)`}
+            ? `Re-run Analysis (${effectiveSelectedCount} competitors)`
+            : `Start Analysis (${effectiveSelectedCount} competitors)`}
         </Button>
       )}
       {!canStartAnalysis && analysisStatusMessage && (
@@ -699,7 +790,12 @@ function InlineCompetitorReview({
   );
 }
 
-export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenProps) {
+export function ProgressScreen({
+  workspaceId,
+  connectedEmail = null,
+  onNext,
+  onBack,
+}: ProgressScreenProps) {
   const isPreview = workspaceId === 'preview-workspace';
   const { data: onboardingProgress, loading: progressLoading } = useOnboardingProgress(
     isPreview ? null : workspaceId,
@@ -719,7 +815,59 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
   const [elapsedTime, setElapsedTime] = useState(0);
   const [liveFaqCount, setLiveFaqCount] = useState(0);
   const [reviewDismissed, setReviewDismissed] = useState(false);
+  const [competitorSummary, setCompetitorSummary] = useState({
+    loadedCount: 0,
+    selectedCount: 0,
+    persistedLoadedCount: 0,
+    persistedSelectedCount: 0,
+    temporaryCount: 0,
+  });
   const startTimeRef = useRef<number>(Date.now());
+  const lastDiscoveryNudgeRef = useRef<number>(0);
+  const lastFaqNudgeRef = useRef<number>(0);
+  const lastEmailNudgeRef = useRef<number>(0);
+  const discoveryProgressTrack = onboardingProgress?.tracks?.discovery as
+    | OnboardingProgressTrack
+    | undefined;
+  const emailProgressTrack = onboardingProgress?.tracks?.email_import as
+    | OnboardingProgressTrack
+    | undefined;
+  const discoveryJobId =
+    typeof (onboardingProgress?.tracks.discovery as OnboardingProgressTrack | undefined)?.job_id ===
+      'string' &&
+    (
+      (onboardingProgress?.tracks.discovery as OnboardingProgressTrack | undefined)
+        ?.job_id as string
+    ).trim().length > 0
+      ? ((onboardingProgress?.tracks.discovery as OnboardingProgressTrack | undefined)
+          ?.job_id as string)
+      : null;
+
+  // Safety-net autoTrigger: if the user lands on ProgressScreen and the server
+  // has no discovery run recorded (e.g. the fire-and-forget invoke from
+  // SearchTermsStep failed before the server could create the row), fire
+  // start-onboarding-discovery ourselves. Fires at most once per component
+  // mount; start-onboarding-discovery itself is idempotent.
+  const autoTriggerHasDiscoveryRun =
+    typeof discoveryProgressTrack?.run_id === 'string' &&
+    discoveryProgressTrack.run_id.trim().length > 0;
+  useOnboardingDiscoveryAutoTrigger({
+    enabled: !isPreview && !progressLoading && Boolean(workspaceId) && Boolean(onboardingProgress),
+    workspaceId,
+    hasDiscoveryRun: autoTriggerHasDiscoveryRun,
+    hasCompetitors: competitorSummary.loadedCount > 0,
+  });
+
+  useEffect(() => {
+    setReviewDismissed(false);
+    setCompetitorSummary({
+      loadedCount: 0,
+      selectedCount: 0,
+      persistedLoadedCount: 0,
+      persistedSelectedCount: 0,
+      temporaryCount: 0,
+    });
+  }, [discoveryJobId]);
 
   useEffect(() => {
     if (isPreview || !onboardingProgress?.tracks) return;
@@ -727,41 +875,106 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     const discovery = onboardingProgress.tracks.discovery as OnboardingProgressTrack;
     const faq = onboardingProgress.tracks.faq_generation as OnboardingProgressTrack;
     const email = onboardingProgress.tracks.email_import as OnboardingProgressTrack;
+    const loadedCompetitorCount = competitorSummary.loadedCount;
+    const selectedCompetitorCount = competitorSummary.selectedCount;
+    const persistedSelectedCompetitorCount = competitorSummary.persistedSelectedCount;
+    const faqJobId =
+      typeof faq.job_id === 'string' && faq.job_id.trim().length > 0 ? faq.job_id : null;
+    const staleFaqRun =
+      Boolean(faq.run_id) &&
+      Boolean(discoveryJobId) &&
+      Boolean(faqJobId) &&
+      discoveryJobId !== faqJobId;
+    const effectiveFaqTrack = staleFaqRun ? undefined : faq;
+    const competitorFaqCount = Number(effectiveFaqTrack?.counts?.faqs_added || 0);
+    const faqSelectedCount = Array.isArray(effectiveFaqTrack?.selected_competitor_ids)
+      ? effectiveFaqTrack?.selected_competitor_ids.length
+      : 0;
 
     const mappedDiscoveryStatus = mapDiscoveryStatus(discovery);
-    const mappedFaqStatus = mapFaqStatus(discovery, faq);
+    const mappedFaqStatus = mapFaqStatus(discovery, effectiveFaqTrack, competitorFaqCount);
+    const effectiveDiscoveryStatus =
+      loadedCompetitorCount > 0
+        ? 'complete'
+        : mappedFaqStatus === 'complete' && mappedDiscoveryStatus === 'pending'
+          ? 'complete'
+          : mappedDiscoveryStatus;
     const mappedEmailImportStatus = mapEmailImportStatus(email);
     const mappedEmailStatus = mapEmailClassificationStatus(email);
-
-    setLiveFaqCount(
-      Number(onboardingProgress.tracks.faq_counts?.competitor_faqs || faq.counts?.faqs_added || 0),
+    const discoveredCompetitorCount = Math.max(
+      Number(discovery.counts?.sites_discovered || 0),
+      Number(discovery.counts?.sites_approved || 0),
+      Number(effectiveFaqTrack?.counts?.sites_scraped || 0),
+      selectedCompetitorCount,
+      loadedCompetitorCount,
     );
+    const selectedForAnalysisCount = Math.max(
+      Number(discovery.counts?.sites_approved || 0),
+      persistedSelectedCompetitorCount,
+      loadedCompetitorCount,
+      selectedCompetitorCount,
+      faqSelectedCount,
+    );
+    const sitesScrapedCount = Number(effectiveFaqTrack?.counts?.sites_scraped || 0);
+    const displayedAnalysedCount =
+      sitesScrapedCount > 0
+        ? sitesScrapedCount
+        : competitorFaqCount > 0
+          ? selectedForAnalysisCount
+          : selectedForAnalysisCount;
+    const emailWarmup = isMailboxWarmupError(email.latest_error as string | null | undefined);
+
+    setLiveFaqCount(competitorFaqCount);
 
     setDiscoveryTrack({
-      status: mappedDiscoveryStatus,
+      status: effectiveDiscoveryStatus,
       counts: [
         {
           label: 'competitors found',
-          value: Number(discovery.counts?.sites_discovered || 0),
+          value: discoveredCompetitorCount,
         },
+        ...(selectedCompetitorCount > 0
+          ? [
+              {
+                label: 'approved for review',
+                value: selectedCompetitorCount,
+              },
+            ]
+          : []),
       ],
       error: discovery.latest_error || null,
+      note:
+        discoveredCompetitorCount > 0 && effectiveDiscoveryStatus !== 'complete'
+          ? 'BizzyBee has already found a shortlist. You can inspect and refine it while qualification finishes.'
+          : null,
     });
 
     setScrapeTrack({
       status: mappedFaqStatus,
       counts: [
-        { label: 'scraped', value: Number(faq.counts?.sites_scraped || 0) },
+        {
+          label:
+            sitesScrapedCount > 0
+              ? 'sites scraped'
+              : competitorFaqCount > 0
+                ? 'sites analysed'
+                : 'sites selected',
+          value: displayedAnalysedCount,
+        },
         {
           label: 'FAQs generated',
-          value: Number(
-            onboardingProgress.tracks.faq_counts?.competitor_faqs || faq.counts?.faqs_added || 0,
-          ),
+          value: competitorFaqCount,
         },
       ],
-      error: faq.latest_error || null,
-      current: Number(faq.counts?.sites_scraped || 0) || undefined,
-      total: Number(discovery.counts?.sites_approved || 0) || undefined,
+      error: effectiveFaqTrack?.latest_error || null,
+      current: sitesScrapedCount || undefined,
+      total: selectedForAnalysisCount || undefined,
+      note:
+        competitorFaqCount > 0 && sitesScrapedCount === 0
+          ? 'BizzyBee already extracted competitor FAQs from the shortlisted sites even though scrape counters are still catching up.'
+          : selectedForAnalysisCount > 0 && discoveredCompetitorCount > selectedForAnalysisCount
+            ? `BizzyBee found ${discoveredCompetitorCount} candidates and shortlisted ${selectedForAnalysisCount} stronger matches for analysis.`
+            : null,
     });
 
     const totalEmails = Number(email.counts?.emails_received || 0);
@@ -777,6 +990,17 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
           : []),
       ],
       error: email.latest_error || null,
+      note: emailWarmup
+        ? 'Fastmail is still exposing IMAP folders to Aurinko. BizzyBee will keep retrying automatically.'
+        : null,
+      actualPercent:
+        totalEmails > 0 && estimatedTotal > 0
+          ? Math.round((totalEmails / estimatedTotal) * 100)
+          : emailWarmup
+            ? 8
+            : mappedEmailImportStatus === 'importing'
+              ? 12
+              : undefined,
     });
 
     setEmailTrack({
@@ -792,7 +1016,14 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
       actualPercent:
         totalEmails > 0 ? Math.round((classifiedEmails / totalEmails) * 100) : undefined,
     });
-  }, [isPreview, onboardingProgress]);
+  }, [
+    competitorSummary.loadedCount,
+    competitorSummary.persistedSelectedCount,
+    competitorSummary.selectedCount,
+    discoveryJobId,
+    isPreview,
+    onboardingProgress,
+  ]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -801,27 +1032,152 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (isPreview || !workspaceId || !onboardingProgress?.tracks) return;
+
+    const discovery = onboardingProgress.tracks.discovery as OnboardingProgressTrack;
+    const hasLoadedCompetitors = competitorSummary.loadedCount > 0;
+    const isQueued =
+      discovery.agent_status === 'queued' ||
+      (mapDiscoveryStatus(discovery) === 'pending' && !hasLoadedCompetitors);
+    const lastHeartbeatAt = discovery.last_heartbeat_at
+      ? new Date(String(discovery.last_heartbeat_at)).getTime()
+      : 0;
+    const heartbeatAgeMs = lastHeartbeatAt
+      ? Date.now() - lastHeartbeatAt
+      : Number.POSITIVE_INFINITY;
+    const canNudge =
+      isQueued &&
+      !hasLoadedCompetitors &&
+      heartbeatAgeMs > WORKER_NUDGE_HEARTBEAT_MS &&
+      Date.now() - lastDiscoveryNudgeRef.current > WORKER_NUDGE_COOLDOWN_MS;
+
+    if (!canNudge) return;
+
+    lastDiscoveryNudgeRef.current = Date.now();
+
+    void supabase.functions
+      .invoke('onboarding-worker-nudge', {
+        body: {
+          workspace_id: workspaceId,
+          workflow_key: 'competitor_discovery',
+          run_id: discovery.run_id,
+        },
+      })
+      .catch((error) => {
+        logger.error('Failed to nudge competitor discovery worker', error);
+      });
+  }, [competitorSummary.loadedCount, isPreview, onboardingProgress, workspaceId]);
+
+  useEffect(() => {
+    if (isPreview || !workspaceId || !onboardingProgress?.tracks) return;
+
+    const faq = onboardingProgress.tracks.faq_generation as OnboardingProgressTrack;
+    const faqCount = Number(faq.counts?.faqs_added || 0);
+    const pagesScraped = Number(faq.counts?.pages_scraped || 0);
+    const sitesScraped = Number(faq.counts?.sites_scraped || 0);
+    const generated = Number(faq.counts?.faqs_generated || 0);
+    const lastHeartbeatAt = faq.last_heartbeat_at
+      ? new Date(String(faq.last_heartbeat_at)).getTime()
+      : 0;
+    const heartbeatAgeMs = lastHeartbeatAt
+      ? Date.now() - lastHeartbeatAt
+      : Number.POSITIVE_INFINITY;
+    const zeroProgress =
+      faqCount === 0 && pagesScraped === 0 && sitesScraped === 0 && generated === 0;
+    const canNudge =
+      Boolean(faq.run_id) &&
+      (faq.agent_status === 'queued' ||
+        ((faq.agent_status === 'running' || faq.agent_status === 'pending') &&
+          zeroProgress &&
+          heartbeatAgeMs > WORKER_NUDGE_HEARTBEAT_MS)) &&
+      Date.now() - lastFaqNudgeRef.current > WORKER_NUDGE_COOLDOWN_MS;
+
+    if (!canNudge) return;
+
+    lastFaqNudgeRef.current = Date.now();
+
+    void supabase.functions
+      .invoke('onboarding-worker-nudge', {
+        body: {
+          workspace_id: workspaceId,
+          workflow_key: 'faq_generation',
+          run_id: faq.run_id,
+        },
+      })
+      .catch((error) => {
+        logger.error('Failed to nudge competitor FAQ worker', error);
+      });
+  }, [isPreview, onboardingProgress, workspaceId]);
+
+  useEffect(() => {
+    if (isPreview || !workspaceId || !connectedEmail || !onboardingProgress?.tracks) return;
+
+    const email = onboardingProgress.tracks.email_import as OnboardingProgressTrack;
+    const isWarmup = isMailboxWarmupError(email.latest_error as string | null | undefined);
+    const isRunning = email.agent_status === 'running' || email.current_step === 'importing';
+    const lastHeartbeatAt = email.last_heartbeat_at
+      ? new Date(String(email.last_heartbeat_at)).getTime()
+      : 0;
+    const heartbeatAgeMs = lastHeartbeatAt
+      ? Date.now() - lastHeartbeatAt
+      : Number.POSITIVE_INFINITY;
+    const canNudge =
+      isWarmup &&
+      isRunning &&
+      heartbeatAgeMs > WORKER_NUDGE_HEARTBEAT_MS &&
+      Date.now() - lastEmailNudgeRef.current > WORKER_NUDGE_COOLDOWN_MS;
+
+    if (!canNudge) return;
+
+    lastEmailNudgeRef.current = Date.now();
+
+    void supabase.functions
+      .invoke('onboarding-worker-nudge', {
+        body: {
+          workspace_id: workspaceId,
+          workflow_key: 'email_import',
+        },
+      })
+      .catch((error) => {
+        logger.error('Failed to nudge email import worker', error);
+      });
+  }, [connectedEmail, isPreview, onboardingProgress, workspaceId]);
+
   // Bug 4 Fix: Require ALL three tracks to be complete
   const isDiscoveryComplete = discoveryTrack.status === 'complete';
   const isScrapeComplete = scrapeTrack.status === 'complete';
+  const emailTrainingEnabled = Boolean(connectedEmail);
   const isEmailImportComplete = emailImportTrack.status === 'complete';
   const isEmailComplete =
     emailTrack.status === 'complete' || emailTrack.status === 'classification_complete';
-  const allComplete =
-    isDiscoveryComplete && isScrapeComplete && isEmailImportComplete && isEmailComplete;
-  const canReviewCompetitors = isDiscoveryComplete && !reviewDismissed;
+  const emailStillTraining = emailTrainingEnabled && !(isEmailImportComplete && isEmailComplete);
+  const discoveryCountForReview = Math.max(
+    Number(discoveryProgressTrack?.counts?.sites_discovered || 0),
+    competitorSummary.loadedCount,
+    competitorSummary.selectedCount,
+  );
+  const hasVisibleCompetitors = discoveryCountForReview > 0;
+  const allComplete = isDiscoveryComplete && isScrapeComplete;
+  const canReviewCompetitors = Boolean(discoveryJobId) && !reviewDismissed && hasVisibleCompetitors;
   const canStartCompetitorAnalysis =
-    scrapeTrack.status === 'review_ready' || scrapeTrack.status === 'complete';
+    (competitorSummary.selectedCount > 0 || competitorSummary.temporaryCount > 0) &&
+    !['scraping', 'extracting', 'scrape_processing'].includes(scrapeTrack.status);
   const competitorReviewStatusMessage =
-    scrapeTrack.status === 'validating'
-      ? 'BizzyBee is validating the competitors now. You can review the list while this finishes.'
-      : scrapeTrack.status === 'pending'
-        ? 'Competitors are queued for analysis. You can still review the list below.'
-        : scrapeTrack.status === 'scraping' ||
-            scrapeTrack.status === 'extracting' ||
-            scrapeTrack.status === 'scrape_processing'
-          ? 'Analysis is already running. You can still inspect the competitor list below.'
-          : undefined;
+    competitorSummary.temporaryCount > 0 && competitorSummary.persistedLoadedCount === 0
+      ? 'BizzyBee has already found competitor sites. It is still turning them into saved review rows before analysis can start.'
+      : scrapeTrack.status === 'validating'
+        ? 'BizzyBee is validating the competitors now. You can review the list while this finishes.'
+        : scrapeTrack.status === 'pending'
+          ? 'Competitors are queued for analysis. You can still review the list below.'
+          : scrapeTrack.status === 'scraping' ||
+              scrapeTrack.status === 'extracting' ||
+              scrapeTrack.status === 'scrape_processing'
+            ? 'Analysis is already running. You can still inspect the competitor list below.'
+            : undefined;
+  const emailWarmup = isMailboxWarmupError(
+    emailProgressTrack?.latest_error as string | null | undefined,
+  );
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -898,12 +1254,16 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         />
         {canReviewCompetitors && (
           <InlineCompetitorReview
+            key={discoveryJobId ?? 'no-discovery-job'}
             workspaceId={workspaceId}
+            jobId={discoveryJobId}
+            runId={discoveryProgressTrack?.run_id ?? null}
             onStartAnalysis={() => setReviewDismissed(true)}
             autoStarted={false}
             scrapeComplete={scrapeTrack.status === 'complete'}
             canStartAnalysis={canStartCompetitorAnalysis}
             analysisStatusMessage={competitorReviewStatusMessage}
+            onCompetitorSummaryChange={setCompetitorSummary}
           />
         )}
         <TrackProgress
@@ -954,49 +1314,77 @@ export function ProgressScreen({ workspaceId, onNext, onBack }: ProgressScreenPr
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide px-1">
           Email Training
         </h2>
-        <TrackProgress
-          title="Importing Emails"
-          phases={EMAIL_IMPORT_PHASES}
-          currentStatus={emailImportTrack.status}
-          counts={emailImportTrack.counts}
-          error={emailImportTrack.error}
-        />
-        <TrackProgress
-          title="Email Classification"
-          phases={EMAIL_PHASES}
-          currentStatus={emailTrack.status}
-          counts={emailTrack.counts}
-          error={emailTrack.error}
-          actualPercent={emailTrack.actualPercent}
-        />
+        {emailTrainingEnabled ? (
+          <>
+            <TrackProgress
+              title="Importing Emails"
+              phases={EMAIL_IMPORT_PHASES}
+              currentStatus={emailImportTrack.status}
+              counts={emailImportTrack.counts}
+              error={emailImportTrack.error}
+              note={emailImportTrack.note}
+              actualPercent={emailImportTrack.actualPercent}
+            />
+            <TrackProgress
+              title="Email Classification"
+              phases={EMAIL_PHASES}
+              currentStatus={emailTrack.status}
+              counts={emailTrack.counts}
+              error={emailTrack.error}
+              note={emailTrack.note}
+              actualPercent={emailTrack.actualPercent}
+            />
+            {emailWarmup && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Fastmail is still warming the inbox connection.</p>
+                <p className="mt-1 text-amber-800">
+                  Aurinko is still loading IMAP folders. BizzyBee will keep retrying automatically,
+                  and you can continue onboarding while that catches up.
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+            Email training is optional. You skipped inbox setup for now, so BizzyBee will finish the
+            rest of onboarding without waiting on email import.
+          </div>
+        )}
       </div>
+
+      {(allComplete || canReviewCompetitors) && emailStillTraining && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+          <p className="font-medium">Core setup is ready.</p>
+          <p className="mt-1 text-muted-foreground">
+            BizzyBee can keep importing and learning from your inbox in the background while you
+            finish onboarding and start using the workspace.
+          </p>
+        </div>
+      )}
 
       {!allComplete && (
         <div className="text-center text-sm text-muted-foreground p-4 bg-muted/30 rounded-lg">
           <p>
             {scrapeTrack.status === 'scraping' || scrapeTrack.status === 'extracting'
               ? 'This may take 10-15 minutes depending on the number of competitors.'
-              : 'This typically takes 3-5 minutes for the initial setup.'}
+              : emailTrainingEnabled
+                ? 'This typically takes 3-5 minutes for the initial setup.'
+                : 'Competitor analysis usually finishes within a few minutes.'}
           </p>
           <p className="mt-1">
-            Deep learning from your full email history will continue in the background.
+            {emailTrainingEnabled
+              ? 'Deep learning from your full email history will continue in the background.'
+              : 'You can keep moving now and connect email later once the rest of setup is live.'}
           </p>
         </div>
       )}
 
       <div className="flex flex-col items-center gap-3 pt-4">
-        <Button onClick={onNext} disabled={!allComplete} size="lg" className="gap-2">
-          {allComplete ? (
-            <>
-              Continue
-              <ChevronRight className="h-4 w-4" />
-            </>
-          ) : (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Processing...
-            </>
-          )}
+        <Button onClick={onNext} size="lg" className="gap-2">
+          <>
+            Continue
+            <ChevronRight className="h-4 w-4" />
+          </>
         </Button>
         {!allComplete && (
           <div className="flex gap-3">

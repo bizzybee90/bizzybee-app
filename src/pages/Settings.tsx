@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { DataExportPanel } from '@/components/settings/DataExportPanel';
 import { DataDeletionPanel } from '@/components/settings/DataDeletionPanel';
 import { AuditLogPanel } from '@/components/settings/AuditLogPanel';
@@ -30,6 +28,7 @@ import { DataResetPanel } from '@/components/settings/DataResetPanel';
 import { OnboardingTriggerPanel } from '@/components/settings/OnboardingTriggerPanel';
 import { WorkspaceAccessPanel } from '@/components/settings/WorkspaceAccessPanel';
 import { PanelNotice } from '@/components/settings/PanelNotice';
+import { BillingPanel } from '@/components/settings/BillingPanel';
 import { BackButton } from '@/components/shared/BackButton';
 import { SettingsSection } from '@/components/settings/SettingsSection';
 import { MobilePageLayout } from '@/components/layout/MobilePageLayout';
@@ -37,6 +36,7 @@ import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout';
 import { Sidebar } from '@/components/sidebar/Sidebar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { isPreviewModeEnabled } from '@/lib/previewMode';
 import {
   Bot,
   Plug,
@@ -45,6 +45,7 @@ import {
   Code,
   ChevronRight,
   ExternalLink,
+  CreditCard,
   Star,
   Wrench,
   Users,
@@ -56,14 +57,21 @@ interface SettingsCategory {
   icon: React.ElementType;
   title: string;
   description: string;
+  eyebrow: string;
+  iconTone: string;
+  accentTone: string;
+  highlights: string[];
   content: React.ReactNode;
 }
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
-  const [openCategory, setOpenCategory] = useState<string | null>(searchParams.get('category'));
+  const [openCategory, setOpenCategory] = useState<string>(
+    searchParams.get('category') ?? 'workspace',
+  );
   const isMobile = useIsMobile();
   const { workspace } = useWorkspace();
+  const previewMode = isPreviewModeEnabled();
   const settingsModuleLinks = [
     {
       title: 'Workspace',
@@ -87,6 +95,13 @@ export default function Settings() {
       tone: 'bg-blue-100 text-blue-700',
     },
     {
+      title: 'Billing',
+      description: 'Plans, add-ons, and the future Stripe portal',
+      to: '/settings?category=billing',
+      icon: CreditCard,
+      tone: 'bg-emerald-100 text-emerald-700',
+    },
+    {
       title: 'Reviews',
       description: 'Google profile & review workflow',
       to: '/reviews',
@@ -108,7 +123,27 @@ export default function Settings() {
       icon: Users,
       title: 'Workspace & Access',
       description: 'Team permissions, onboarding, and core setup',
-      content: (
+      eyebrow: 'Workspace control',
+      iconTone: 'bg-bb-gold/10 text-bb-espresso',
+      accentTone: 'from-bb-gold/10 to-bb-white',
+      highlights: ['Roles & ownership', 'Launch readiness', 'Onboarding reset'],
+      content: previewMode ? (
+        <PanelNotice
+          icon={Users}
+          title="Workspace access is read-only in local preview"
+          description="Preview mode is best for layout review and product walkthroughs. Team roles, ownership, and workspace reset should be tested on a real signed-in workspace."
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link to="/auth?preview=0">Open real sign-in</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link to="/onboarding?reset=true&preview=1">Re-run preview onboarding</Link>
+              </Button>
+            </div>
+          }
+        />
+      ) : (
         <div className="space-y-3">
           <SettingsSection
             title="Workspace Access"
@@ -135,10 +170,35 @@ export default function Settings() {
       ),
     },
     {
+      id: 'billing',
+      icon: CreditCard,
+      title: 'Billing & Plans',
+      description: 'Pricing, add-ons, invoices, and portal readiness',
+      eyebrow: 'Revenue setup',
+      iconTone: 'bg-emerald-100 text-emerald-700',
+      accentTone: 'from-emerald-100/70 to-bb-white',
+      highlights: ['Current plan', 'Add-ons', 'Stripe portal readiness'],
+      content: (
+        <div className="space-y-3">
+          <SettingsSection
+            title="Billing overview"
+            description="Current state and launch status"
+            defaultOpen
+          >
+            <BillingPanel />
+          </SettingsSection>
+        </div>
+      ),
+    },
+    {
       id: 'ai',
       icon: Bot,
       title: 'BizzyBee AI',
       description: 'Agent configuration, knowledge base, and learning',
+      eyebrow: 'Agent control',
+      iconTone: 'bg-bb-gold/10 text-bb-espresso',
+      accentTone: 'from-bb-gold/10 to-bb-white',
+      highlights: ['Knowledge rules', 'Inbox learning', 'Low-confidence flows'],
       content: (
         <div className="space-y-3">
           {workspace?.id && (
@@ -198,6 +258,10 @@ export default function Settings() {
       icon: Plug,
       title: 'Channels & Integrations',
       description: 'Email, messaging channels, and provider setup',
+      eyebrow: 'Channel readiness',
+      iconTone: 'bg-blue-100 text-blue-700',
+      accentTone: 'from-blue-100/70 to-bb-white',
+      highlights: ['Email setup', 'Channel health', 'Reviews handoff'],
       content: (
         <div className="space-y-3">
           <SettingsSection
@@ -227,7 +291,30 @@ export default function Settings() {
       icon: Shield,
       title: 'Data & Privacy',
       description: 'GDPR compliance, exports, and retention',
-      content: (
+      eyebrow: 'Compliance',
+      iconTone: 'bg-emerald-100 text-emerald-700',
+      accentTone: 'from-emerald-100/70 to-bb-white',
+      highlights: ['GDPR controls', 'Retention', 'Customer self-service portal'],
+      content: previewMode ? (
+        <PanelNotice
+          icon={Shield}
+          title="Compliance controls need a real workspace"
+          description="Preview mode is perfect for reviewing layout and copy, but GDPR status, retention, exports, and audit logs only make sense against real customer data."
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link to="/auth?preview=0">Sign in to test compliance</Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/gdpr-portal" target="_blank">
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open public GDPR portal
+                </Link>
+              </Button>
+            </div>
+          }
+        />
+      ) : (
         <div className="space-y-3">
           <SettingsSection title="GDPR Dashboard" description="Compliance overview" defaultOpen>
             <GDPRDashboard />
@@ -278,6 +365,10 @@ export default function Settings() {
       icon: Layout,
       title: 'Display & Behavior',
       description: 'Ordering preferences and notifications',
+      eyebrow: 'Workspace experience',
+      iconTone: 'bg-violet-100 text-violet-700',
+      accentTone: 'from-violet-100/70 to-bb-white',
+      highlights: ['Notification timing', 'Conversation ordering'],
       content: (
         <div className="space-y-3">
           <SettingsSection
@@ -298,6 +389,10 @@ export default function Settings() {
       icon: Code,
       title: 'Developer Tools',
       description: 'Testing, cleanup, and diagnostics',
+      eyebrow: 'Operator tools',
+      iconTone: 'bg-slate-100 text-slate-700',
+      accentTone: 'from-slate-100/70 to-bb-white',
+      highlights: ['DevOps dashboard', 'Manual tools', 'Duplicate cleanup'],
       content: (
         <div className="space-y-3">
           {/* Admin Dashboards */}
@@ -334,11 +429,15 @@ export default function Settings() {
   ];
 
   const handleToggle = (categoryId: string) => {
-    setOpenCategory(openCategory === categoryId ? null : categoryId);
+    setOpenCategory(categoryId);
   };
 
+  const activeCategory =
+    settingsCategories.find((category) => category.id === openCategory) ?? settingsCategories[0];
+  const ActiveIcon = activeCategory.icon;
+
   const content = (
-    <div className="container mx-auto py-4 md:py-6 px-4 max-w-3xl">
+    <div className="w-full px-4 py-4 md:px-6 md:py-6 xl:px-8">
       <div className="mb-6">
         <BackButton to="/" label="Back to Dashboard" />
         <div className="mt-2 rounded-[28px] border border-bb-border bg-bb-white px-5 py-5 shadow-[0_18px_40px_rgba(28,21,16,0.05)]">
@@ -361,7 +460,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {settingsModuleLinks.map((item) => {
           const Icon = item.icon;
 
@@ -384,60 +483,105 @@ export default function Settings() {
         })}
       </div>
 
-      <div className="space-y-3">
-        {settingsCategories.map((category) => {
-          const Icon = category.icon;
-          const isOpen = openCategory === category.id;
+      <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
+        <Card className="h-fit rounded-[28px] border-[0.5px] border-bb-border bg-bb-white p-3 shadow-[0_18px_40px_rgba(28,21,16,0.04)] xl:sticky xl:top-6">
+          <div className="px-3 pb-3 pt-2">
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-bb-warm-gray">
+              Settings lanes
+            </p>
+            <p className="mt-2 text-sm leading-6 text-bb-text-secondary">
+              Choose one area and work in a single full canvas instead of one long stack.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {settingsCategories.map((category) => {
+              const Icon = category.icon;
+              const isActive = activeCategory.id === category.id;
 
-          return (
-            <Collapsible
-              key={category.id}
-              open={isOpen}
-              onOpenChange={() => handleToggle(category.id)}
-            >
-              <Card
-                className={cn(
-                  'transition-all duration-200 border-[0.5px] border-bb-border bg-bb-cream',
-                  isOpen && 'ring-2 ring-bb-gold/20',
-                )}
-              >
-                <CollapsibleTrigger className="w-full text-left">
-                  <CardHeader className="flex flex-row items-center justify-between py-4">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={cn(
-                          'p-2 rounded-lg',
-                          isOpen ? 'bg-bb-gold text-white' : 'bg-bb-linen text-bb-warm-gray',
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => handleToggle(category.id)}
+                  className={cn(
+                    'w-full rounded-[22px] border px-4 py-4 text-left transition-all',
+                    isActive
+                      ? 'border-bb-gold/30 bg-bb-linen shadow-[0_14px_24px_rgba(28,21,16,0.06)]'
+                      : 'border-transparent bg-transparent hover:border-bb-border hover:bg-bb-linen/50',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className={cn('rounded-xl p-2', category.iconTone)}>
+                        <Icon className="h-4 w-4" />
                       </div>
                       <div>
-                        <CardTitle className="text-[14px] font-medium text-bb-text">
-                          {category.title}
-                        </CardTitle>
-                        <CardDescription className="text-[12px] text-bb-warm-gray">
+                        <p className="text-sm font-medium text-bb-text">{category.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-bb-warm-gray">
                           {category.description}
-                        </CardDescription>
+                        </p>
                       </div>
                     </div>
                     <ChevronRight
                       className={cn(
-                        'h-5 w-5 text-bb-warm-gray transition-transform duration-200',
-                        isOpen && 'rotate-90',
+                        'mt-1 h-4 w-4 text-bb-warm-gray transition-transform',
+                        isActive && 'translate-x-0.5 text-bb-espresso',
                       )}
                     />
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent className="pt-0 pb-6">
-                    <div className="border-t border-bb-border-light pt-4">{category.content}</div>
-                  </CardContent>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          );
-        })}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        <div className="space-y-5">
+          <Card
+            className={cn(
+              'rounded-[32px] border-[0.5px] border-bb-border bg-gradient-to-br p-6 shadow-[0_20px_48px_rgba(28,21,16,0.06)]',
+              activeCategory.accentTone,
+            )}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <Badge className="border-bb-gold/25 bg-bb-white/80 text-bb-espresso hover:bg-bb-white/80">
+                  {activeCategory.eyebrow}
+                </Badge>
+                <div className="mt-4 flex items-start gap-3">
+                  <div className={cn('rounded-2xl p-3 shadow-sm', activeCategory.iconTone)}>
+                    <ActiveIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-[26px] font-semibold tracking-[-0.03em] text-bb-text">
+                      {activeCategory.title}
+                    </h2>
+                    <p className="mt-2 text-sm leading-7 text-bb-warm-gray">
+                      {activeCategory.description}
+                    </p>
+                    {workspace?.name && (
+                      <p className="mt-3 text-xs uppercase tracking-[0.18em] text-bb-text-secondary">
+                        Current workspace: <span className="text-bb-text">{workspace.name}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:max-w-[420px]">
+                {activeCategory.highlights.map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-2xl border border-bb-border/70 bg-bb-white/70 px-4 py-3 text-sm text-bb-text"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <div className="space-y-4">{activeCategory.content}</div>
+        </div>
       </div>
     </div>
   );
@@ -446,10 +590,5 @@ export default function Settings() {
     return <MobilePageLayout>{content}</MobilePageLayout>;
   }
 
-  return (
-    <ThreeColumnLayout
-      sidebar={<Sidebar />}
-      main={<ScrollArea className="h-screen">{content}</ScrollArea>}
-    />
-  );
+  return <ThreeColumnLayout sidebar={<Sidebar />} main={content} />;
 }

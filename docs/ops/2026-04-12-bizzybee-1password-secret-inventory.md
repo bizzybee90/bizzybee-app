@@ -31,6 +31,8 @@ Use one vault for BizzyBee production secrets and one for non-production.
 Recommended item groups:
 
 - `Supabase`
+- `Sentry`
+- `Stripe`
 - `Anthropic`
 - `OpenAI`
 - `Aurinko`
@@ -42,6 +44,113 @@ Recommended item groups:
 - `GDPR`
 
 ## Secret inventory
+
+### VITE_STRIPE_PUBLISHABLE_KEY
+
+- Purpose:
+  - browser-side Stripe publishable key for test or live checkout surfaces
+- Where used:
+  - future frontend billing entry points
+- Where it comes from:
+  - Stripe Dashboard API keys page
+- Need now:
+  - **Only when BizzyBee starts wiring real Stripe checkout/portal flows**
+- Notes:
+  - this is **not** a secret
+  - it is safe to expose in frontend env vars
+  - use the test-mode key first
+
+### STRIPE_SECRET_KEY
+
+- Purpose:
+  - server-side Stripe API authentication for checkout/session/webhook/portal work
+- Where used:
+  - future Stripe edge functions / backend calls
+- Where it comes from:
+  - Stripe Dashboard API keys page
+- Need now:
+  - **Only when BizzyBee starts wiring test-mode Stripe flows**
+- Notes:
+  - this **is** a real vendor secret
+  - use `sk_test_...` first
+  - store in 1Password and runtime secrets only
+
+### STRIPE_WEBHOOK_SECRET
+
+- Purpose:
+  - signature verification for BizzyBee's Stripe webhook endpoint
+- Where used:
+  - future Stripe webhook handler
+- Where it comes from:
+  - Stripe Dashboard Webhooks section for the specific endpoint
+- Need now:
+  - **Only when the Stripe webhook endpoint is created**
+- Notes:
+  - this is endpoint-specific
+  - test and live webhook secrets are different
+  - Stripe creates it, 1Password stores it
+
+### STRIPE_PORTAL_CONFIGURATION_ID
+
+- Purpose:
+  - identifies the Stripe customer portal configuration BizzyBee should use
+- Where used:
+  - future customer portal session endpoint
+- Where it comes from:
+  - Stripe Billing / Customer Portal configuration
+- Need now:
+  - **Only when BizzyBee wires the billing portal**
+- Notes:
+  - this is configuration, not a secret
+  - still worth storing in 1Password for consistency
+  - prefer a test-mode portal config first
+
+### VITE_SENTRY_DSN
+
+- Purpose:
+  - frontend browser DSN for the `bizzybee-web` Sentry project
+- Where used:
+  - frontend Vite/React app via `src/lib/sentry.ts`
+- Where it comes from:
+  - Sentry project settings
+- Need now:
+  - **Yes if you want frontend errors to report into Sentry**
+- Notes:
+  - this is **not** a secret in the same way an auth token is
+  - it is expected to be present in the browser bundle
+  - store it in 1Password for consistency, but treat it as configuration rather than as a privileged credential
+
+### SENTRY_AUTH_TOKEN
+
+- Purpose:
+  - build-time auth token for Sentry release creation and source-map upload
+- Where used:
+  - Vite build via `@sentry/vite-plugin`
+- Where it comes from:
+  - Sentry organization auth token
+- Need now:
+  - **Yes if you want release creation and source-map upload**
+- Notes:
+  - this **is** a real secret and should never go into frontend env vars
+  - it belongs in CI / deploy environment only
+  - pair it with:
+    - `SENTRY_ORG=bizzybee`
+    - `SENTRY_PROJECT=bizzybee-web`
+    - `SENTRY_URL=https://de.sentry.io/`
+
+### SENTRY_EDGE_DSN
+
+- Purpose:
+  - backend/edge DSN for the `bizzybee-edge` Sentry project
+- Where used:
+  - shared Supabase Edge Function helper in `supabase/functions/_shared/sentry.ts`
+- Where it comes from:
+  - Sentry project settings for `bizzybee-edge`
+- Need now:
+  - **Yes if you want Supabase Edge Functions and workers to report backend errors**
+- Notes:
+  - store it as an edge/runtime env var, not a browser env var
+  - keep it separate from `VITE_SENTRY_DSN` so frontend and backend incidents stay split
 
 ### OAUTH_STATE_SECRET
 
@@ -96,24 +205,41 @@ Recommended item groups:
 - Notes:
   - This is an internal signing secret for secure request verification links
 
-### POSTMARK_API_KEY
+### RESEND_API_KEY
 
 - Purpose:
-  - lets BizzyBee send GDPR verification emails through Postmark
+  - lets BizzyBee send lifecycle and GDPR emails through Resend
 - Where used:
+  - `bootstrap-workspace`
+  - `send-lifecycle-email`
   - `gdpr-portal-request`
   - `gdpr-portal-verify`
 - Where it comes from:
-  - Postmark Server API Token
+  - Resend API key
 - Where to get it:
-  - inside your Postmark server under `API Tokens`
+  - inside your Resend dashboard under `API Keys`
   - docs:
-    - [Postmark API overview](https://postmarkapp.com/developer/api/overview)
-    - [What are the Account and Server API Tokens?](https://postmarkapp.com/support/article/1008-what-are-the-account-and-server-api-tokens)
+    - [Resend send email API](https://resend.com/docs/api-reference/emails/send-email)
 - Need now:
-  - **Yes, if you want GDPR verification emails to send**
+  - **Yes, if you want lifecycle or GDPR emails to send**
 - Notes:
   - without it, the code logs the verification URL instead of emailing it
+
+### RESEND_TRANSACTIONAL_FROM
+
+- Purpose:
+  - default `From` identity for BizzyBee transactional and GDPR emails
+- Where used:
+  - `bootstrap-workspace`
+  - `send-lifecycle-email`
+  - `gdpr-portal-request`
+  - `gdpr-portal-verify`
+- Where it comes from:
+  - a verified Resend sender identity, usually your domain or a verified email
+- Need now:
+  - **Recommended**, so emails come from the correct BizzyBee identity
+- Notes:
+  - defaults to `BizzyBee <noreply@bizzyb.ee>` if unset
 
 ### TWILIO_SMS_NUMBER
 
@@ -198,7 +324,7 @@ Recommended item groups:
 
 - `GOOGLE_BUSINESS_WEBHOOK_TOKEN`
 - `GDPR_TOKEN_SECRET`
-- `POSTMARK_API_KEY`
+- `RESEND_API_KEY`
 - `ELEVENLABS_WEBHOOK_SECRET`
 
 ### Can wait until the channel is truly live
