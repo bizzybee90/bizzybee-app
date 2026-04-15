@@ -90,6 +90,22 @@ function extractInlineMessage(payload: Record<string, unknown>): AurinkoMessage 
 
 Deno.serve(async (req) => {
   try {
+    // Aurinko subscription-validation probe: when we POST to /v1/subscriptions with a
+    // new notificationUrl, Aurinko immediately calls that URL with ?validationToken=<t>
+    // and expects a 200 with the token echoed back in the body. We MUST answer that
+    // probe before doing anything else (no signature verification, no DB lookup) — if
+    // we throw, Aurinko rejects the subscription-create, aurinko-create-imap-account
+    // silently swallows the failure, and the user ends up with subscription_id NULL
+    // and no live-mail webhooks. This handler must stay at the top of the chain.
+    const requestUrl = new URL(req.url);
+    const validationToken = requestUrl.searchParams.get('validationToken');
+    if (validationToken) {
+      return new Response(validationToken, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
+
     if (req.method !== 'POST') {
       throw new HttpError(405, 'Method not allowed');
     }

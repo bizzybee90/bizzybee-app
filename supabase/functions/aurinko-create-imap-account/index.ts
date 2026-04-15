@@ -267,6 +267,7 @@ Deno.serve(async (req) => {
       : `${SUPABASE_URL}/functions/v1/aurinko-webhook`;
 
     let subscriptionId: string | null = null;
+    let subscriptionFailure: { status: number | null; body: string } | null = null;
     try {
       const subResponse = await fetchWithTimeout('https://api.aurinko.io/v1/subscriptions', {
         method: 'POST',
@@ -285,15 +286,55 @@ Deno.serve(async (req) => {
         subscriptionId = subData.id?.toString() ?? null;
       } else {
         const errorText = await subResponse.text().catch(() => '');
-        console.error(
-          '[aurinko-create-imap-account] Aurinko subscription create failed:',
-          subResponse.status,
-          errorText,
-        );
+        subscriptionFailure = { status: subResponse.status, body: errorText.slice(0, 400) };
       }
     } catch (subErr) {
-      console.error('[aurinko-create-imap-account] Subscription failed:', subErr);
-      // Continue anyway — the account itself is created
+      subscriptionFailure = {
+        status: null,
+        body: subErr instanceof Error ? subErr.message : String(subErr),
+      };
+    }
+
+    // HARD REQUIREMENT: without a subscription, live mail never webhooks in and the
+    // user sees "connected" state while new messages silently never import — the
+    // 2026-04-15 Fastmail stuck state. Previously we swallowed the failure; now we
+    // fail loudly AND clean up the orphan Aurinko account so the user can retry
+    // cleanly without accumulating half-created accounts on Aurinko's side.
+    if (!subscriptionId) {
+      console.error(
+        '[aurinko-create-imap-account] Subscription create failed:',
+        JSON.stringify(subscriptionFailure),
+      );
+
+      try {
+        await fetchWithTimeout(
+          `https://api.aurinko.io/v1/am/accounts/${encodeURIComponent(accountId.toString())}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Basic ' + btoa(`${AURINKO_CLIENT_ID}:${AURINKO_CLIENT_SECRET}`),
+            },
+          },
+          10000,
+        );
+      } catch (cleanupErr) {
+        console.error(
+          '[aurinko-create-imap-account] Failed to clean up orphan Aurinko account',
+          accountId,
+          cleanupErr,
+        );
+      }
+
+      return errorResponse(
+        'SERVICE_UNAVAILABLE',
+        "Connected to your mail server, but BizzyBee couldn't register the live-mail webhook. Please try again in a minute.",
+        {
+          retryable: true,
+          subscriptionStatus: subscriptionFailure?.status ?? null,
+          subscriptionHint: subscriptionFailure?.body ?? null,
+        },
+        503,
+      );
     }
 
     // Upsert email_provider_configs WITHOUT plaintext tokens (same as OAuth path)
