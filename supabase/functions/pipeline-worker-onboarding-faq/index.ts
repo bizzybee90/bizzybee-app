@@ -25,6 +25,7 @@ import {
   requeueStepJob,
   withTransientRetry,
 } from '../_shared/onboarding-worker.ts';
+import { createPgmqHeartbeat } from '../_shared/pgmq-heartbeat.ts';
 import { beginStep, failStep, succeedStep } from '../faq-agent-runner/lib/step-recorder.ts';
 import { type FaqCandidate } from '../faq-agent-runner/lib/onboarding-ai.ts';
 import { handleFetchSourcePage } from '../faq-agent-runner/tools/fetch-source-page.ts';
@@ -221,6 +222,17 @@ async function processJob(
           .eq('id', sourceJobId);
       }
 
+      // Pgmq heartbeat: extends this message's visibility timeout in-place
+      // while the scrape loop is still running. No-ops for the first 60s
+      // (we just popped the message), then issues one pgmq.set_vt every 60s
+      // of wall-clock regardless of how fast/slow each iteration is. Prevents
+      // pgmq from redelivering this job mid-scrape if wall-clock exceeds the
+      // 180s VT — the root cause of duplicate Apify runs + duplicate artifact
+      // writes flagged in the 2026-04-15 onboarding-disaster audit. Shared
+      // across all FETCH_CONCURRENCY workers; the internal time-gate debounces
+      // concurrent calls to at most one set_vt per interval.
+      const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
+
       const queue = targetUrls.map((url, idx) => ({ url, idx }));
       const workers = Array.from(
         { length: Math.min(FETCH_CONCURRENCY, queue.length) },
@@ -246,6 +258,7 @@ async function processJob(
               console.warn('[fetch_pages] handleFetchSourcePage failed for url', url, err);
               // Leave index null; we'll skip it in the final compaction below.
             } finally {
+              await heartbeat();
               pagesCompleted += 1;
               // Single aggregated progress write per URL (one agent_runs update +
               // one competitor_research_jobs update). Previously there were FOUR
