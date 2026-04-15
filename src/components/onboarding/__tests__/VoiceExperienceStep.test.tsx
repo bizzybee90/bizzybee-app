@@ -63,11 +63,11 @@ describe('VoiceExperienceStep', () => {
     expect(
       screen.getByText('warm · reassuring · professional', { selector: 'p' }),
     ).toBeInTheDocument();
-    // Reply is now an actual receptionist reply, not a narrative about the reply.
-    // Look for a phrase that only appears in the new_enquiry reply body.
-    expect(
-      screen.getByText(/If you share a postcode I can confirm we cover the area/i),
-    ).toBeInTheDocument();
+    // Reply is now an actual receptionist reply: greeting → acknowledgment
+    // → pleasantries → soft closer → sign-off. Assert on phrases that only
+    // appear in the new-enquiry body.
+    expect(screen.getByText(/Oh brilliant, thanks for finding us/i)).toBeInTheDocument();
+    expect(screen.getByText(/Whereabouts are you\?/i)).toBeInTheDocument();
     // "What this unlocks" is now a concrete checklist, not a generic paragraph.
     expect(screen.getByText(/Custom rules/i)).toBeInTheDocument();
     expect(screen.getByText(/Escalation triggers/i)).toBeInTheDocument();
@@ -82,11 +82,13 @@ describe('VoiceExperienceStep', () => {
       expect(screen.getByText(/How much would it be for a regular clean/i)).toBeInTheDocument();
     });
 
-    // Complaint scenario shows the guard-rail demo note (no refund commitment).
+    // Complaint scenario shows the guard-rail demo note (no refund commitment)
+    // and a warm, direct apology ("Oh, I'm really sorry to hear that").
     await user.click(screen.getByRole('button', { name: /complaint/i }));
     await waitFor(() => {
       expect(screen.getByText(/Guard-rail demo/i)).toBeInTheDocument();
-      expect(screen.getByText(/I can't commit to a refund on the call/i)).toBeInTheDocument();
+      expect(screen.getByText(/Oh, I'm really sorry to hear that/i)).toBeInTheDocument();
+      expect(screen.getByText(/I can't promise a refund on the call/i)).toBeInTheDocument();
     });
 
     // Formality slider now has FIVE bands, so moving across any band boundary

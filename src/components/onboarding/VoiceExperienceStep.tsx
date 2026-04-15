@@ -266,17 +266,30 @@ function buildScenarioReply(params: {
   const hasFaq = Boolean(websiteFaq?.answer?.trim());
   const cue = hasFaq ? firstSentence(websiteFaq!.answer).replace(/[.!?]+$/u, '') : '';
 
-  // Scenario-specific body templates — vary by formality band and concise flag.
+  // Scenario bodies built to sound like a real receptionist:
+  //   1. Greeting (5-band, from deriveVoiceStyle).
+  //   2. ACKNOWLEDGMENT — the receptionist reacts to what the caller actually
+  //      said before pivoting. Single biggest lever for "sounds human" vs
+  //      "sounds scripted".
+  //   3. Tone pleasantries (additive — from the chips).
+  //   4. Closer — softened with "whereabouts", "could I just grab",
+  //      "let me have a look"; polished register uses more formal phrasing.
+  //   5. Sign-off (5-band, from deriveVoiceStyle).
   switch (scenarioId) {
     case 'quote_request': {
+      const ack = style.isPolished
+        ? 'Of course, I can help with that.'
+        : style.isFriendly
+          ? 'Sure, happy to help with that.'
+          : 'Sure, happy to give you a rough idea.';
       const closer = style.isConcise
-        ? 'Postcode and number of windows, please.'
+        ? 'Sure — postcode and rough window count?'
         : style.isPolished
-          ? 'If you could share the postcode and roughly how many windows, I will confirm an accurate figure for you.'
-          : "If you can share the postcode and roughly how many windows, I'll firm that up for you.";
+          ? 'Could you share the postcode and roughly how many windows there are? I will confirm an accurate figure shortly.'
+          : "Could I just grab your postcode and roughly how many windows you've got? I'll have something for you in a sec.";
       if (hasFaq) {
         return [
-          { type: 'text', content: `${joinParts(style.greeting, ...style.tonePhrases)} ` },
+          { type: 'text', content: `${joinParts(style.greeting, ack, ...style.tonePhrases)} ` },
           { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
           { type: 'text', content: `. ${joinParts(closer, style.signoff)}` },
         ];
@@ -284,18 +297,20 @@ function buildScenarioReply(params: {
       return [
         {
           type: 'text',
-          content: joinParts(style.greeting, ...style.tonePhrases, closer, style.signoff),
+          content: joinParts(style.greeting, ack, ...style.tonePhrases, closer, style.signoff),
         },
       ];
     }
 
     case 'booking_change': {
-      const ack = style.isPolished ? 'Not a problem.' : 'No problem at all.';
+      const ack = style.isPolished
+        ? 'Not a problem at all — let me take a look.'
+        : 'Yeah, no problem at all — let me have a look.';
       const closer = style.isConcise
-        ? "Which day works? I'll confirm by text."
+        ? "What day works? I'll text to confirm."
         : style.isPolished
-          ? 'What day would work better for you? I will make a note and confirm by text.'
-          : "What day would work better for you? I'll make the note and confirm by text.";
+          ? 'What day would suit you better? I will update the booking and confirm by text.'
+          : "What day were you thinking instead? I'll get that rebooked and pop you a text to confirm.";
       if (hasFaq) {
         const pre = joinParts(
           style.greeting,
@@ -318,37 +333,40 @@ function buildScenarioReply(params: {
     }
 
     case 'complaint': {
-      // Guard-railed: never commits a refund on the call; warmth scales with tone.
-      // Tone pleasantries intentionally suppressed — a complaint needs directness.
+      // Guard-railed: never commits a refund on the call. Warmth always comes
+      // first; tone pleasantries are suppressed — complaints need directness,
+      // not "Happy to help." layered on top of an apology.
       const apology = style.isPolished
-        ? 'I am really sorry Tuesday was not right. That is not the standard we aim for.'
-        : style.contract("I'm really sorry Tuesday wasn't right. That's not the standard we want.");
+        ? 'I am really sorry to hear that. Thank you for letting us know.'
+        : style.contract("Oh, I'm really sorry to hear that — thanks for letting us know.");
       const escalate = style.isPolished
-        ? 'I cannot commit to a refund on this call, but I will log this for the owner to review today, and we will call you back within a few hours. Would that be acceptable?'
+        ? 'I cannot promise a refund on this call. However, I will flag this for the owner to review today, and we will call you back within a few hours. Would that be acceptable?'
         : style.contract(
-            "I can't commit to a refund on the call, but I'll log this for the owner to review today and we'll call you back within a few hours — would that be alright?",
+            "I can't promise a refund on the call myself, but I'll flag this for the owner to look at today and someone'll call you back within a few hours — is that alright?",
           );
-      const close = style.isPolished
-        ? 'Thank you for letting us know.'
-        : 'Thanks for letting us know.';
       return [
         {
           type: 'text',
-          content: joinParts(style.greeting, apology, escalate, close),
+          content: joinParts(style.greeting, apology, escalate),
         },
       ];
     }
 
     case 'new_enquiry':
     default: {
+      const ack = style.isPolished
+        ? 'Thank you for getting in touch.'
+        : style.isFriendly
+          ? 'Oh brilliant, thanks for finding us!'
+          : 'Oh brilliant, thanks for finding us.';
       const closer = style.isConcise
-        ? "Share a postcode and I'll confirm coverage."
+        ? "Whereabouts are you? I'll check we cover you."
         : style.isPolished
-          ? 'If you could share a postcode, I will confirm that we cover the area and walk you through how it works.'
-          : 'If you share a postcode I can confirm we cover the area and walk you through how it works.';
+          ? 'Could you share your postcode? I will confirm whether we cover the area and walk you through how the service works.'
+          : "Whereabouts are you? I'll just check we cover you and then walk you through how it works.";
       if (hasFaq) {
         return [
-          { type: 'text', content: `${joinParts(style.greeting, ...style.tonePhrases)} ` },
+          { type: 'text', content: `${joinParts(style.greeting, ack, ...style.tonePhrases)} ` },
           { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
           { type: 'text', content: `. ${joinParts(closer, style.signoff)}` },
         ];
@@ -356,7 +374,7 @@ function buildScenarioReply(params: {
       return [
         {
           type: 'text',
-          content: joinParts(style.greeting, ...style.tonePhrases, closer, style.signoff),
+          content: joinParts(style.greeting, ack, ...style.tonePhrases, closer, style.signoff),
         },
       ];
     }
