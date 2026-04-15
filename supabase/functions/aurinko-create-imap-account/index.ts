@@ -67,11 +67,23 @@ function inferProviderName(host: string): string {
  * Aurinko uses these to track which "brand" of IMAP provider is connected,
  * which improves their internal monitoring and may enable provider-specific
  * optimizations.
+ *
+ * NOTE on Fastmail: we intentionally return 'IMAP' (generic) instead of
+ * 'Fastmail' to work around an Aurinko-side warmup stall observed
+ * 2026-04-15 on michael@maccleaning.uk — two fresh Aurinko accounts
+ * (196822, 196830) for the same Fastmail custom-domain mailbox both sat at
+ * `mailbox.unavailable / "loading IMAP folders"` for 15-20+ minutes, while
+ * other Fastmail inboxes warm in 2-3 min. Both deep-research passes
+ * converged on Aurinko's Fastmail-specialised connector tripping on this
+ * mailbox's LIST response (likely shared-folder / LIST-EXTENDED volume on a
+ * custom-domain business account). The generic IMAP code path uses the
+ * same serverUrl + credentials but sidesteps the Fastmail-specific branch.
+ * Revisit if/when Aurinko support confirms the underlying defect is fixed.
  */
 function inferAurinkoServiceProvider(host: string): string {
   const lowerHost = host.toLowerCase();
   if (lowerHost === 'imap.mail.me.com') return 'iCloud';
-  if (lowerHost === 'imap.fastmail.com') return 'Fastmail';
+  if (lowerHost === 'imap.fastmail.com') return 'IMAP';
   if (lowerHost === 'imap.mail.yahoo.com') return 'Yahoo';
   if (lowerHost === 'imap.aol.com') return 'AOL';
   if (lowerHost === 'imap.zoho.com') return 'Zoho';
