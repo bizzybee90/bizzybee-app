@@ -89,22 +89,55 @@ describe('VoiceExperienceStep', () => {
       expect(screen.getByText(/I can't commit to a refund on the call/i)).toBeInTheDocument();
     });
 
-    // Polishing up the formality should visibly rewrite the reply (contractions
-    // expand, sign-off shifts from "Thanks, speak soon." to "Thank you. Goodbye."
-    // and the opener becomes "Good day, you're through to…").
+    // Formality slider now has FIVE bands, so moving across any band boundary
+    // should visibly rewrite the reply. Casual(1-2) / friendly(3-4) /
+    // balanced(5-6) / polished(7-8) / formal(9-10).
     await user.click(screen.getByRole('button', { name: /new enquiry/i }));
     const slider = screen.getByLabelText('Formality slider') as HTMLInputElement;
+
+    // → formal (10): greeting uses "Good day", sign-off becomes "Thank you. Goodbye."
     fireEvent.change(slider, { target: { value: '10' } });
     await waitFor(() => {
       expect(screen.getByText(/Good day, you're through to/i)).toBeInTheDocument();
       expect(screen.getByText(/Thank you\. Goodbye\./i)).toBeInTheDocument();
     });
 
-    // Dragging to friendly (1) should swap to "Jessica here" + "Cheers, speak soon!"
-    fireEvent.change(slider, { target: { value: '1' } });
+    // → polished (7): "Hello, thank you for calling" + "Thank you. Speak soon."
+    fireEvent.change(slider, { target: { value: '7' } });
+    await waitFor(() => {
+      expect(screen.getByText(/Hello, thank you for calling/i)).toBeInTheDocument();
+      expect(screen.getByText(/Thank you\. Speak soon\./i)).toBeInTheDocument();
+    });
+
+    // → friendly (3): greeting uses "Jessica here", sign-off "Thanks, speak soon!"
+    fireEvent.change(slider, { target: { value: '3' } });
     await waitFor(() => {
       expect(screen.getByText(/Jessica here/i)).toBeInTheDocument();
-      expect(screen.getByText(/Cheers, speak soon!/i)).toBeInTheDocument();
+      expect(screen.getByText(/Thanks, speak soon!/i)).toBeInTheDocument();
+    });
+
+    // → casual (1): "Hey — thanks for the call!" + "Cheers — speak soon!"
+    fireEvent.change(slider, { target: { value: '1' } });
+    await waitFor(() => {
+      expect(screen.getByText(/Hey — thanks for the call!/i)).toBeInTheDocument();
+      expect(screen.getByText(/Cheers — speak soon!/i)).toBeInTheDocument();
+    });
+
+    // Tone chips each add a UNIQUE distinct pleasantry.
+    // Reset slider to balanced so tone effects are clean.
+    fireEvent.change(slider, { target: { value: '6' } });
+    // Start from current state (warm was toggled off earlier, reassuring + professional
+    // still selected). Toggle calm ON and assert its phrase appears.
+    await user.click(screen.getByRole('button', { name: /^calm$/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Take your time with this\./i)).toBeInTheDocument();
+    });
+
+    // Toggling 'polished' chip should bump the band by +1 without touching the
+    // slider, producing the "Hello, thank you for calling" polished greeting.
+    await user.click(screen.getByRole('button', { name: /^polished$/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Hello, thank you for calling/i)).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole('button', { name: /Select Chris voice/i }));

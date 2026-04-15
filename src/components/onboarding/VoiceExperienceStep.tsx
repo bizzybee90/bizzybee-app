@@ -144,20 +144,23 @@ export type ReplySegment =
   | { type: 'cited'; content: string; faqQuestion: string };
 
 /**
- * Derive style bits from the user's tone + formality selections. These compose
- * into the final reply so that toggling a chip or moving the slider produces a
- * visibly-different preview (greeting form, opener, reassurance, sign-off).
+ * Derive style bits from the user's tone + formality selections. Designed so
+ * every chip and every major slider movement produces a visible change.
  *
- *   formalityScore 1-3  → friendly register ("Jessica here", "Cheers, speak soon!")
- *   formalityScore 4-7  → balanced ("Jessica speaking", "Thanks, speak soon.")
- *   formalityScore 8-10 → polished ("Jessica speaking.", "Thank you. Goodbye.")
+ * Formality slider (1-10) maps to FIVE bands:
+ *   1-2  → casual   ("Hey — thanks for the call! It's Jessica.", "Cheers — speak soon!")
+ *   3-4  → friendly ("Hi — thanks for calling X. Jessica here.", "Thanks, speak soon!")
+ *   5-6  → balanced ("Hi, thanks for calling X — Jessica speaking.", "Thanks, speak soon.")
+ *   7-8  → polished ("Hello, thank you for calling X. Jessica speaking.", "Thank you. Speak soon.")
+ *   9-10 → formal   ("Good day, you're through to X. Jessica speaking.", "Thank you. Goodbye.")
  *
- * Selected tone chips inject behaviour on top of formality:
- *   warm      — extra "Happy to help." pleasantry
- *   friendly  — contractions, "Cheers!" close
- *   polished  — "Certainly —" prefix, formal close
- *   reassuring / calm — adds "No rush at all." as a separate sentence
- *   concise   — drops pleasantries and reassurance; shorter closer
+ * Tone chips each produce a distinct effect:
+ *   warm       → appends "Happy to help." pleasantry
+ *   calm       → appends "Take your time with this." line
+ *   reassuring → appends "No rush at all." line
+ *   polished   → bumps formality band +1 (more polished register)
+ *   friendly   → bumps formality band -1 (more casual register)
+ *   concise    → suppresses the three pleasantry lines AND shortens the closer
  */
 function deriveVoiceStyle(
   toneDescriptors: string[],
@@ -166,51 +169,78 @@ function deriveVoiceStyle(
   receptionistName: string,
 ) {
   const tones = new Set(toneDescriptors.map((t) => t.toLowerCase()));
-  const isPolished = tones.has('polished') || formalityScore >= 8;
-  const isFriendly = tones.has('friendly') || formalityScore <= 3;
-  const isConcise = tones.has('concise');
-  const isWarm = tones.has('warm');
-  const isReassuring = tones.has('reassuring') || tones.has('calm');
   const coName = companyName || 'your business';
   const name = receptionistName || 'your receptionist';
 
-  // Opening greeting — varies by formality
-  const greeting = isPolished
-    ? `Good day, you're through to ${coName}. ${name} speaking.`
-    : isFriendly
-      ? `Hi — thanks for calling ${coName}. ${name} here.`
-      : `Hi, thanks for calling ${coName} — ${name} speaking.`;
+  // Map slider 1-10 → one of 5 bands (0=casual, 4=formal).
+  const rawBand =
+    formalityScore <= 2
+      ? 0
+      : formalityScore <= 4
+        ? 1
+        : formalityScore <= 6
+          ? 2
+          : formalityScore <= 8
+            ? 3
+            : 4;
 
-  // Opener pleasantry — dropped when concise
-  const opener = isConcise
-    ? ''
-    : isPolished
-      ? 'Certainly — happy to help.'
-      : isWarm
-        ? 'Happy to help.'
-        : 'Happy to help.';
+  // Tone chips can nudge the effective band up or down.
+  let band = rawBand;
+  if (tones.has('polished')) band = Math.min(4, band + 1);
+  if (tones.has('friendly')) band = Math.max(0, band - 1);
 
-  // Reassurance — only when reassuring/calm tone AND not concise
-  const reassurance = isReassuring && !isConcise ? 'No rush at all.' : '';
+  const isConcise = tones.has('concise');
+  const isPolished = band >= 3;
+  const isFriendly = band <= 1;
 
-  // Sign-off — varies by formality + friendliness
-  const signoff = isPolished
-    ? 'Thank you. Goodbye.'
-    : isFriendly
-      ? 'Cheers, speak soon!'
-      : 'Thanks, speak soon.';
+  const greetings = [
+    `Hey — thanks for the call! It's ${name}.`,
+    `Hi — thanks for calling ${coName}. ${name} here.`,
+    `Hi, thanks for calling ${coName} — ${name} speaking.`,
+    `Hello, thank you for calling ${coName}. ${name} speaking.`,
+    `Good day, you're through to ${coName}. ${name} speaking.`,
+  ];
+  const signoffs = [
+    `Cheers — speak soon!`,
+    `Thanks, speak soon!`,
+    `Thanks, speak soon.`,
+    `Thank you. Speak soon.`,
+    `Thank you. Goodbye.`,
+  ];
 
-  // Contractions: polished expands them, friendly keeps; balanced keeps too
+  // Each toggled tone chip adds ONE distinct pleasantry sentence.
+  // Suppressed entirely when 'concise' is on.
+  const tonePhrases: string[] = [];
+  if (!isConcise) {
+    if (tones.has('warm')) tonePhrases.push('Happy to help.');
+    if (tones.has('calm')) tonePhrases.push('Take your time with this.');
+    if (tones.has('reassuring')) tonePhrases.push('No rush at all.');
+  }
+
+  // Polished register expands contractions. Lower bands keep them.
   const contract = (s: string) =>
     isPolished
       ? s
           .replace(/\bI'll\b/g, 'I will')
+          .replace(/\bI'd\b/g, 'I would')
           .replace(/\bcan't\b/g, 'cannot')
           .replace(/\bwasn't\b/g, 'was not')
           .replace(/\bthat's\b/gi, 'that is')
+          .replace(/\bwe'll\b/g, 'we will')
+          .replace(/\bdon't\b/g, 'do not')
+          .replace(/\bit's\b/g, 'it is')
       : s;
 
-  return { greeting, opener, reassurance, signoff, contract, isPolished, isFriendly, isConcise };
+  return {
+    greeting: greetings[band],
+    signoff: signoffs[band],
+    tonePhrases,
+    isConcise,
+    isPolished,
+    isFriendly,
+    contract,
+    band,
+  };
 }
 
 function joinParts(...parts: string[]): string {
@@ -236,7 +266,7 @@ function buildScenarioReply(params: {
   const hasFaq = Boolean(websiteFaq?.answer?.trim());
   const cue = hasFaq ? firstSentence(websiteFaq!.answer).replace(/[.!?]+$/u, '') : '';
 
-  // Scenario-specific body templates — vary phrasing by formality
+  // Scenario-specific body templates — vary by formality band and concise flag.
   switch (scenarioId) {
     case 'quote_request': {
       const closer = style.isConcise
@@ -245,23 +275,16 @@ function buildScenarioReply(params: {
           ? 'If you could share the postcode and roughly how many windows, I will confirm an accurate figure for you.'
           : "If you can share the postcode and roughly how many windows, I'll firm that up for you.";
       if (hasFaq) {
-        const pre = joinParts(style.greeting, style.opener);
         return [
-          { type: 'text', content: `${pre} ` },
+          { type: 'text', content: `${joinParts(style.greeting, ...style.tonePhrases)} ` },
           { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
-          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
+          { type: 'text', content: `. ${joinParts(closer, style.signoff)}` },
         ];
       }
       return [
         {
           type: 'text',
-          content: joinParts(
-            style.greeting,
-            style.opener,
-            style.reassurance,
-            closer,
-            style.signoff,
-          ),
+          content: joinParts(style.greeting, ...style.tonePhrases, closer, style.signoff),
         },
       ];
     }
@@ -274,23 +297,29 @@ function buildScenarioReply(params: {
           ? 'What day would work better for you? I will make a note and confirm by text.'
           : "What day would work better for you? I'll make the note and confirm by text.";
       if (hasFaq) {
-        const pre = joinParts(style.greeting, ack, 'Just to set expectations,');
+        const pre = joinParts(
+          style.greeting,
+          ack,
+          ...style.tonePhrases,
+          'Just to set expectations,',
+        );
         return [
           { type: 'text', content: `${pre} ` },
           { type: 'cited', content: cue.toLowerCase(), faqQuestion: websiteFaq!.question },
-          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
+          { type: 'text', content: `. ${joinParts(closer, style.signoff)}` },
         ];
       }
       return [
         {
           type: 'text',
-          content: joinParts(style.greeting, ack, style.reassurance, closer, style.signoff),
+          content: joinParts(style.greeting, ack, ...style.tonePhrases, closer, style.signoff),
         },
       ];
     }
 
     case 'complaint': {
       // Guard-railed: never commits a refund on the call; warmth scales with tone.
+      // Tone pleasantries intentionally suppressed — a complaint needs directness.
       const apology = style.isPolished
         ? 'I am really sorry Tuesday was not right. That is not the standard we aim for.'
         : style.contract("I'm really sorry Tuesday wasn't right. That's not the standard we want.");
@@ -318,23 +347,16 @@ function buildScenarioReply(params: {
           ? 'If you could share a postcode, I will confirm that we cover the area and walk you through how it works.'
           : 'If you share a postcode I can confirm we cover the area and walk you through how it works.';
       if (hasFaq) {
-        const pre = joinParts(style.greeting, style.opener);
         return [
-          { type: 'text', content: `${pre} ` },
+          { type: 'text', content: `${joinParts(style.greeting, ...style.tonePhrases)} ` },
           { type: 'cited', content: cue, faqQuestion: websiteFaq!.question },
-          { type: 'text', content: `. ${joinParts(style.reassurance, closer, style.signoff)}` },
+          { type: 'text', content: `. ${joinParts(closer, style.signoff)}` },
         ];
       }
       return [
         {
           type: 'text',
-          content: joinParts(
-            style.greeting,
-            style.opener,
-            style.reassurance,
-            closer,
-            style.signoff,
-          ),
+          content: joinParts(style.greeting, ...style.tonePhrases, closer, style.signoff),
         },
       ];
     }
