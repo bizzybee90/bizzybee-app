@@ -34,45 +34,6 @@ type OnboardingProgressRpcClient = {
   }>;
 };
 
-async function fetchOnboardingProgressWithBearer(
-  workspaceId: string,
-): Promise<OnboardingProgressPayload | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const accessToken = session?.access_token;
-
-  if (!accessToken) {
-    throw new Error('Authentication required');
-  }
-
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/bb_get_onboarding_progress`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ p_workspace_id: workspaceId }),
-    },
-  );
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object' && 'message' in payload
-        ? String((payload as { message: unknown }).message)
-        : `Failed to load onboarding progress (${response.status})`;
-    throw new Error(message);
-  }
-
-  return payload as OnboardingProgressPayload | null;
-}
-
 export function useOnboardingProgress(workspaceId: string | null, enabled = true) {
   const [data, setData] = useState<OnboardingProgressPayload | null>(null);
   const [loading, setLoading] = useState(Boolean(enabled && workspaceId));
@@ -86,24 +47,15 @@ export function useOnboardingProgress(workspaceId: string | null, enabled = true
 
     try {
       const client = supabase as unknown as OnboardingProgressRpcClient;
-      let payload: OnboardingProgressPayload | null = null;
+      const rpcResult = await client.rpc('bb_get_onboarding_progress', {
+        p_workspace_id: workspaceId,
+      });
 
-      try {
-        const rpcResult = await client.rpc('bb_get_onboarding_progress', {
-          p_workspace_id: workspaceId,
-        });
-
-        if (rpcResult.error) {
-          throw rpcResult.error;
-        }
-
-        payload = rpcResult.data as OnboardingProgressPayload | null;
-      } catch (rpcError) {
-        logger.warn('RPC onboarding progress failed, retrying with bearer fetch', rpcError);
-        payload = await fetchOnboardingProgressWithBearer(workspaceId);
+      if (rpcResult.error) {
+        throw rpcResult.error;
       }
 
-      setData(payload);
+      setData(rpcResult.data as OnboardingProgressPayload | null);
       setError(null);
     } catch (err) {
       logger.error('Failed to load onboarding progress', err);

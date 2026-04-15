@@ -13,5 +13,34 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  global: {
+    // Session-race fix: supabase-js's default fetchWithAuth calls _getAccessToken(), which
+    // silently falls back to the publishable key as Bearer when auth.getSession() returns null
+    // during cold-start hydration. That 401s every .functions.invoke() on first page load.
+    // Here we await getSession() a second time (which also waits for the auth client's init
+    // promise) and overwrite Authorization with the real JWT if a session is present.
+    //
+    // Skip the override for /auth/v1/ requests: GoTrue uses its own Authorization header and
+    // calling auth.getSession() from inside a token-refresh fetch would deadlock on the lock
+    // that GoTrue holds while the refresh is in flight.
+    fetch: async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/auth/v1/')) {
+        return fetch(input, init);
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        return fetch(input, init);
+      }
+
+      const headers = new Headers(init?.headers);
+      headers.set('Authorization', `Bearer ${token}`);
+      return fetch(input, { ...init, headers });
+    },
+  },
 });
