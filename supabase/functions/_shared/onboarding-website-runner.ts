@@ -562,6 +562,19 @@ export async function executeWebsiteRunStep(
       }
     }
 
+    if (faqs.length < 3) {
+      // Fail BEFORE writing the consolidated `website_faq_candidates`
+      // artifact. If we wrote it here, `resolvePendingWebsiteStep` in
+      // onboarding-worker-nudge (which gates on
+      // `hasRunArtifact('website_faq_candidates')` as a presence check)
+      // would see extract as "complete" and keep re-routing this run back
+      // to persist — producing an infinite retry loop for a terminal
+      // "Claude returned too few FAQs" failure that should just fail the
+      // run. See docs/plans/2026-04-16-extract-batch-chunking.md and
+      // Task 5 code review for the write-before-check hazard this avoids.
+      throw new Error('Not enough grounded website FAQs were extracted');
+    }
+
     // Write the consolidated `website_faq_candidates` artifact so downstream
     // tooling / observability / the resolvePendingWebsiteStep legacy check
     // in onboarding-worker-nudge all still see a single source of truth for
@@ -574,10 +587,6 @@ export async function executeWebsiteRunStep(
       content: { faqs, batch_count: batchRowsSorted.length } as Record<string, unknown>,
       stepId: stepRecord.id,
     });
-
-    if (!faqs || faqs.length < 3) {
-      throw new Error('Not enough grounded website FAQs were extracted');
-    }
 
     await supabase
       .from('faq_database')
