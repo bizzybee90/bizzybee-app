@@ -252,8 +252,9 @@ Fuzzy slug match (Levenshtein ≤ 2) covers typos (`luton-bedfordshire` → `lut
 Not fully preventable — Claude is instructed, not constrained. Mitigation:
 
 - Post-process: regex-strip common brand-claim patterns (`"we charge £X at {BusinessName}"`).
-- Soft: the hard cap of 10 competitors bounds the blast radius; the own-site FAQs always outnumber.
+- Soft: own-site FAQs are always the majority and the finalizer rewrites competitor content to user voice — contamination that slips through is bounded, not structural.
 - Observability: add a structured log `[finalize] candidate mentions competitor brand name` so we can audit after a few runs.
+- If leaks prove material in practice, a hard post-filter on competitor brand names in persisted `faq_database.answer` is a fast follow-up.
 
 ---
 
