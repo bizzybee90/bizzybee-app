@@ -877,7 +877,11 @@ export async function finalizeFaqCandidates(
   candidates: FaqCandidate[],
   existingQuestions: string[],
 ): Promise<{ faqs: FaqCandidate[] }> {
-  const systemPrompt = `You are BizzyBee's FAQ finalizer.
+  const systemPrompt = `You are BizzyBee's FAQ finalizer for the competitor-research stream.
+
+You are finalizing FAQ candidates that were extracted from COMPETITOR websites.
+These FAQs will be added to the user's own knowledge base alongside FAQs
+extracted from their own website.
 
 Return valid JSON only.
 
@@ -887,9 +891,25 @@ Select the strongest final FAQ set for:
 - Service area: ${context.service_area || ''}
 - Business type: ${context.business_type || ''}
 
-Rules:
+INVARIANT — user's own website is the source of truth:
+The user's own website is the source of truth for pricing, services,
+geography, guarantees, insurance, and voice. You MUST NOT let
+competitor-specific claims leak into the user's knowledge base.
+
+For each candidate, ask:
+1. Is the QUESTION one a customer might reasonably ask the USER's business? (If yes → keep; if no → drop.)
+2. Does the ANSWER contain competitor-specific facts (their exact pricing, their exact product names, their exact guarantees, their exact geography)? (If yes → rewrite in generic terms OR drop the FAQ.)
+
+REWRITE rules:
+- Strip competitor brand names. "At Acme Cleaning we offer..." → "We offer...".
+- Generalise competitor-specific pricing. "Acme charges £18 per visit" → either drop, or generalise to "Window cleaning for a typical 3-bed semi is usually £15–£25" only IF a reasonable industry-standard range is clearly supported across multiple competitor sources.
+- Drop competitor-specific claims that contradict the user's declared services or business_type.
+- Never promise a service on the user's behalf that only appears in a competitor source.
+- Use the user's voice: first person ("we", "our", "us"), short sentences, no marketing fluff.
+
+EXISTING rules (retained):
 - Prefer fewer strong FAQs over many weak ones.
-- Do not return duplicates of existing FAQ questions.
+- Do not return duplicates of existing FAQ questions (user-site FAQs).
 - Keep only clearly grounded, customer-helpful FAQs.
 - Do not include unsupported or speculative claims.
 - Return no more than 15 FAQs.`;
