@@ -5,6 +5,7 @@ import {
   ONBOARDING_FAQ_QUEUE,
   ONBOARDING_WEBSITE_QUEUE,
 } from '../_shared/onboarding.ts';
+import { getNextMissingWebsiteBatch } from '../_shared/onboarding-website-runner.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -72,6 +73,37 @@ async function hasRunArtifact(
   }
 
   return Boolean(data?.id);
+}
+
+/**
+ * Returns the number of pages in the latest `website_pages` artifact for a
+ * given run, or 0 if the artifact doesn't exist yet. Used by the own-site
+ * enqueue path to compute batch_count (1 page = 1 batch per
+ * WEBSITE_EXTRACTION_BATCH_SIZE in onboarding-ai.ts) before asking
+ * `getNextMissingWebsiteBatch` which batch to enqueue.
+ */
+async function loadWebsitePagesCount(
+  supabase: ReturnType<typeof createServiceClient>,
+  runId: string,
+  workspaceId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('agent_run_artifacts')
+    .select('content')
+    .eq('run_id', runId)
+    .eq('workspace_id', workspaceId)
+    .eq('artifact_key', 'website_pages')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Failed to load website_pages artifact: ${error.message}`);
+  }
+  if (!data?.content) return 0;
+
+  const pages = (data.content as { pages?: unknown[] }).pages;
+  return Array.isArray(pages) ? pages.length : 0;
 }
 
 async function loadLatestRun(
@@ -263,10 +295,14 @@ async function resolvePendingFaqStep(
  * observed 2026-04-16 that the progress counter appeared to "reset" (e.g.
  * 10/12 → 7/12) because three website:extract workers were racing against
  * the same run's output_summary.
+ *
+ * NOTE: `extract` is intentionally omitted here — Task 3 split it into
+ * per-batch step records (website:extract_batch_0, _batch_1, ...), so the
+ * in-flight check below uses a LIKE prefix match instead of an exact lookup
+ * via this map.
  */
 const WEBSITE_STEP_RUN_KEY: Record<string, string> = {
   fetch: 'website:fetch',
-  extract: 'website:extract',
   persist: 'website:persist',
 };
 
@@ -275,15 +311,24 @@ async function isWebsiteStepInFlight(
   run: RunRow,
   queueStep: string,
 ): Promise<boolean> {
-  const runKey = WEBSITE_STEP_RUN_KEY[queueStep];
-  if (!runKey) return false;
-
-  const { count, error } = await supabase
+  // Task 3 split 'website:extract' into per-batch step records
+  // (website:extract_batch_0, _batch_1, ...). Use a LIKE prefix match for
+  // the extract step; exact match for fetch/persist.
+  let query = supabase
     .from('agent_run_steps')
     .select('id', { count: 'exact', head: true })
     .eq('run_id', run.id)
-    .eq('step_key', runKey)
     .eq('status', 'running');
+
+  if (queueStep === 'extract') {
+    query = query.like('step_key', 'website:extract_batch_%');
+  } else {
+    const runKey = WEBSITE_STEP_RUN_KEY[queueStep];
+    if (!runKey) return false;
+    query = query.eq('step_key', runKey);
+  }
+
+  const { count, error } = await query;
 
   if (error) {
     console.warn('[nudge] failed to check in-flight website step', {
@@ -511,17 +556,80 @@ Deno.serve(async (req) => {
 
     const nextStep = await resolvePendingWebsiteStep(supabase, run);
     if (nextStep) {
-      await queueSend(
-        supabase,
-        ONBOARDING_WEBSITE_QUEUE,
-        {
-          run_id: run.id,
-          workspace_id: run.workspace_id,
-          step: nextStep,
-          attempt: 1,
-        },
-        0,
-      );
+      if (nextStep === 'extract') {
+        // Load page count to know batch_count (1 page = 1 batch per
+        // onboarding-ai.ts:61 WEBSITE_EXTRACTION_BATCH_SIZE). If no pages
+        // artifact yet, fall back to enqueueing extract without batch_index
+        // so the runner's resolver picks it up — the resolver also handles
+        // the "no pages yet" edge case by normalizing to fetch.
+        const pageCount = await loadWebsitePagesCount(supabase, run.id, run.workspace_id);
+        if (pageCount > 0) {
+          const nextBatch = await getNextMissingWebsiteBatch(
+            supabase,
+            run.id,
+            run.workspace_id,
+            pageCount,
+          );
+          if (nextBatch === null) {
+            // All batch artifacts present — the extract phase is actually
+            // complete; move straight to persist. This covers the case
+            // where resolvePendingWebsiteStep still reports 'extract'
+            // because the consolidated website_faq_candidates artifact
+            // hasn't been written yet (persist is the one that writes it).
+            await queueSend(
+              supabase,
+              ONBOARDING_WEBSITE_QUEUE,
+              {
+                run_id: run.id,
+                workspace_id: run.workspace_id,
+                step: 'persist',
+                attempt: 1,
+              },
+              0,
+            );
+          } else {
+            await queueSend(
+              supabase,
+              ONBOARDING_WEBSITE_QUEUE,
+              {
+                run_id: run.id,
+                workspace_id: run.workspace_id,
+                step: 'extract',
+                attempt: 1,
+                batch_index: nextBatch,
+              },
+              0,
+            );
+          }
+        } else {
+          // No pages artifact yet — runner's resolver will normalize
+          // 'extract' to 'fetch' on receipt.
+          await queueSend(
+            supabase,
+            ONBOARDING_WEBSITE_QUEUE,
+            {
+              run_id: run.id,
+              workspace_id: run.workspace_id,
+              step: 'extract',
+              attempt: 1,
+            },
+            0,
+          );
+        }
+      } else {
+        // fetch or persist — no batch_index on the payload.
+        await queueSend(
+          supabase,
+          ONBOARDING_WEBSITE_QUEUE,
+          {
+            run_id: run.id,
+            workspace_id: run.workspace_id,
+            step: nextStep,
+            attempt: 1,
+          },
+          0,
+        );
+      }
     }
 
     await wakeWorker(supabase, 'pipeline-worker-onboarding-website');
