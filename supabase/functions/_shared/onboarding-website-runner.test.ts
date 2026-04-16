@@ -54,6 +54,7 @@ const runner = await import('./onboarding-website-runner');
 const onboarding = (await import('./onboarding.ts')) as unknown as {
   recordRunArtifact: ReturnType<typeof vi.fn>;
   touchAgentRun: ReturnType<typeof vi.fn>;
+  succeedRun: ReturnType<typeof vi.fn>;
 };
 const onboardingAi = (await import('../faq-agent-runner/lib/onboarding-ai.ts')) as unknown as {
   extractWebsiteFaqs: ReturnType<typeof vi.fn>;
@@ -61,6 +62,7 @@ const onboardingAi = (await import('../faq-agent-runner/lib/onboarding-ai.ts')) 
 const faqEngine = (await import('./onboarding-faq-engine.ts')) as unknown as {
   loadRunArtifact: ReturnType<typeof vi.fn>;
   hasRunArtifact: ReturnType<typeof vi.fn>;
+  buildFaqRows: ReturnType<typeof vi.fn>;
 };
 const stepRecorder = (await import('../faq-agent-runner/lib/step-recorder.ts')) as unknown as {
   beginStep: ReturnType<typeof vi.fn>;
@@ -499,5 +501,300 @@ describe('executeWebsiteRunStep extract branch (per-batch)', () => {
       batchCount: 3,
       allBatchesDone: false,
     });
+  });
+});
+
+/**
+ * Build a supabase mock tailored for the persist branch. Persist:
+ *   - selects all `website_faq_candidates_batch_%` rows (with content)
+ *   - resolvePendingWebsiteStep reads scraping_jobs.status + faq_database count
+ *   - deletes existing faq_database rows, inserts new rows
+ *   - updates scraping_jobs status to completed
+ *
+ * The `insertSpy` lets tests assert on the rows passed to .insert().
+ */
+function makePersistSupabase(options: {
+  /** Ordered batch rows as the mock should surface them from .order(). */
+  batchRows: Array<{
+    artifact_key: string;
+    content: { faqs?: Array<{ question: string }>; batch_skipped?: boolean } | null;
+  }>;
+  /** Captured rows from faq_database.insert(...) — push-through for assertions. */
+  insertSpy: { lastArgs: unknown; callCount: number };
+  /** Defaults to 0 (no pre-existing persisted FAQs). */
+  persistedFaqCount?: number;
+  /** Defaults to 'extracting' — must NOT be 'completed' for persist to run. */
+  scrapingStatus?: string;
+}): SupabaseClient {
+  const persistedFaqCount = options.persistedFaqCount ?? 0;
+  const scrapingStatus = options.scrapingStatus ?? 'extracting';
+
+  return {
+    from: (table: string) => {
+      if (table === 'agent_run_artifacts') {
+        return {
+          select: (columns?: string) => ({
+            eq: () => ({
+              eq: () => ({
+                like: () => {
+                  if ((columns ?? '').includes('content')) {
+                    return {
+                      order: () => Promise.resolve({ data: options.batchRows, error: null }),
+                      then: (resolve: (v: unknown) => void) =>
+                        resolve({ data: options.batchRows, error: null }),
+                    };
+                  }
+                  return Promise.resolve({
+                    data: options.batchRows.map((r) => ({ artifact_key: r.artifact_key })),
+                    error: null,
+                  });
+                },
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'faq_database') {
+        return {
+          // resolvePendingWebsiteStep uses head:true count.
+          select: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ count: persistedFaqCount, data: null, error: null }),
+            }),
+          }),
+          delete: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ data: null, error: null }),
+            }),
+          }),
+          insert: (rows: unknown) => {
+            options.insertSpy.lastArgs = rows;
+            options.insertSpy.callCount += 1;
+            return Promise.resolve({ data: null, error: null });
+          },
+        };
+      }
+      if (table === 'scraping_jobs') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: { status: scrapingStatus }, error: null }),
+            }),
+          }),
+          update: () => ({
+            eq: () => Promise.resolve({ data: null, error: null }),
+          }),
+        };
+      }
+      // Fallback for any other table accidentally touched.
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => Promise.resolve({ data: null, error: null }),
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+        update: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }),
+      };
+    },
+  } as unknown as SupabaseClient;
+}
+
+describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // resolvePendingWebsiteStep needs: website_pages=true, website_faq_candidates=false
+    // so it returns 'persist' (not 'fetch' or 'extract'). We control this per-test
+    // via faqEngine.hasRunArtifact.
+    faqEngine.loadRunArtifact.mockReset();
+    faqEngine.hasRunArtifact.mockReset();
+    faqEngine.hasRunArtifact.mockImplementation(
+      async (_s: unknown, _r: string, _w: string, key: string) => {
+        if (key === 'website_pages') return true;
+        if (key === 'website_faq_candidates') return false;
+        return false;
+      },
+    );
+
+    // buildFaqRows: by default return one row per FAQ it's given so tests can
+    // assert the final insert count equals the aggregate faq count.
+    faqEngine.buildFaqRows.mockReset();
+    faqEngine.buildFaqRows.mockImplementation((params: { faqs: Array<unknown> }) =>
+      params.faqs.map((_, i) => ({ row_id: i })),
+    );
+
+    onboarding.recordRunArtifact.mockReset();
+    onboarding.touchAgentRun.mockReset();
+    onboarding.succeedRun.mockReset();
+    stepRecorder.beginStep.mockReset();
+    stepRecorder.beginStep.mockResolvedValue({
+      id: 'persist-step-id',
+      runId: 'run-1',
+      stepKey: 'website:persist',
+    });
+    stepRecorder.succeedStep.mockReset();
+    stepRecorder.failStep.mockReset();
+  });
+
+  it('aggregates N batch artifacts and inserts the sum', async () => {
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: { faqs: [{ question: 'A' }, { question: 'B' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_1',
+          content: { faqs: [{ question: 'C' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_2',
+          content: { faqs: [{ question: 'D' }, { question: 'E' }, { question: 'F' }] },
+        },
+      ],
+      insertSpy,
+    });
+
+    const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
+
+    // 1. Consolidated artifact written with aggregate.
+    expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: { faqs: unknown[]; batch_count: number };
+    };
+    expect(recordCall.artifactKey).toBe('website_faq_candidates');
+    expect(recordCall.content.faqs).toHaveLength(6);
+    expect(recordCall.content.batch_count).toBe(3);
+
+    // 2. faq_database.insert received rows of length 6 (one per aggregated FAQ).
+    expect(insertSpy.callCount).toBe(1);
+    expect(Array.isArray(insertSpy.lastArgs)).toBe(true);
+    expect((insertSpy.lastArgs as unknown[]).length).toBe(6);
+
+    // 3. succeedStep called with faq_count: 6
+    expect(stepRecorder.succeedStep).toHaveBeenCalledWith(
+      expect.anything(),
+      'persist-step-id',
+      expect.objectContaining({ faq_count: 6 }),
+    );
+
+    // 4. succeedRun called (run completes after persist).
+    expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
+
+    // 5. The legacy consolidated-key loadRunArtifact should NOT be called —
+    // persist now writes this artifact, it does not read it.
+    expect(faqEngine.loadRunArtifact).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      'website_faq_candidates',
+    );
+
+    expect(result).toMatchObject({ executedStep: 'persist' });
+  });
+
+  it('throws when aggregate faq count is < 3', async () => {
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: { faqs: [{ question: 'A' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_1',
+          content: { faqs: [{ question: 'B' }] },
+        },
+      ],
+      insertSpy,
+    });
+
+    await expect(executeWebsiteRunStep(supabase, run, 'persist', 1, {})).rejects.toThrow(
+      /Not enough grounded website FAQs/,
+    );
+
+    // Persist must NOT insert or succeed the run when aggregate is too small.
+    expect(insertSpy.callCount).toBe(0);
+    expect(onboarding.succeedRun).not.toHaveBeenCalled();
+    expect(stepRecorder.failStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats batch_skipped artifacts (empty faqs) as contributing zero and still persists the remainder', async () => {
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: { faqs: [{ question: 'A' }, { question: 'B' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_1',
+          content: { faqs: [], batch_skipped: true },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_2',
+          content: { faqs: [{ question: 'C' }, { question: 'D' }] },
+        },
+      ],
+      insertSpy,
+    });
+
+    const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
+
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: { faqs: unknown[]; batch_count: number };
+    };
+    expect(recordCall.content.faqs).toHaveLength(4);
+    expect(recordCall.content.batch_count).toBe(3);
+
+    expect(insertSpy.callCount).toBe(1);
+    expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
+
+    expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ executedStep: 'persist' });
+  });
+
+  it('orders batches numerically (batch_10 after batch_2), not lexicographically', async () => {
+    // Regression test for the lex-sort bug: if the runner trusted .order()'s
+    // string ordering, batch_10 would come before batch_2 and the final FAQ
+    // list would end up [A, C, B]. The runner must parse the trailing integer
+    // and sort numerically → [A, B, C].
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      // Mock surfaces rows in lexicographic order: 0, 10, 2.
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: { faqs: [{ question: 'A' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_10',
+          content: { faqs: [{ question: 'C' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_2',
+          content: { faqs: [{ question: 'B' }] },
+        },
+      ],
+      insertSpy,
+    });
+
+    await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
+
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: { faqs: Array<{ question: string }>; batch_count: number };
+    };
+    expect(recordCall.artifactKey).toBe('website_faq_candidates');
+    expect(recordCall.content.faqs.map((f) => f.question)).toEqual(['A', 'B', 'C']);
+    expect(recordCall.content.batch_count).toBe(3);
   });
 });

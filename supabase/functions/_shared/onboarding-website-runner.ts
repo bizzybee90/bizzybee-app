@@ -518,12 +518,62 @@ export async function executeWebsiteRunStep(
   });
 
   try {
-    const { faqs } = await loadRunArtifact<{ faqs: FaqCandidate[] }>(
-      supabase,
-      run.id,
-      run.workspace_id,
-      'website_faq_candidates',
-    );
+    // Load all per-batch artifacts and concatenate their faqs into a single
+    // list. Tasks 3-4 split the extract step into one pgmq msg per batch;
+    // each batch writes its Claude result to `website_faq_candidates_batch_{N}`.
+    // Persist aggregates them here rather than reading a single
+    // pre-consolidated artifact — avoiding stale aggregates across the
+    // fetch→extract→persist chain.
+    const { data: batchRows, error: batchErr } = await supabase
+      .from('agent_run_artifacts')
+      .select('artifact_key, content')
+      .eq('run_id', run.id)
+      .eq('workspace_id', run.workspace_id)
+      .like('artifact_key', 'website_faq_candidates_batch_%')
+      .order('artifact_key');
+
+    if (batchErr) {
+      throw new Error(`Failed to load website batch artifacts for persist: ${batchErr.message}`);
+    }
+
+    // `.order('artifact_key')` is a lexicographic string sort, which places
+    // `website_faq_candidates_batch_10` BEFORE `website_faq_candidates_batch_2`.
+    // For runs with ≥10 batches that would corrupt FAQ ordering. Re-sort
+    // numerically by the parsed batch index so the aggregated list is
+    // reproducible regardless of batch count.
+    const batchRowsSorted = (
+      (batchRows ?? []) as Array<{
+        artifact_key: string;
+        content: unknown;
+      }>
+    )
+      .slice()
+      .sort((a, b) => {
+        const ai = Number(/_(\d+)$/.exec(a.artifact_key ?? '')?.[1] ?? 0);
+        const bi = Number(/_(\d+)$/.exec(b.artifact_key ?? '')?.[1] ?? 0);
+        return ai - bi;
+      });
+
+    const faqs: FaqCandidate[] = [];
+    for (const row of batchRowsSorted) {
+      const content = row.content as { faqs?: FaqCandidate[] } | null;
+      if (Array.isArray(content?.faqs)) {
+        faqs.push(...content.faqs);
+      }
+    }
+
+    // Write the consolidated `website_faq_candidates` artifact so downstream
+    // tooling / observability / the resolvePendingWebsiteStep legacy check
+    // in onboarding-worker-nudge all still see a single source of truth for
+    // the run's full FAQ list. Content shape matches the pre-refactor shape.
+    await recordRunArtifact(supabase, {
+      runId: run.id,
+      workspaceId: run.workspace_id,
+      artifactType: 'faq_candidate_batch',
+      artifactKey: 'website_faq_candidates',
+      content: { faqs, batch_count: batchRowsSorted.length } as Record<string, unknown>,
+      stepId: stepRecord.id,
+    });
 
     if (!faqs || faqs.length < 3) {
       throw new Error('Not enough grounded website FAQs were extracted');
