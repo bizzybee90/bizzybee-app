@@ -56,6 +56,22 @@ export interface FaqCandidate {
   evidence_quote: string;
   source_business?: string;
   quality_score: number;
+  /**
+   * Page-level classification emitted by the page-aware own-website
+   * extractor (homepage, service, location, pricing, about, faq, contact,
+   * blog, product, menu, policy, other). Optional because competitor
+   * extraction and legacy JSON-LD structured FAQs don't populate it.
+   * Persisted onto faq_database.page_type — null for any row that lacks it.
+   */
+  page_type?: string;
+  /**
+   * Coarse topical category Claude may emit (Services | Pricing | Policies |
+   * Process | Coverage | Trust | General) for own-website FAQs. Typed as
+   * `string` rather than a union so we pass through Claude output even when
+   * it drifts slightly off-spec — buildFaqRows falls back to the caller's
+   * default category when this is empty.
+   */
+  category?: string;
 }
 
 const WEBSITE_EXTRACTION_BATCH_SIZE = 1;
@@ -608,21 +624,59 @@ export async function crawlWebsitePages(url: string, maxPages = 8): Promise<Fetc
   return apifyPages;
 }
 
+/**
+ * Derive the bare hostname from a page URL (strips `www.`). Falls back to
+ * the raw URL string if the input fails to parse — the prompt tolerates
+ * either (the `{{domain}}` placeholder is only used for context framing).
+ */
+function deriveDomainFromUrl(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, '');
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
+ * Page-aware own-website FAQ extraction. Processes exactly ONE page per
+ * call — the prompt instructs Claude to classify the page type first, then
+ * only emit FAQs that are DISTINCTIVE to that page (so the location-page
+ * duplication problem from the 2026-04-16 MAC Cleaning audit stops at the
+ * prompt layer rather than relying on downstream fingerprint dedup alone).
+ *
+ * `options.singlePageSite` toggles the dedup-skipping branch: on a site
+ * with ≤3 discovered pages there are no other pages to defer facts to, so
+ * Claude is told to extract everything useful from this page. Callers
+ * compute this once per run from pages.length and thread it through.
+ */
 export async function extractWebsiteFaqs(
   apiKey: string,
   model: string,
   context: PromptContext,
-  pages: FetchedPage[],
+  page: FetchedPage,
+  options: { singlePageSite: boolean },
 ): Promise<{ faqs: FaqCandidate[] }> {
   const template = await loadPrompt('website-faq-extraction.md');
-  const systemPrompt = injectPromptVariables(template, buildPromptContext(context));
-  const userPrompt = JSON.stringify({ pages }, null, 2);
+  const domain = deriveDomainFromUrl(page.url);
+  const systemPrompt = injectPromptVariables(template, {
+    business_name: context.workspace_name,
+    business_type: context.business_type || '',
+    domain,
+    page_url: page.url,
+    single_page_site: options.singlePageSite ? 'true' : 'false',
+    page_content: page.content,
+  });
+
+  // The page content lives in the system prompt now, so the user prompt is
+  // just a nudge to produce output. Everything the model needs to reason
+  // about is already in the system message above.
+  const userPrompt = 'Extract now.';
 
   return await callClaudeForJson(apiKey, {
     systemPrompt,
     userPrompt,
     model,
-    maxTokens: 2200,
+    maxTokens: 4000,
   });
 }
 
@@ -732,6 +786,11 @@ export async function extractWebsiteFaqsInChunks(
   // with no useful signal. Now each batch gets its own retry; if the
   // retry exhausts, we log the batch as skipped and carry on. Losing
   // one batch (~10% of candidates) is far better than losing all 12.
+  //
+  // Single-page-site gating is computed once from the full page set so the
+  // same boolean is passed to every batch's Claude call — matches the
+  // per-batch runner path in onboarding-website-runner.ts.
+  const singlePageSite = pages.length <= 3;
   let skippedBatches = 0;
   for (let batchIndex = 0; batchIndex < chunks.length; batchIndex += 1) {
     const chunk = chunks[batchIndex].map((page) => ({
@@ -742,8 +801,14 @@ export async function extractWebsiteFaqsInChunks(
 
     let candidates: FaqCandidate[] = [];
     try {
+      // WEBSITE_EXTRACTION_BATCH_SIZE is 1, so chunk[0] is the sole page
+      // for this batch. The new extractWebsiteFaqs signature takes one
+      // page at a time — chunks here only exist to mirror the legacy
+      // progress reporting shape.
+      const pageForBatch = chunk[0];
+      if (!pageForBatch) continue;
       const extracted = await withTransientRetry(
-        () => extractWebsiteFaqs(apiKey, model, context, chunk),
+        () => extractWebsiteFaqs(apiKey, model, context, pageForBatch, { singlePageSite }),
         { attempts: 3, baseMs: 500, maxMs: 10_000 },
       );
       candidates = Array.isArray(extracted?.faqs) ? extracted.faqs : [];

@@ -573,7 +573,11 @@ export function buildFaqRows(params: {
     workspace_id: params.workspaceId,
     question: faq.question,
     answer: faq.answer,
-    category: params.category,
+    // Page-aware own-website extractor emits a topical category per FAQ
+    // (Services, Pricing, Policies, ...). Prefer it when present; fall back
+    // to the caller-provided default (e.g. 'knowledge_base') otherwise so
+    // legacy callers and competitor FAQs keep their existing category.
+    category: faq.category || params.category,
     enabled: true,
     is_active: true,
     is_own_content: params.isOwnContent,
@@ -582,5 +586,9 @@ export function buildFaqRows(params: {
     source_business: faq.source_business || null,
     source_company: faq.source_business || null,
     relevance_score: Math.round((faq.quality_score || 0) * 100),
+    // Populated by the page-aware own-website extractor (homepage, service,
+    // location, pricing, about, faq, contact, blog, product, menu, policy,
+    // other). Null for competitor-sourced FAQs and legacy rows.
+    page_type: faq.page_type ?? null,
   }));
 }

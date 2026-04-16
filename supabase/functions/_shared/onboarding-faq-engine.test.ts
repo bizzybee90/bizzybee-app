@@ -5,7 +5,8 @@ vi.mock('https://esm.sh/@supabase/supabase-js@2', () => ({}));
 vi.mock('https://esm.sh/@supabase/supabase-js@2.57.2', () => ({}));
 
 // Dynamic import so vi.mock calls are hoisted before module resolution.
-const { dedupeAggregatedFaqs, fingerprintFaqQuestion } = await import('./onboarding-faq-engine.ts');
+const { buildFaqRows, dedupeAggregatedFaqs, fingerprintFaqQuestion } =
+  await import('./onboarding-faq-engine.ts');
 
 type FaqCandidate = {
   question: string;
@@ -14,6 +15,8 @@ type FaqCandidate = {
   evidence_quote?: string;
   quality_score?: number;
   source_business?: string;
+  page_type?: string;
+  category?: string;
 };
 
 function makeFaq(
@@ -271,5 +274,76 @@ describe('dedupeAggregatedFaqs', () => {
     const { faqs, groups_collapsed } = dedupeAggregatedFaqs([]);
     expect(faqs).toEqual([]);
     expect(groups_collapsed).toBe(0);
+  });
+});
+
+describe('buildFaqRows', () => {
+  // The page-aware own-website extractor now emits `page_type` and
+  // `category` per FAQ (see website-faq-extraction.md Step 1 + output
+  // format). buildFaqRows is the final hop before faq_database.insert —
+  // these tests guard that the new fields thread through, and that the
+  // category falls back to the caller's default when Claude omits it
+  // (legacy path / competitor extraction). `page_type` always writes as
+  // null when absent so the DB column stays clean for legacy rows.
+  it('threads page_type through and defaults to null when absent', () => {
+    const rows = buildFaqRows({
+      workspaceId: 'ws-1',
+      category: 'knowledge_base',
+      isOwnContent: true,
+      faqs: [
+        {
+          question: 'How high can you reach?',
+          answer: 'Up to 3 storeys.',
+          source_url: 'https://example.com/services',
+          evidence_quote: 'Our water-fed poles reach three storeys.',
+          quality_score: 0.9,
+          page_type: 'service',
+        },
+        {
+          question: 'Generic question?',
+          answer: 'Generic answer.',
+          source_url: 'https://example.com/',
+          evidence_quote: 'Evidence.',
+          quality_score: 0.5,
+          // No page_type — legacy or structured-FAQ path.
+        },
+      ] as unknown as Parameters<typeof buildFaqRows>[0]['faqs'],
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].page_type).toBe('service');
+    expect(rows[1].page_type).toBeNull();
+  });
+
+  it('prefers FAQ-level category when present and falls back to params.category when absent', () => {
+    const rows = buildFaqRows({
+      workspaceId: 'ws-1',
+      category: 'knowledge_base',
+      isOwnContent: true,
+      faqs: [
+        {
+          question: 'Are you insured?',
+          answer: 'Yes — £5m public liability.',
+          source_url: 'https://example.com/about',
+          evidence_quote: 'Covered by £5m public liability insurance.',
+          quality_score: 0.9,
+          category: 'Trust',
+        },
+        {
+          question: 'How do you pay?',
+          answer: 'Card or bank transfer after the visit.',
+          source_url: 'https://example.com/pricing',
+          evidence_quote: 'Pay by card or bank transfer.',
+          quality_score: 0.8,
+          // No category — falls back to params.category.
+        },
+      ] as unknown as Parameters<typeof buildFaqRows>[0]['faqs'],
+    });
+
+    expect(rows).toHaveLength(2);
+    // FAQ-level category wins.
+    expect(rows[0].category).toBe('Trust');
+    // Absent category → fallback.
+    expect(rows[1].category).toBe('knowledge_base');
   });
 });

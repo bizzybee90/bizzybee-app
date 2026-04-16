@@ -212,6 +212,15 @@ async function executeExtractOneBatch(params: {
   const { supabase, run, attempt, batchIndex, pages, heartbeat } = params;
   const batchCount = pages.length;
   const pagesInBatch = pages.slice(batchIndex, batchIndex + 1);
+  // Page-aware extractor takes one page at a time — pagesInBatch[0] is
+  // guaranteed to exist by the bounds-check in executeWebsiteRunStep before
+  // we reach this helper (batchIndex < batchCount).
+  const pageForBatch = pagesInBatch[0];
+  // Sites with ≤3 discovered pages extract comprehensively — there is no
+  // other page to defer generic facts to. Any run with more than 3 pages
+  // uses the dedup-skipping gating in the prompt so location pages don't
+  // restate brand-level facts already captured on /about etc.
+  const singlePageSite = pages.length <= 3;
   const model = resolveStepModel(run.input_snapshot, 'extract');
 
   const stepRecord = await beginStep({
@@ -252,7 +261,7 @@ async function executeExtractOneBatch(params: {
     let batchSkipped = false;
     try {
       const extracted = await withTransientRetry(() =>
-        extractWebsiteFaqs(anthropicApiKey, model, context, pagesInBatch),
+        extractWebsiteFaqs(anthropicApiKey, model, context, pageForBatch, { singlePageSite }),
       );
       faqs = Array.isArray(extracted?.faqs) ? extracted.faqs : [];
     } catch (err) {

@@ -321,9 +321,13 @@ describe('executeWebsiteRunStep extract branch (per-batch)', () => {
     const result = await executeWebsiteRunStep(supabase, run, 'extract', 1, { batchIndex: 0 });
 
     expect(onboardingAi.extractWebsiteFaqs).toHaveBeenCalledTimes(1);
-    const [, , , pagesArg] = onboardingAi.extractWebsiteFaqs.mock.calls[0];
-    expect(pagesArg).toHaveLength(1);
-    expect(pagesArg[0].url).toBe('https://example.com/0');
+    // Signature: (apiKey, model, context, page, options). Previously this
+    // helper took a page array — the page-aware rewrite processes one page
+    // per call and moves singlePageSite into an options struct.
+    const [, , , pageArg, optionsArg] = onboardingAi.extractWebsiteFaqs.mock.calls[0];
+    expect(pageArg).toMatchObject({ url: 'https://example.com/0' });
+    // 3 pages ≤ 3 → singlePageSite = true (small-site comprehensive path).
+    expect(optionsArg).toEqual({ singlePageSite: true });
 
     expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
     const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
