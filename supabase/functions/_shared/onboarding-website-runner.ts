@@ -613,14 +613,42 @@ export async function executeWebsiteRunStep(
         // have a full 180s window for the retry-ladder to resolve.
         if (heartbeat) await heartbeat({ force: true });
 
-        const deduped = await withTransientRetry(() =>
-          dedupeSharedOwnWebsiteFaqs({
-            apiKey: anthropicApiKey,
-            model,
-            context,
-            candidates: aggregatedFaqs,
-          }),
-        );
+        // During the awaited Claude call, we cannot call heartbeat()
+        // because there's no yield point for interleaving code. The 60s
+        // time-gated beat logic is useless inside a synchronous await.
+        // Instead, fire a background setInterval that force-beats every
+        // 60s. Deno's event loop services timers during awaited promises,
+        // so set_vt RPCs go out even while Claude is still generating.
+        // Without this, any dedup >180s spawns a concurrent persist
+        // (observed 2026-04-16 run e5964850 at 177s into attempt 1).
+        let dedupHeartbeatId: number | null = null;
+        if (heartbeat) {
+          dedupHeartbeatId = setInterval(() => {
+            // Fire-and-forget: don't await so the interval doesn't back
+            // up if set_vt is slow. Heartbeat failures are logged inside
+            // createPgmqHeartbeat and harmless to swallow here.
+            heartbeat({ force: true }).catch((beatErr) => {
+              console.warn(
+                '[own-website-persist] background heartbeat failed',
+                beatErr instanceof Error ? beatErr.message : beatErr,
+              );
+            });
+          }, 60_000);
+        }
+
+        let deduped: { faqs: FaqCandidate[] };
+        try {
+          deduped = await withTransientRetry(() =>
+            dedupeSharedOwnWebsiteFaqs({
+              apiKey: anthropicApiKey,
+              model,
+              context,
+              candidates: aggregatedFaqs,
+            }),
+          );
+        } finally {
+          if (dedupHeartbeatId !== null) clearInterval(dedupHeartbeatId);
+        }
 
         // And again after Claude returns, so the remaining DB writes also
         // run under a fresh VT even if Claude burned most of the prior one.
