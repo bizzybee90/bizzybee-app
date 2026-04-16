@@ -21,6 +21,45 @@ import {
   loadRunArtifact,
 } from './onboarding-faq-engine.ts';
 
+/**
+ * Return the lowest batch_index whose `website_faq_candidates_batch_{N}`
+ * artifact does not yet exist, or null if all batches are written.
+ * Callers: runner (when batch_index is omitted from the payload) and
+ * onboarding-worker-nudge (to enqueue the right batch on nudge).
+ */
+export async function getNextMissingWebsiteBatch(
+  supabase: SupabaseClient,
+  runId: string,
+  workspaceId: string,
+  batchCount: number,
+): Promise<number | null> {
+  if (batchCount <= 0) return null;
+
+  const { data, error } = await supabase
+    .from('agent_run_artifacts')
+    .select('artifact_key')
+    .eq('run_id', runId)
+    .eq('workspace_id', workspaceId)
+    .like('artifact_key', 'website_faq_candidates_batch_%');
+
+  if (error) {
+    throw new Error(`Failed to look up website extract batch artifacts: ${error.message}`);
+  }
+
+  const present = new Set<number>();
+  for (const row of data ?? []) {
+    const match = /^website_faq_candidates_batch_(\d+)$/.exec(row.artifact_key ?? '');
+    if (match) {
+      present.add(Number(match[1]));
+    }
+  }
+
+  for (let i = 0; i < batchCount; i++) {
+    if (!present.has(i)) return i;
+  }
+  return null;
+}
+
 export type WebsiteWorkflowStep = 'fetch' | 'extract' | 'persist';
 
 type WebsiteRunRecord = Awaited<ReturnType<typeof loadRunRecord>>;
