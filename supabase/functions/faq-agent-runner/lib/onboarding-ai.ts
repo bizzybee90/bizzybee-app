@@ -379,30 +379,11 @@ async function discoverOwnWebsiteUrls(url: string, maxPages: number): Promise<st
   return Array.from(candidates).slice(0, Math.max(maxPages, 1));
 }
 
-async function crawlWebsitePagesDirect(url: string, maxPages = 8): Promise<FetchedPage[]> {
-  const urls = await discoverOwnWebsiteUrls(url, maxPages);
-  const pages = await Promise.all(
-    urls.slice(0, maxPages).map(async (pageUrl) => {
-      try {
-        const { html, title, structuredFaqs } = await fetchPageHtml(pageUrl);
-        const text = stripHtmlToText(html).slice(0, 30000);
-        if (!text.trim()) return null;
-
-        return {
-          url: pageUrl,
-          title,
-          content: text,
-          content_length: text.length,
-          structured_faqs: structuredFaqs,
-        } satisfies FetchedPage;
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  return pages.filter((item): item is FetchedPage => Boolean(item));
-}
+// crawlWebsitePagesDirect (fetch + stripHtmlToText) intentionally removed:
+// it was a cheerio-equivalent raw-HTML path that silently failed on
+// JS-rendered / Cloudflare-protected sites. crawlWebsitePages now routes
+// 100% through Apify's website-content-crawler (playwright) — same path
+// as competitor scraping — matching the original n8n behaviour.
 
 export async function searchCompetitorCandidates(
   searchQueries: string[],
@@ -591,15 +572,17 @@ function filterUnscrapableFromQualification(result: QualificationResult): Qualif
 }
 
 export async function crawlWebsitePages(url: string, maxPages = 8): Promise<FetchedPage[]> {
-  const directPages = await crawlWebsitePagesDirect(url, maxPages).catch(() => []);
-  if (directPages.length >= Math.min(3, maxPages)) {
-    return directPages;
-  }
-
+  // Unified on Apify website-content-crawler / playwright for both
+  // competitor scrape (fetch-source-page.ts) and own-website scrape
+  // (this function). A single URL becomes up to maxPages pages crawled
+  // within the same domain. Previously this path tried a raw-HTML "direct"
+  // crawl first, then fell back to cheerio via Apify — both of which
+  // silently dropped JS- and Cloudflare-rendered sites. Playwright handles
+  // those, which is what the original n8n workflow relied on.
   const items = await runApifyActor<Record<string, unknown>>(APIFY_CONTENT_ACTOR, {
     startUrls: [{ url }],
     maxCrawlPages: maxPages,
-    crawlerType: 'cheerio',
+    crawlerType: 'playwright:chrome',
     sameDomainDelaySecs: 0,
     removeCookieWarnings: true,
     includeUrlGlobs: [`${new URL(url).origin}/**`],
@@ -621,7 +604,7 @@ export async function crawlWebsitePages(url: string, maxPages = 8): Promise<Fetc
     })
     .filter((item): item is FetchedPage => Boolean(item));
 
-  return apifyPages.length > 0 ? apifyPages : directPages;
+  return apifyPages;
 }
 
 export async function extractWebsiteFaqs(
