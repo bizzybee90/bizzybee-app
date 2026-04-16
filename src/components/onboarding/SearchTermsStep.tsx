@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { generateSearchTerms, normalizePrimaryServiceLocation } from '@/lib/generateSearchTerms';
 import { markPendingOnboardingDiscoveryTrigger } from '@/lib/onboarding/discoveryTrigger';
+import { parsePrimaryServiceArea } from '@/lib/onboarding/serviceArea';
+import { cn } from '@/lib/utils';
 
 interface SearchTermsStepProps {
   workspaceId: string;
@@ -20,6 +22,45 @@ interface SearchTermsStepProps {
 interface SearchTerm {
   term: string;
   enabled: boolean;
+}
+
+/**
+ * Shape of the raw jsonb returned by `public.expand_search_queries`.
+ * Duplicated here (rather than imported from the Deno shared module at
+ * `supabase/functions/_shared/expandSearchQueries.ts`) because the app's
+ * tsconfig.app.json only includes `src`, so cross-boundary imports would
+ * pull the shared module out of its own tsc scope. The source of truth
+ * lives with the SQL RPC; both copies must stay in lockstep.
+ */
+interface ExpandSearchQueriesRpcResult {
+  queries: string[];
+  towns_used: string[];
+  primary_coverage: string[];
+  expanded_coverage: string[];
+}
+
+interface ExpandedQueriesState {
+  queries: string[];
+  townsUsed: string[];
+  primaryCoverage: string[];
+  expandedCoverage: string[];
+}
+
+/**
+ * Mirror of `fromRpcResult` in `supabase/functions/_shared/expandSearchQueries.ts`.
+ * Each array falls back to `[]` so downstream code can assume non-null arrays.
+ * Keep in sync with the shared module.
+ */
+function mapRpcResult(raw: ExpandSearchQueriesRpcResult | null): ExpandedQueriesState {
+  if (!raw) {
+    return { queries: [], townsUsed: [], primaryCoverage: [], expandedCoverage: [] };
+  }
+  return {
+    queries: raw.queries ?? [],
+    townsUsed: raw.towns_used ?? [],
+    primaryCoverage: raw.primary_coverage ?? [],
+    expandedCoverage: raw.expanded_coverage ?? [],
+  };
 }
 
 // generateSearchTerms is now imported from @/lib/generateSearchTerms
@@ -34,9 +75,18 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
   const [businessContext, setBusinessContext] = useState<{
     businessType: string;
     location: string;
+    // Raw `service_area` string preserved verbatim so `parsePrimaryServiceArea`
+    // can extract the radius parenthetical. The normalized `location` field
+    // strips `(20 miles)` for display, which would always yield radius=0 here.
+    serviceAreaRaw: string;
     companyName: string;
     websiteUrl: string;
   } | null>(null);
+
+  const [expandedQueries, setExpandedQueries] = useState<string[]>([]);
+  const [townsUsed, setTownsUsed] = useState<string[]>([]);
+  const [excludedTowns, setExcludedTowns] = useState<Set<string>>(new Set());
+  const [isExpanding, setIsExpanding] = useState(false);
 
   // Load business context and generate terms
   useEffect(() => {
@@ -45,7 +95,8 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         // In preview mode, generate sample terms without querying Supabase
         setBusinessContext({
           businessType: 'window_cleaning',
-          location: normalizePrimaryServiceLocation('Luton'),
+          location: normalizePrimaryServiceLocation('Luton (20 miles)'),
+          serviceAreaRaw: 'Luton (20 miles)',
           companyName: 'Preview Business',
           websiteUrl: '',
         });
@@ -68,6 +119,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
           setBusinessContext({
             businessType: data.business_type || '',
             location: normalizePrimaryServiceLocation(data.service_area || ''),
+            serviceAreaRaw: data.service_area || '',
             companyName: data.company_name || '',
             websiteUrl: data.website_url || '',
           });
@@ -101,6 +153,84 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     [searchTerms],
   );
 
+  // Primary town + radius parsed from the raw service_area string. The parser
+  // returns null for empty / whitespace input; a null value short-circuits the
+  // expand-queries effect below.
+  const primaryArea = useMemo(
+    () => parsePrimaryServiceArea(businessContext?.serviceAreaRaw ?? null),
+    [businessContext?.serviceAreaRaw],
+  );
+
+  // Call expand_search_queries when the enabled term set or primary area changes.
+  // Preview mode skips the RPC and pretends the primary town is the only town
+  // used so the UI still renders deterministically.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (isPreview) {
+      setExpandedQueries(enabledTerms);
+      setTownsUsed(primaryArea ? [primaryArea.town] : []);
+      setIsExpanding(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!primaryArea || enabledTerms.length === 0) {
+      setExpandedQueries([]);
+      setTownsUsed([]);
+      setIsExpanding(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const run = async () => {
+      setIsExpanding(true);
+      try {
+        const { data, error } = await supabase.rpc('expand_search_queries', {
+          p_search_terms: enabledTerms,
+          p_primary_town: primaryArea.town,
+          p_radius_miles: primaryArea.radiusMiles,
+          p_terms_per_nearby_town: 3,
+          p_max_queries: 30,
+          p_max_nearby_towns: 6,
+        });
+        if (cancelled) return;
+        if (error) {
+          console.warn('[SearchTermsStep] expand_search_queries RPC failed', error);
+          // Fallback: use enabledTerms as-is, no chip row.
+          setExpandedQueries(enabledTerms);
+          setTownsUsed([primaryArea.town]);
+          return;
+        }
+        const mapped = mapRpcResult(data as ExpandSearchQueriesRpcResult | null);
+        setExpandedQueries(mapped.queries);
+        setTownsUsed(mapped.townsUsed);
+      } finally {
+        if (!cancelled) setIsExpanding(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabledTerms, primaryArea?.town, primaryArea?.radiusMiles, isPreview, primaryArea]);
+
+  // Final search_queries payload: expandedQueries minus anything matching an
+  // excluded town. A query is "matched" to a town by a case-insensitive
+  // trailing " {town}" suffix, which is how the RPC constructs them.
+  const finalQueries = useMemo(() => {
+    if (excludedTowns.size === 0) return expandedQueries;
+    const excludedLower = new Set(Array.from(excludedTowns).map((t) => t.toLowerCase()));
+    return expandedQueries.filter((q) => {
+      const lowered = q.toLowerCase();
+      const town = townsUsed.find((t) => lowered.endsWith(` ${t.toLowerCase()}`));
+      return !town || !excludedLower.has(town.toLowerCase());
+    });
+  }, [expandedQueries, excludedTowns, townsUsed]);
+
   const handleToggleTerm = (index: number) => {
     setSearchTerms((prev) => prev.map((t, i) => (i === index ? { ...t, enabled: !t.enabled } : t)));
   };
@@ -121,6 +251,17 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
 
   const handleRemoveTerm = (index: number) => {
     setSearchTerms((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleToggleTown = (town: string) => {
+    if (!primaryArea) return;
+    if (town.toLowerCase() === primaryArea.town.toLowerCase()) return;
+    setExcludedTowns((prev) => {
+      const next = new Set(prev);
+      if (next.has(town)) next.delete(town);
+      else next.add(town);
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -145,11 +286,16 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     try {
       markPendingOnboardingDiscoveryTrigger(workspaceId);
 
+      // Use the radius-expanded + town-filtered query list when it's populated;
+      // fall back to the raw enabledTerms if the RPC returned nothing (e.g. an
+      // error path). Never send an empty array downstream.
+      const payloadQueries = finalQueries.length > 0 ? finalQueries : enabledTerms;
+
       const discoveryPromise = supabase.functions
         .invoke('start-onboarding-discovery', {
           body: {
             workspace_id: workspaceId,
-            search_queries: enabledTerms,
+            search_queries: payloadQueries,
             target_count: 15,
             trigger_source: 'onboarding_search_terms',
           },
@@ -206,6 +352,9 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       </div>
     );
   }
+
+  const remainingTownCount = townsUsed.length - excludedTowns.size;
+  const allTownsExcluded = townsUsed.length > 1 && finalQueries.length === 0;
 
   return (
     <div className="space-y-6">
@@ -292,6 +441,46 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         </div>
       </div>
 
+      {/* Radius-expanded town chip row. Appears only when the RPC resolved at
+          least one nearby town. Clicking a chip excludes every query ending
+          with that town from the final payload; the primary town chip is
+          always locked in. */}
+      {townsUsed.length > 1 && primaryArea && (
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">
+            Searching in {remainingTownCount} towns within {primaryArea.radiusMiles} miles
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {finalQueries.length} queries will fire across these areas. Click a town to exclude it.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {townsUsed.map((town) => {
+              const isPrimary = town.toLowerCase() === primaryArea.town.toLowerCase();
+              const isExcluded = excludedTowns.has(town);
+              return (
+                <button
+                  key={town}
+                  type="button"
+                  disabled={isPrimary}
+                  onClick={() => handleToggleTown(town)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs border transition',
+                    isPrimary
+                      ? 'bg-primary/10 border-primary/30 text-primary cursor-default'
+                      : isExcluded
+                        ? 'bg-muted border-muted-foreground/20 text-muted-foreground line-through'
+                        : 'bg-background border-foreground/20 hover:bg-muted',
+                  )}
+                >
+                  {town}
+                  {isPrimary && ' (primary)'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Explainer */}
       <p className="text-sm text-muted-foreground">
         We&apos;ll find and analyse your top 15 local competitors - pulling out the services,
@@ -301,6 +490,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       {/* Summary */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Badge variant="secondary">{enabledTerms.length} terms enabled</Badge>
+        {isExpanding && <span className="text-xs">Computing radius expansion…</span>}
       </div>
 
       {/* Navigation */}
@@ -311,7 +501,7 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         </Button>
         <Button
           onClick={handleSave}
-          disabled={isSaving || enabledTerms.length === 0}
+          disabled={isSaving || enabledTerms.length === 0 || allTownsExcluded}
           className="gap-1"
         >
           {isSaving ? (
