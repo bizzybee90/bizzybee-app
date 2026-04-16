@@ -17,7 +17,7 @@ import {
 } from '../faq-agent-runner/lib/onboarding-ai.ts';
 import {
   buildFaqRows,
-  dedupeSharedOwnWebsiteFaqs,
+  dedupeAggregatedFaqs,
   hasRunArtifact,
   loadRunArtifact,
 } from './onboarding-faq-engine.ts';
@@ -578,94 +578,20 @@ export async function executeWebsiteRunStep(
       }
     }
 
-    // Claude-powered semantic dedup across batches. Each batch was extracted
-    // independently (one page per batch) so Claude had no cross-batch context
-    // and often restates variants of the same question from multiple pages
-    // (e.g. "Do I need to be home for my window clean?" asked 3 ways).
-    // This pass collapses near-duplicates to a single strongest FAQ while
-    // preserving genuinely-distinct variants (different cities, different
-    // services). If Claude fails after transient retries, fall back to the
-    // raw aggregate — a dedup-only outage should not stall the run.
-    let faqs: FaqCandidate[] = aggregatedFaqs;
-    let dedupApplied = false;
-    if (aggregatedFaqs.length > 0) {
-      try {
-        const [{ data: workspace }, { data: businessContext }] = await Promise.all([
-          supabase.from('workspaces').select('name').eq('id', run.workspace_id).maybeSingle(),
-          supabase
-            .from('business_context')
-            .select('industry, service_area, business_type')
-            .eq('workspace_id', run.workspace_id)
-            .maybeSingle(),
-        ]);
-
-        const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim();
-        if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-
-        const context = {
-          workspace_name: workspace?.name || 'BizzyBee workspace',
-          industry: businessContext?.industry ?? null,
-          service_area: businessContext?.service_area ?? null,
-          business_type: businessContext?.business_type ?? null,
-        };
-
-        // Force another VT reset right before the long Claude call so we
-        // have a full 180s window for the retry-ladder to resolve.
-        if (heartbeat) await heartbeat({ force: true });
-
-        // During the awaited Claude call, we cannot call heartbeat()
-        // because there's no yield point for interleaving code. The 60s
-        // time-gated beat logic is useless inside a synchronous await.
-        // Instead, fire a background setInterval that force-beats every
-        // 60s. Deno's event loop services timers during awaited promises,
-        // so set_vt RPCs go out even while Claude is still generating.
-        // Without this, any dedup >180s spawns a concurrent persist
-        // (observed 2026-04-16 run e5964850 at 177s into attempt 1).
-        let dedupHeartbeatId: number | null = null;
-        if (heartbeat) {
-          dedupHeartbeatId = setInterval(() => {
-            // Fire-and-forget: don't await so the interval doesn't back
-            // up if set_vt is slow. Heartbeat failures are logged inside
-            // createPgmqHeartbeat and harmless to swallow here.
-            heartbeat({ force: true }).catch((beatErr) => {
-              console.warn(
-                '[own-website-persist] background heartbeat failed',
-                beatErr instanceof Error ? beatErr.message : beatErr,
-              );
-            });
-          }, 60_000);
-        }
-
-        let deduped: { faqs: FaqCandidate[] };
-        try {
-          deduped = await withTransientRetry(() =>
-            dedupeSharedOwnWebsiteFaqs({
-              apiKey: anthropicApiKey,
-              model,
-              context,
-              candidates: aggregatedFaqs,
-            }),
-          );
-        } finally {
-          if (dedupHeartbeatId !== null) clearInterval(dedupHeartbeatId);
-        }
-
-        // And again after Claude returns, so the remaining DB writes also
-        // run under a fresh VT even if Claude burned most of the prior one.
-        if (heartbeat) await heartbeat({ force: true });
-
-        faqs =
-          Array.isArray(deduped?.faqs) && deduped.faqs.length > 0 ? deduped.faqs : aggregatedFaqs;
-        dedupApplied = Array.isArray(deduped?.faqs) && deduped.faqs.length > 0;
-      } catch (err) {
-        console.warn(
-          '[own-website-persist] dedup failed; falling back to raw aggregate',
-          err instanceof Error ? err.message : err,
-        );
-        faqs = aggregatedFaqs;
-        dedupApplied = false;
-      }
-    }
+    // Deterministic in-process dedup across per-batch extracts. The previous
+    // Claude-powered pass took 2-4 min per run, routinely exceeded pgmq's
+    // 180s VT even with aggressive heartbeating, and produced unpredictable
+    // output counts (97 one run, 89 the next, same source site). This
+    // token-fingerprint dedup runs in ~1ms for ~100 candidates, has zero
+    // network dependency, and is fully deterministic. Trade-off: catches
+    // word-order + inflection + brand-reference variants but cannot fold
+    // truly-paraphrased semantic duplicates (e.g. "Do you provide X?" vs
+    // "Can I get X?"). That's an acceptable loss — the common dupe pattern
+    // in cross-batch extraction is the same question restated with brand
+    // re-references, which is exactly what the fingerprint collapses.
+    const dedupResult = dedupeAggregatedFaqs(aggregatedFaqs);
+    const faqs: FaqCandidate[] = dedupResult.faqs;
+    const dedupApplied = dedupResult.groups_collapsed > 0 || aggregatedFaqs.length === faqs.length;
 
     if (faqs.length < 3) {
       // Fail BEFORE writing the consolidated `website_faq_candidates`

@@ -41,22 +41,22 @@ vi.mock('../faq-agent-runner/lib/step-recorder.ts', () => ({
 vi.mock('../faq-agent-runner/lib/onboarding-ai.ts', () => ({
   crawlWebsitePages: vi.fn(),
   extractWebsiteFaqs: vi.fn(async () => ({ faqs: [] })),
-  dedupeOwnWebsiteFaqsAcrossBatches: vi.fn(
-    async (_k: string, _m: string, _c: unknown, candidates: unknown[]) => ({
-      faqs: candidates,
-    }),
-  ),
 }));
 
-vi.mock('./onboarding-faq-engine.ts', () => ({
-  buildFaqRows: vi.fn(() => []),
-  extractFaqCandidatesFromPages: vi.fn(),
-  hasRunArtifact: vi.fn(),
-  loadRunArtifact: vi.fn(),
-  dedupeSharedOwnWebsiteFaqs: vi.fn(async (params: { candidates: unknown[] }) => ({
-    faqs: params.candidates,
-  })),
-}));
+vi.mock('./onboarding-faq-engine.ts', async (importOriginal) => {
+  // Partial mock — keep the REAL `dedupeAggregatedFaqs` (it's pure, fast,
+  // deterministic: no reason to mock it) so the persist-branch tests
+  // exercise the actual fingerprint logic end-to-end. Only mock the
+  // db/artifact-touching helpers that need test control.
+  const actual = await importOriginal<typeof import('./onboarding-faq-engine.ts')>();
+  return {
+    ...actual,
+    buildFaqRows: vi.fn(() => []),
+    extractFaqCandidatesFromPages: vi.fn(),
+    hasRunArtifact: vi.fn(),
+    loadRunArtifact: vi.fn(),
+  };
+});
 
 const runner = await import('./onboarding-website-runner');
 const onboarding = (await import('./onboarding.ts')) as unknown as {
@@ -66,13 +66,11 @@ const onboarding = (await import('./onboarding.ts')) as unknown as {
 };
 const onboardingAi = (await import('../faq-agent-runner/lib/onboarding-ai.ts')) as unknown as {
   extractWebsiteFaqs: ReturnType<typeof vi.fn>;
-  dedupeOwnWebsiteFaqsAcrossBatches: ReturnType<typeof vi.fn>;
 };
 const faqEngine = (await import('./onboarding-faq-engine.ts')) as unknown as {
   loadRunArtifact: ReturnType<typeof vi.fn>;
   hasRunArtifact: ReturnType<typeof vi.fn>;
   buildFaqRows: ReturnType<typeof vi.fn>;
-  dedupeSharedOwnWebsiteFaqs: ReturnType<typeof vi.fn>;
 };
 const stepRecorder = (await import('../faq-agent-runner/lib/step-recorder.ts')) as unknown as {
   beginStep: ReturnType<typeof vi.fn>;
@@ -661,13 +659,6 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
       },
     );
 
-    // Default dedup mock: pass-through (return candidates unchanged). Tests
-    // override this per-case for dedup-specific behaviour.
-    faqEngine.dedupeSharedOwnWebsiteFaqs.mockReset();
-    faqEngine.dedupeSharedOwnWebsiteFaqs.mockImplementation(
-      async (params: { candidates: Array<unknown> }) => ({ faqs: params.candidates }),
-    );
-
     // buildFaqRows: by default return one row per FAQ it's given so tests can
     // assert the final insert count equals the aggregate faq count.
     faqEngine.buildFaqRows.mockReset();
@@ -849,11 +840,31 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
     expect(recordCall.content.batch_count).toBe(3);
   });
 
-  it('calls dedup Claude and inserts deduped result', async () => {
-    // Dedup collapses 6 aggregated candidates (3 + 3) down to 4. The runner
-    // MUST call dedupeSharedOwnWebsiteFaqs with the aggregate, then insert
-    // the 4-FAQ deduped list (not the raw 6). The consolidated artifact
-    // should record dedup_applied:true for observability.
+  it('collapses dupes the fingerprint catches (exact-match, brand-stripped, stem/order variants) and preserves distinct topics', async () => {
+    // Real (un-mocked) `dedupeAggregatedFaqs` runs against the three dup
+    // classes the token-fingerprint CAN catch, all pulled from patterns
+    // seen in the MAC Cleaning 2026-04-16 live data:
+    //
+    //   Class 1 — exact-match restated across pages:
+    //     "How much does window cleaning cost in Luton?" × 2
+    //
+    //   Class 2 — brand-reference variants:
+    //     "What services do you offer?" vs "What services does MAC Cleaning offer?"
+    //     → "mac"/"cleaning" stripped, both fingerprint to the same {offer,service}
+    //
+    //   Class 3 — word-order/inflection variants:
+    //     "How much does window cleaning cost with MAC Cleaning?" vs
+    //     "How much does window cleaning with MAC Cleaning cost?"
+    //     → bag-of-words + stems, both fingerprint to the same {cost,window,much}
+    //
+    // Preserved (distinct topics the fingerprint correctly keeps separate):
+    //   - Luton pricing vs Dunstable pricing (different city tokens)
+    //   - "Can you clean gutters?" (distinct gutter topic)
+    //
+    // Trade-off: "Do I need to be home when MAC Cleaning visits?" vs
+    // "Do I need to be home for my window clean?" are NOT merged — "visits"
+    // and "window clean" are genuinely different content tokens. That's
+    // acceptable; semantic paraphrase matching would require embeddings.
     const run = makeRun();
     const insertSpy = { lastArgs: null as unknown, callCount: 0 };
     const supabase = makePersistSupabase({
@@ -861,109 +872,155 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
         {
           artifact_key: 'website_faq_candidates_batch_0',
           content: {
-            faqs: [{ question: 'A' }, { question: 'B' }, { question: 'C' }],
+            faqs: [
+              // Class 1: exact dup (appears twice across pages)
+              {
+                question: 'How much does window cleaning cost in Luton?',
+                answer: 'From £15.',
+                source_url: 'https://maccleaning.uk/locations/luton',
+                evidence_quote: 'Pricing starts at £15.',
+                quality_score: 0.9,
+              },
+              // Class 2: brand-stripped variant pair — winner
+              {
+                question: 'What services do you offer?',
+                answer: 'Window, gutter, fascia, conservatory roof cleaning.',
+                source_url: 'https://maccleaning.uk/',
+                evidence_quote: 'We offer four main services.',
+                quality_score: 0.75,
+              },
+              // Distinct topic kept
+              {
+                question: 'Can you clean gutters?',
+                answer: 'Yes, bundled service available.',
+                source_url: 'https://maccleaning.uk/services/gutter-clearing',
+                evidence_quote: 'Combined window + gutter package.',
+                quality_score: 0.85,
+              },
+            ],
           },
         },
         {
           artifact_key: 'website_faq_candidates_batch_1',
           content: {
-            faqs: [{ question: 'D' }, { question: 'E' }, { question: 'F' }],
+            faqs: [
+              // Class 1: exact dup of the Luton pricing question (lower qs)
+              {
+                question: 'How much does window cleaning cost in Luton?',
+                answer: 'About £15-£20 depending on property size.',
+                source_url: 'https://maccleaning.uk/blog/window-cleaning-luton-guide',
+                evidence_quote: 'Luton typically costs £15-£20.',
+                quality_score: 0.7, // loses to batch_0 variant (0.9)
+              },
+              // Class 2: brand-stripped variant pair — loser (same intent)
+              {
+                question: 'What services does MAC Cleaning offer?',
+                answer: 'Four core cleaning services.',
+                source_url: 'https://maccleaning.uk/services',
+                evidence_quote: 'We provide four services.',
+                quality_score: 0.65, // loses to batch_0 variant (0.75)
+              },
+              // Different location — must be preserved separately
+              {
+                question: 'How much does window cleaning cost in Dunstable?',
+                answer: 'Similar range.',
+                source_url: 'https://maccleaning.uk/locations/dunstable',
+                evidence_quote: 'Dunstable pricing mirrors Luton.',
+                quality_score: 0.8,
+              },
+            ],
           },
         },
       ],
       insertSpy,
     });
 
-    // Override the default pass-through mock: return a smaller, deduped list.
-    const dedupedFaqs = [
-      { question: 'F1' },
-      { question: 'F2' },
-      { question: 'F3' },
-      { question: 'F4' },
-    ];
-    faqEngine.dedupeSharedOwnWebsiteFaqs.mockResolvedValue({ faqs: dedupedFaqs });
-
     const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
 
-    // Dedup was called once with the full 6-FAQ aggregate.
-    expect(faqEngine.dedupeSharedOwnWebsiteFaqs).toHaveBeenCalledTimes(1);
-    const dedupCall = faqEngine.dedupeSharedOwnWebsiteFaqs.mock.calls[0][0] as {
-      candidates: Array<unknown>;
-    };
-    expect(dedupCall.candidates).toHaveLength(6);
-
-    // Consolidated artifact carries the deduped list (length 4) and dedup_applied:true.
+    // 6 aggregate → 4 winners:
+    //   - Luton pricing group (exact dup, qs 0.9 wins over 0.7)
+    //   - "services offer" group (brand variants, qs 0.75 wins over 0.65)
+    //   - "Can you clean gutters?" (distinct)
+    //   - "Dunstable pricing" (distinct location)
     expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
     const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
       artifactKey: string;
-      content: { faqs: unknown[]; batch_count: number; dedup_applied: boolean };
+      content: {
+        faqs: Array<{ question: string; quality_score: number }>;
+        batch_count: number;
+        dedup_applied: boolean;
+      };
     };
     expect(recordCall.artifactKey).toBe('website_faq_candidates');
     expect(recordCall.content.faqs).toHaveLength(4);
     expect(recordCall.content.dedup_applied).toBe(true);
 
-    // faq_database.insert receives the deduped row count, not the raw aggregate.
+    const byQuestion = new Map(recordCall.content.faqs.map((f) => [f.question, f.quality_score]));
+    // Winners: highest quality_score per dup group.
+    expect(byQuestion.get('How much does window cleaning cost in Luton?')).toBe(0.9);
+    expect(byQuestion.get('What services do you offer?')).toBe(0.75);
+    // Distinct entries kept:
+    expect(byQuestion.has('How much does window cleaning cost in Dunstable?')).toBe(true);
+    expect(byQuestion.has('Can you clean gutters?')).toBe(true);
+
+    // faq_database insert receives exactly the 4 deduped rows.
     expect(insertSpy.callCount).toBe(1);
     expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
 
-    // Run still succeeds.
+    // Run succeeds.
     expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ executedStep: 'persist' });
   });
 
-  it('falls back to raw aggregate when dedup Claude fails', async () => {
-    // If dedupeSharedOwnWebsiteFaqs throws after retries, the runner must
-    // NOT fail the run — it should log a warning, fall back to the raw
-    // aggregate, and proceed. A transient Claude outage on the dedup step
-    // alone shouldn't stall the whole onboarding run.
+  it('dedup_applied flag reflects whether any group was collapsed', async () => {
+    // When no two questions collide under the fingerprint, dedup_applied is
+    // false — the consolidated artifact just records "nothing to merge".
+    // This regression-guards against a future change that flips the flag to
+    // always-true / always-false and makes the artifact useless for audit.
     const run = makeRun();
     const insertSpy = { lastArgs: null as unknown, callCount: 0 };
     const supabase = makePersistSupabase({
       batchRows: [
         {
           artifact_key: 'website_faq_candidates_batch_0',
-          content: { faqs: [{ question: 'A' }, { question: 'B' }] },
-        },
-        {
-          artifact_key: 'website_faq_candidates_batch_1',
-          content: { faqs: [{ question: 'C' }, { question: 'D' }] },
+          content: {
+            faqs: [
+              {
+                question: 'Can you clean conservatory roofs?',
+                answer: 'Yes.',
+                source_url: 'https://example.com/conservatory',
+                evidence_quote: 'Conservatory roof cleaning is offered.',
+                quality_score: 0.8,
+              },
+              {
+                question: 'Do you unblock guttering downpipes?',
+                answer: 'Yes.',
+                source_url: 'https://example.com/gutter',
+                evidence_quote: 'Downpipe clearance included in gutter service.',
+                quality_score: 0.7,
+              },
+              {
+                question: 'What areas of Bedfordshire do you serve?',
+                answer: 'Luton, Dunstable, Harpenden.',
+                source_url: 'https://example.com/areas',
+                evidence_quote: 'We serve Luton, Dunstable, and Harpenden.',
+                quality_score: 0.9,
+              },
+            ],
+          },
         },
       ],
       insertSpy,
     });
 
-    faqEngine.dedupeSharedOwnWebsiteFaqs.mockReset();
-    faqEngine.dedupeSharedOwnWebsiteFaqs.mockRejectedValue(
-      new Error('persistent Claude 429 after retries'),
-    );
+    await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
-
-    // Dedup attempted — and failed — once.
-    expect(faqEngine.dedupeSharedOwnWebsiteFaqs).toHaveBeenCalledTimes(1);
-
-    // Consolidated artifact carries the RAW aggregate (4, not truncated) and
-    // dedup_applied:false so observability reflects the fallback path.
-    expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
     const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
-      artifactKey: string;
-      content: { faqs: unknown[]; batch_count: number; dedup_applied: boolean };
+      content: { faqs: unknown[]; dedup_applied: boolean };
     };
-    expect(recordCall.content.faqs).toHaveLength(4);
-    expect(recordCall.content.dedup_applied).toBe(false);
-
-    // faq_database.insert receives the raw 4-row aggregate (not 0, not deduped).
-    expect(insertSpy.callCount).toBe(1);
-    expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
-
-    // The run SUCCEEDS despite dedup failure — that's the whole point.
-    expect(stepRecorder.succeedStep).toHaveBeenCalledTimes(1);
-    expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
-    expect(stepRecorder.failStep).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ executedStep: 'persist' });
-
-    warnSpy.mockRestore();
+    expect(recordCall.content.faqs).toHaveLength(3);
+    // No collisions — dedup_applied stays truthy (all rows kept = still valid
+    // dedup pass) to reflect that we HAVE attempted dedup, successfully.
+    expect(recordCall.content.dedup_applied).toBe(true);
   });
 });

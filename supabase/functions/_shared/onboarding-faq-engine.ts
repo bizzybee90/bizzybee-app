@@ -75,6 +75,244 @@ export function normalizeFaqQuestion(value: string): string {
     .trim();
 }
 
+/**
+ * Stopwords + brand tokens stripped during fingerprinting. Location names and
+ * service names (gutter, fascia, window, luton, dunstable, etc.) are NOT in
+ * this list, so "window cleaning cost in Luton" stays distinct from
+ * "...in Dunstable" and from "fascia cleaning cost".
+ */
+const FAQ_FINGERPRINT_STOPWORDS = new Set([
+  // Articles / auxiliaries / copulas
+  'a',
+  'an',
+  'the',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'do',
+  'does',
+  'did',
+  'done',
+  'doing',
+  'have',
+  'has',
+  'had',
+  'having',
+  'will',
+  'would',
+  'shall',
+  'should',
+  'may',
+  'might',
+  'must',
+  'can',
+  'could',
+  'able',
+  // Pronouns
+  'i',
+  'me',
+  'my',
+  'mine',
+  'you',
+  'your',
+  'yours',
+  'we',
+  'us',
+  'our',
+  'ours',
+  'they',
+  'them',
+  'their',
+  'theirs',
+  'he',
+  'she',
+  'it',
+  'its',
+  // Wh-words (the interrogative itself carries little info once stemmed)
+  'what',
+  'when',
+  'where',
+  'why',
+  'how',
+  'who',
+  'whom',
+  'which',
+  // Connectives
+  'and',
+  'or',
+  'but',
+  'not',
+  'nor',
+  'yet',
+  'so',
+  'if',
+  'then',
+  'than',
+  // Prepositions (position/direction, low-signal for topic matching)
+  'of',
+  'in',
+  'on',
+  'at',
+  'to',
+  'from',
+  'for',
+  'with',
+  'without',
+  'by',
+  'as',
+  'into',
+  'about',
+  'over',
+  'under',
+  'between',
+  'through',
+  // Demonstratives / pro-forms
+  'this',
+  'that',
+  'these',
+  'those',
+  'there',
+  'here',
+  // Intensifiers / fillers
+  'too',
+  'very',
+  'just',
+  'also',
+  'only',
+  'even',
+  'still',
+  'any',
+  'some',
+  'one',
+  'ones',
+  // Synonym-ish quantifiers that often swap in variant phrasings ("every
+  // window clean" vs "standard window clean"). Dropping them groups more
+  // semantically-equivalent variants; keeping locations/services means
+  // we still don't over-merge across topics.
+  'every',
+  'each',
+  'all',
+  'another',
+  // Low-signal verbs that appear in many topically-different questions
+  // ("offer", "provide", "use", etc. stay — they carry real topic info).
+  // Aggressively drop brand/self-reference so "Does MAC Cleaning X?" and
+  // "Do you X?" fingerprint the same.
+  'mac',
+  'cleaning',
+  'maccleaning',
+  'bizzybee',
+]);
+
+function tokenizeForFingerprint(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Naive stemmer — folds simple English plurals/inflections so "cleans",
+ * "cleaning", and "cleaned" all map to "clean". Deliberately shallow: we want
+ * collisions on obvious variants without accidentally merging distinct words
+ * (e.g. "basis" shouldn't stem to "ba").
+ */
+function simpleStem(token: string): string {
+  if (token.length > 4 && token.endsWith('ies')) return token.slice(0, -3) + 'y';
+  if (token.length > 5 && token.endsWith('ing')) return token.slice(0, -3);
+  if (token.length > 4 && token.endsWith('ed')) return token.slice(0, -2);
+  if (
+    token.length > 3 &&
+    token.endsWith('s') &&
+    !token.endsWith('ss') &&
+    !token.endsWith('us') &&
+    !token.endsWith('is')
+  ) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+/**
+ * Deterministic fingerprint for grouping near-duplicate questions.
+ *
+ * Design choices, all to catch cross-batch restatements of the same intent:
+ *
+ * - lowercase + punctuation-stripped: "What is the cost?" and "What's the
+ *   cost" bucket together.
+ * - stopwords + brand tokens removed: "Do I need to be home when MAC
+ *   Cleaning cleans my windows?" and "Do I need to be home for my window
+ *   clean?" both reduce to {home, need, window, clean}.
+ * - naive stemming: "cleans"/"cleaning"/"cleaned" → "clean".
+ * - set + sorted: word order doesn't matter, duplicate tokens collapse.
+ *
+ * Returns empty string if every token was a stopword (rare — caller skips).
+ */
+export function fingerprintFaqQuestion(question: string): string {
+  const tokens = tokenizeForFingerprint(question)
+    .filter((t) => !FAQ_FINGERPRINT_STOPWORDS.has(t))
+    .map(simpleStem);
+  return Array.from(new Set(tokens)).sort().join(' ');
+}
+
+function scoreFaqForDedup(faq: FaqCandidate): number {
+  const qualityScore = typeof faq.quality_score === 'number' ? faq.quality_score : 0;
+  const evidenceLength = typeof faq.evidence_quote === 'string' ? faq.evidence_quote.length : 0;
+  const answerLength = typeof faq.answer === 'string' ? faq.answer.length : 0;
+  // quality_score is the dominant signal (0..1). Evidence + answer length
+  // break ties deterministically — longer, better-grounded wins.
+  return qualityScore * 1000 + Math.min(evidenceLength, 500) + Math.min(answerLength, 500);
+}
+
+/**
+ * Fast, deterministic, in-process dedup of aggregated per-batch FAQ
+ * candidates. Replaces the earlier Claude-powered dedup pass: runs in
+ * milliseconds for ~100 candidates, no Anthropic call, no pgmq VT concerns,
+ * no wall-clock risk.
+ *
+ * Groups candidates by `fingerprintFaqQuestion` and keeps the highest-scoring
+ * (by quality_score + evidence/answer length) FAQ per group.
+ */
+export function dedupeAggregatedFaqs(faqs: FaqCandidate[]): {
+  faqs: FaqCandidate[];
+  groups_collapsed: number;
+} {
+  const byFingerprint = new Map<string, FaqCandidate>();
+  let considered = 0;
+
+  for (const faq of faqs) {
+    // Only `question` is structurally required here — we fingerprint on it.
+    // Downstream buildFaqRows/faq_database insert will handle missing
+    // answer/source_url (the pre-refactor behaviour was to pass these through
+    // to insert and let the caller decide whether incomplete FAQs matter).
+    const question = typeof faq?.question === 'string' ? faq.question.trim() : '';
+    if (!question) continue;
+
+    // Fallback: pathological questions where every token is a stopword
+    // (e.g. very short questions, or single letters like "A" used in tests)
+    // collapse to an empty fingerprint. Rather than silently drop, bucket
+    // by the raw normalized question so each distinct surface form keeps
+    // its own slot.
+    const fp = fingerprintFaqQuestion(question) || normalizeFaqQuestion(question);
+    if (!fp) continue;
+
+    considered += 1;
+    const existing = byFingerprint.get(fp);
+    if (!existing || scoreFaqForDedup(faq) > scoreFaqForDedup(existing)) {
+      byFingerprint.set(fp, faq);
+    }
+  }
+
+  return {
+    faqs: Array.from(byFingerprint.values()),
+    groups_collapsed: Math.max(0, considered - byFingerprint.size),
+  };
+}
+
 export async function extractFaqCandidatesFromPages(params: {
   apiKey: string;
   model: string;
