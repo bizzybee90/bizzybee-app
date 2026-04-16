@@ -183,9 +183,6 @@ export function CompetitorReviewScreen({
     [competitors],
   );
 
-  // Check if at limit
-  const isAtLimit = selectedCount >= targetCount;
-
   // Check if domain looks suspicious
   const isSuspiciousDomain = (domain: string): boolean => {
     return SUSPICIOUS_DOMAINS.some((sus) => domain.toLowerCase().includes(sus));
@@ -217,14 +214,6 @@ export function CompetitorReviewScreen({
 
   // Toggle individual competitor selection
   const handleToggleSelection = async (competitorId: string, newValue: boolean) => {
-    // Check limit when trying to select
-    if (newValue && isAtLimit) {
-      toast.error(`Limit reached (${targetCount} competitors)`, {
-        description: 'Deselect one to add another',
-      });
-      return;
-    }
-
     // Optimistic update
     setCompetitors((prev) =>
       prev.map((c) => (c.id === competitorId ? { ...c, is_selected: newValue } : c)),
@@ -242,15 +231,11 @@ export function CompetitorReviewScreen({
     }
   };
 
-  // Select all (up to limit)
+  // Select all filtered non-selected competitors (no cap — user retains full control)
   const handleSelectAll = async () => {
-    // Only select up to targetCount
-    const toSelect = competitors
-      .filter((c) => !c.is_selected)
-      .slice(0, targetCount - selectedCount);
+    const toSelect = filteredCompetitors.filter((c) => !c.is_selected);
 
     if (toSelect.length === 0) {
-      toast.info('Already at maximum selection');
       return;
     }
 
@@ -300,14 +285,6 @@ export function CompetitorReviewScreen({
   // Add manual URL
   const handleAddManualUrl = async () => {
     if (!manualUrl.trim()) return;
-
-    // Check limit
-    if (isAtLimit) {
-      toast.error(`Limit reached (${targetCount} competitors)`, {
-        description: 'Deselect one to add another',
-      });
-      return;
-    }
 
     let cleanUrl = manualUrl.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
@@ -435,9 +412,24 @@ export function CompetitorReviewScreen({
         <h2 className="text-xl font-semibold text-foreground">Review Competitors</h2>
         <p className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">{selectedCount}</span> of{' '}
-          <span className="font-medium text-foreground">{targetCount}</span> selected
-          <span className="mx-2">•</span>
-          <span className="text-muted-foreground">{competitors.length} found in your area</span>
+          <span className="font-medium text-foreground">{competitors.length}</span> selected
+          {selectedCount > 10 && (
+            <>
+              <span className="mx-2">•</span>
+              <span className="italic text-muted-foreground">
+                More than 10 — that's fine, just a heads-up.
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* Soft recommendation — user picks whatever they want; this is a hint, not a cap */}
+      <div className="border border-primary/20 bg-primary/5 p-3 rounded-lg text-sm text-foreground">
+        <p>
+          <span className="font-medium">We recommend picking 5–10 competitors.</span> That's usually
+          enough for diverse coverage without diluting your own voice. More is fine if you prefer,
+          but your own website will always be the primary source of truth for your AI's answers.
         </p>
       </div>
 
@@ -489,21 +481,13 @@ export function CompetitorReviewScreen({
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={handleSelectAll} disabled={isAtLimit}>
+        <Button variant="outline" size="sm" onClick={handleSelectAll}>
           Select All
         </Button>
         <Button variant="outline" size="sm" onClick={handleClearAll}>
           Clear
         </Button>
       </div>
-
-      {/* Selection limit warning */}
-      {isAtLimit && (
-        <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-          <span>Selection limit reached ({targetCount}). Deselect competitors to add more.</span>
-        </div>
-      )}
 
       {/* Invalid sites warning */}
       {invalidCount > 0 && (
@@ -540,7 +524,6 @@ export function CompetitorReviewScreen({
                     onCheckedChange={(checked) =>
                       handleToggleSelection(competitor.id, checked === true)
                     }
-                    disabled={!competitor.is_selected && isAtLimit}
                   />
 
                   <div className="flex-1 min-w-0">
@@ -654,11 +637,11 @@ export function CompetitorReviewScreen({
             value={manualUrl}
             onChange={(e) => setManualUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddManualUrl()}
-            disabled={isAddingUrl || isAtLimit}
+            disabled={isAddingUrl}
           />
           <Button
             onClick={handleAddManualUrl}
-            disabled={!manualUrl.trim() || isAddingUrl || isAtLimit}
+            disabled={!manualUrl.trim() || isAddingUrl}
             size="icon"
           >
             {isAddingUrl ? (
@@ -677,7 +660,7 @@ export function CompetitorReviewScreen({
             <CheckCircle2 className="h-4 w-4 text-success" />
             <span>
               <span className="font-medium">{selectedCount}</span> of{' '}
-              <span className="font-medium">{targetCount}</span> competitors selected
+              <span className="font-medium">{competitors.length}</span> competitors selected
             </span>
           </div>
           <span className="text-muted-foreground">Estimated analysis cost: ~${estimatedCost}</span>
@@ -746,7 +729,7 @@ export function CompetitorReviewScreen({
             ) : (
               <>
                 <Sparkles className="h-4 w-4 mr-2" />
-                Confirm & Start Analysis ({selectedCount}/{targetCount})
+                Confirm & Start Analysis ({selectedCount})
               </>
             )}
           </Button>
