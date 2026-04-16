@@ -1386,16 +1386,24 @@ export function ProgressScreen({
             <ChevronRight className="h-4 w-4" />
           </>
         </Button>
-        {!allComplete && (
-          <div className="flex gap-3">
-            <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">
-              ← Back
-            </Button>
+        <div className="flex gap-3">
+          {/*
+           * Back stays available regardless of allComplete — even once
+           * discovery + scraping are "Complete", users reasonably want to
+           * tweak search terms or earlier steps (spotted 2026-04-16 when
+           * Fastmail warmup was stuck AND the user wanted to adjust
+           * discovery, but Back had disappeared behind the allComplete
+           * gate). Skip-for-now still hides when nothing's left to skip.
+           */}
+          <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">
+            ← Back
+          </Button>
+          {!allComplete && (
             <Button variant="outline" size="sm" onClick={onNext}>
               Skip for now →
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
