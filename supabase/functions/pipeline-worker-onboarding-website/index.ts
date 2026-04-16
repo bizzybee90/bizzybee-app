@@ -63,6 +63,10 @@ async function processJob(
     batchIndex: job.batch_index,
   });
 
+  // Note: `executedStep === null` (runner no-op — nothing pending) and
+  // `executedStep === 'persist'` (terminal — run already marked succeeded
+  // inside the runner) intentionally fall through to the queueDelete below
+  // without chaining a new msg. Only 'fetch' and 'extract' need a follow-up.
   if (result.executedStep === 'fetch') {
     // Start the chunked extract chain at batch 0.
     await queueSend(
