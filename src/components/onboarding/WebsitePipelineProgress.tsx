@@ -11,7 +11,7 @@ import {
   RotateCcw,
   Globe,
   FileText,
-  Sparkles,
+  Brain,
   Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -796,7 +796,7 @@ export function WebsitePipelineProgress({
                 : 'AI will extract FAQs, pricing, and business facts'
           }
           status={stageStatuses.extract}
-          icon={Sparkles}
+          icon={Brain}
         >
           {stageStatuses.extract === 'pending' && (
             <p className="text-sm text-muted-foreground">Coming next... (~30 seconds)</p>
