@@ -15,7 +15,12 @@ export function stripPrimaryTownSuffix(term: string, primaryTown: string): strin
   if (!lowerTown) return term.trim();
 
   // Match the town at end-of-string, optionally after punctuation/whitespace.
-  const escaped = lowerTown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // `-` is only special inside a character class, and the escaped string is
+  // used in the body of the regex (never inside `[...]`) below — but escape
+  // it anyway so this invariant isn't implicit. A future refactor that wraps
+  // `${escaped}` in a character class (e.g. a case-folded alternation) won't
+  // silently break on hyphenated town names like "Stoke-on-Trent".
+  const escaped = lowerTown.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
   const pattern = new RegExp(`[\\s,.;:-]*${escaped}$`);
   const match = lowerTerm.match(pattern);
   if (!match) return term.trim();

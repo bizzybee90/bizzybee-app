@@ -26,6 +26,14 @@ describe('stripPrimaryTownSuffix', () => {
       'best window cleaning',
     );
   });
+
+  it('handles primary town names containing regex metacharacters', () => {
+    // Hyphenated town name: "Stoke-on-Trent" would break the regex if `-`
+    // leaked into a character class. Period: "St. Albans" has `.` which
+    // matches any char in unescaped regex. Both must strip literally.
+    expect(stripPrimaryTownSuffix('plumber stoke-on-trent', 'Stoke-on-Trent')).toBe('plumber');
+    expect(stripPrimaryTownSuffix('gp surgery st. albans', 'St. Albans')).toBe('gp surgery');
+  });
 });
 
 describe('expandSearchQueries', () => {
@@ -127,5 +135,21 @@ describe('expandSearchQueries', () => {
       termsPerNearbyTown: 3,
     });
     expect(result.queries).toEqual([]);
+  });
+
+  it('drops terms that strip to empty (user typed just the town name)', () => {
+    // Regression guard: if a user enters the primary town verbatim as a
+    // "search term", stripPrimaryTownSuffix turns it into an empty stem,
+    // which must be filtered out before concatenation so we don't emit
+    // a ghost " luton" / " dunstable" query.
+    const result = expandSearchQueries({
+      searchTerms: ['luton', 'window cleaning'],
+      primaryTown: 'Luton',
+      nearbyTowns: ['Dunstable'],
+      termsPerNearbyTown: 3,
+    });
+    // Only 'window cleaning' survives as a stem → 1 primary + 1 nearby = 2.
+    expect(result.queries).toEqual(['window cleaning luton', 'window cleaning dunstable']);
+    expect(result.queries.every((q) => q.trim().length > 0 && !q.startsWith(' '))).toBe(true);
   });
 });
