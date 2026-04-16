@@ -445,6 +445,20 @@ export async function executeWebsiteRunStep(
       return { executedStep: 'extract', batchCount, allBatchesDone: true };
     }
 
+    // Guard: once we have a non-null batch index, it MUST be addressable
+    // against the loaded pages array. Task 4 will wire up the worker's
+    // chain-next-batch logic — if that ever mis-computes next_batch_index
+    // (e.g. off-by-one at boundary, or stale batchCount) we'd otherwise
+    // silently slice an empty window from `pages`, call Claude with zero
+    // pages, and corrupt website_extract_progress.batch_index. Fail loud
+    // instead so the worker's failure path catches it.
+    if (effectiveBatch < 0 || effectiveBatch >= batchCount) {
+      throw new Error(
+        `Invalid batch_index ${effectiveBatch} for website extract run ${run.id} ` +
+          `(batchCount=${batchCount})`,
+      );
+    }
+
     // Idempotency: if this exact batch artifact already exists (worker
     // restarted mid-chain and re-delivered us the same msg), short-circuit
     // without re-calling Claude. Compute allBatchesDone by checking if

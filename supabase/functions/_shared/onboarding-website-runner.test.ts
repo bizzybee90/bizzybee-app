@@ -329,6 +329,21 @@ describe('executeWebsiteRunStep extract branch (per-batch)', () => {
       expect.objectContaining({ stepKey: 'website:extract_batch_0' }),
     );
 
+    // Progress is written 1-indexed so the UI's "AI pass N of M" label reads
+    // naturally. A regression to 0-indexing would make the first batch
+    // render as "AI pass 0 of 3", which is what we want to guard against.
+    expect(onboarding.touchAgentRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        outputSummaryPatch: expect.objectContaining({
+          website_extract_progress: expect.objectContaining({
+            batch_index: 1,
+            batch_count: 3,
+          }),
+        }),
+      }),
+    );
+
     expect(result).toMatchObject({
       executedStep: 'extract',
       batchIndex: 0,
@@ -427,5 +442,62 @@ describe('executeWebsiteRunStep extract branch (per-batch)', () => {
       allBatchesDone: true,
     });
     expect(result.batchIndex).toBeUndefined();
+  });
+
+  it('skips the batch (artifact with faqs:[], batch_skipped:true) when Claude retries are exhausted', async () => {
+    // When withTransientRetry gives up and extractWebsiteFaqs rejects with a
+    // permanent error, executeExtractOneBatch MUST NOT rethrow — otherwise
+    // the pgmq chain stalls on this batch forever and later batches never
+    // fire. Instead it writes an empty artifact tagged batch_skipped:true
+    // and succeeds the step so the worker can advance.
+    const run = makeRun();
+    const pages = makePages(3);
+    faqEngine.loadRunArtifact.mockResolvedValue({ pages });
+    faqEngine.hasRunArtifact.mockImplementation(
+      async (_s: unknown, _r: string, _w: string, key: string) => {
+        if (key === 'website_pages') return true;
+        return false;
+      },
+    );
+
+    onboardingAi.extractWebsiteFaqs.mockReset();
+    onboardingAi.extractWebsiteFaqs.mockRejectedValue(new Error('persistent 429 after retries'));
+
+    const supabase = makeExtractSupabase({ existingBatchKeys: [] });
+
+    const result = await executeWebsiteRunStep(supabase, run, 'extract', 1, { batchIndex: 0 });
+
+    // The retry wrapper is mocked to pass through, so this proves the outer
+    // try/catch in executeExtractOneBatch swallowed the rejection.
+    expect(onboardingAi.extractWebsiteFaqs).toHaveBeenCalledTimes(1);
+
+    expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: {
+        faqs: unknown[];
+        batch_index: number;
+        batch_count: number;
+        batch_skipped?: boolean;
+      };
+    };
+    expect(recordCall.artifactKey).toBe('website_faq_candidates_batch_0');
+    expect(recordCall.content).toMatchObject({
+      faqs: [],
+      batch_index: 0,
+      batch_count: 3,
+      batch_skipped: true,
+    });
+
+    // The step should succeed (so the worker can advance), not fail.
+    expect(stepRecorder.succeedStep).toHaveBeenCalledTimes(1);
+    expect(stepRecorder.failStep).not.toHaveBeenCalled();
+
+    expect(result).toEqual({
+      executedStep: 'extract',
+      batchIndex: 0,
+      batchCount: 3,
+      allBatchesDone: false,
+    });
   });
 });
