@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import {
+  dedupeOwnWebsiteFaqsAcrossBatches,
   extractCompetitorFaqCandidates,
   extractWebsiteFaqsInChunks,
   finalizeFaqCandidates,
@@ -151,6 +152,20 @@ export async function finalizeSharedFaqCandidates(params: {
     params.context,
     params.candidates,
     params.existingQuestions,
+  );
+}
+
+export async function dedupeSharedOwnWebsiteFaqs(params: {
+  apiKey: string;
+  model: string;
+  context: SharedFaqPromptContext;
+  candidates: FaqCandidate[];
+}): Promise<{ faqs: FaqCandidate[] }> {
+  return dedupeOwnWebsiteFaqsAcrossBatches(
+    params.apiKey,
+    params.model,
+    params.context,
+    params.candidates,
   );
 }
 

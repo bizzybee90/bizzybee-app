@@ -15,7 +15,12 @@ import {
   type FaqCandidate,
   type FetchedPage,
 } from '../faq-agent-runner/lib/onboarding-ai.ts';
-import { buildFaqRows, hasRunArtifact, loadRunArtifact } from './onboarding-faq-engine.ts';
+import {
+  buildFaqRows,
+  dedupeSharedOwnWebsiteFaqs,
+  hasRunArtifact,
+  loadRunArtifact,
+} from './onboarding-faq-engine.ts';
 
 /**
  * Return the lowest batch_index whose `website_faq_candidates_batch_{N}`
@@ -554,11 +559,63 @@ export async function executeWebsiteRunStep(
         return ai - bi;
       });
 
-    const faqs: FaqCandidate[] = [];
+    const aggregatedFaqs: FaqCandidate[] = [];
     for (const row of batchRowsSorted) {
       const content = row.content as { faqs?: FaqCandidate[] } | null;
       if (Array.isArray(content?.faqs)) {
-        faqs.push(...content.faqs);
+        aggregatedFaqs.push(...content.faqs);
+      }
+    }
+
+    // Claude-powered semantic dedup across batches. Each batch was extracted
+    // independently (one page per batch) so Claude had no cross-batch context
+    // and often restates variants of the same question from multiple pages
+    // (e.g. "Do I need to be home for my window clean?" asked 3 ways).
+    // This pass collapses near-duplicates to a single strongest FAQ while
+    // preserving genuinely-distinct variants (different cities, different
+    // services). If Claude fails after transient retries, fall back to the
+    // raw aggregate — a dedup-only outage should not stall the run.
+    let faqs: FaqCandidate[] = aggregatedFaqs;
+    let dedupApplied = false;
+    if (aggregatedFaqs.length > 0) {
+      try {
+        const [{ data: workspace }, { data: businessContext }] = await Promise.all([
+          supabase.from('workspaces').select('name').eq('id', run.workspace_id).maybeSingle(),
+          supabase
+            .from('business_context')
+            .select('industry, service_area, business_type')
+            .eq('workspace_id', run.workspace_id)
+            .maybeSingle(),
+        ]);
+
+        const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim();
+        if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+        const context = {
+          workspace_name: workspace?.name || 'BizzyBee workspace',
+          industry: businessContext?.industry ?? null,
+          service_area: businessContext?.service_area ?? null,
+          business_type: businessContext?.business_type ?? null,
+        };
+
+        const deduped = await withTransientRetry(() =>
+          dedupeSharedOwnWebsiteFaqs({
+            apiKey: anthropicApiKey,
+            model,
+            context,
+            candidates: aggregatedFaqs,
+          }),
+        );
+        faqs =
+          Array.isArray(deduped?.faqs) && deduped.faqs.length > 0 ? deduped.faqs : aggregatedFaqs;
+        dedupApplied = Array.isArray(deduped?.faqs) && deduped.faqs.length > 0;
+      } catch (err) {
+        console.warn(
+          '[own-website-persist] dedup failed; falling back to raw aggregate',
+          err instanceof Error ? err.message : err,
+        );
+        faqs = aggregatedFaqs;
+        dedupApplied = false;
       }
     }
 
@@ -584,7 +641,11 @@ export async function executeWebsiteRunStep(
       workspaceId: run.workspace_id,
       artifactType: 'faq_candidate_batch',
       artifactKey: 'website_faq_candidates',
-      content: { faqs, batch_count: batchRowsSorted.length } as Record<string, unknown>,
+      content: {
+        faqs,
+        batch_count: batchRowsSorted.length,
+        dedup_applied: dedupApplied,
+      } as Record<string, unknown>,
       stepId: stepRecord.id,
     });
 

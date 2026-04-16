@@ -41,6 +41,11 @@ vi.mock('../faq-agent-runner/lib/step-recorder.ts', () => ({
 vi.mock('../faq-agent-runner/lib/onboarding-ai.ts', () => ({
   crawlWebsitePages: vi.fn(),
   extractWebsiteFaqs: vi.fn(async () => ({ faqs: [] })),
+  dedupeOwnWebsiteFaqsAcrossBatches: vi.fn(
+    async (_k: string, _m: string, _c: unknown, candidates: unknown[]) => ({
+      faqs: candidates,
+    }),
+  ),
 }));
 
 vi.mock('./onboarding-faq-engine.ts', () => ({
@@ -48,6 +53,9 @@ vi.mock('./onboarding-faq-engine.ts', () => ({
   extractFaqCandidatesFromPages: vi.fn(),
   hasRunArtifact: vi.fn(),
   loadRunArtifact: vi.fn(),
+  dedupeSharedOwnWebsiteFaqs: vi.fn(async (params: { candidates: unknown[] }) => ({
+    faqs: params.candidates,
+  })),
 }));
 
 const runner = await import('./onboarding-website-runner');
@@ -58,11 +66,13 @@ const onboarding = (await import('./onboarding.ts')) as unknown as {
 };
 const onboardingAi = (await import('../faq-agent-runner/lib/onboarding-ai.ts')) as unknown as {
   extractWebsiteFaqs: ReturnType<typeof vi.fn>;
+  dedupeOwnWebsiteFaqsAcrossBatches: ReturnType<typeof vi.fn>;
 };
 const faqEngine = (await import('./onboarding-faq-engine.ts')) as unknown as {
   loadRunArtifact: ReturnType<typeof vi.fn>;
   hasRunArtifact: ReturnType<typeof vi.fn>;
   buildFaqRows: ReturnType<typeof vi.fn>;
+  dedupeSharedOwnWebsiteFaqs: ReturnType<typeof vi.fn>;
 };
 const stepRecorder = (await import('../faq-agent-runner/lib/step-recorder.ts')) as unknown as {
   beginStep: ReturnType<typeof vi.fn>;
@@ -586,6 +596,30 @@ function makePersistSupabase(options: {
           }),
         };
       }
+      if (table === 'workspaces') {
+        // Persist branch loads workspace_name for the dedup-Claude prompt.
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: { name: 'Test Workspace' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'business_context') {
+        // Persist branch loads industry/service_area/business_type for the dedup prompt.
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { industry: null, service_area: null, business_type: null },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
       // Fallback for any other table accidentally touched.
       return {
         select: () => ({
@@ -601,8 +635,18 @@ function makePersistSupabase(options: {
 }
 
 describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
+  const ORIGINAL_ENV = globalThis.Deno?.env?.get;
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Stub Deno.env.get so persist can read ANTHROPIC_API_KEY for the dedup call.
+    const denoStub = {
+      env: {
+        get: (k: string) => (k === 'ANTHROPIC_API_KEY' ? 'test-key' : ORIGINAL_ENV?.(k)),
+      },
+    };
+    (globalThis as unknown as { Deno: unknown }).Deno = denoStub;
 
     // resolvePendingWebsiteStep needs: website_pages=true, website_faq_candidates=false
     // so it returns 'persist' (not 'fetch' or 'extract'). We control this per-test
@@ -615,6 +659,13 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
         if (key === 'website_faq_candidates') return false;
         return false;
       },
+    );
+
+    // Default dedup mock: pass-through (return candidates unchanged). Tests
+    // override this per-case for dedup-specific behaviour.
+    faqEngine.dedupeSharedOwnWebsiteFaqs.mockReset();
+    faqEngine.dedupeSharedOwnWebsiteFaqs.mockImplementation(
+      async (params: { candidates: Array<unknown> }) => ({ faqs: params.candidates }),
     );
 
     // buildFaqRows: by default return one row per FAQ it's given so tests can
@@ -796,5 +847,123 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
     expect(recordCall.artifactKey).toBe('website_faq_candidates');
     expect(recordCall.content.faqs.map((f) => f.question)).toEqual(['A', 'B', 'C']);
     expect(recordCall.content.batch_count).toBe(3);
+  });
+
+  it('calls dedup Claude and inserts deduped result', async () => {
+    // Dedup collapses 6 aggregated candidates (3 + 3) down to 4. The runner
+    // MUST call dedupeSharedOwnWebsiteFaqs with the aggregate, then insert
+    // the 4-FAQ deduped list (not the raw 6). The consolidated artifact
+    // should record dedup_applied:true for observability.
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: {
+            faqs: [{ question: 'A' }, { question: 'B' }, { question: 'C' }],
+          },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_1',
+          content: {
+            faqs: [{ question: 'D' }, { question: 'E' }, { question: 'F' }],
+          },
+        },
+      ],
+      insertSpy,
+    });
+
+    // Override the default pass-through mock: return a smaller, deduped list.
+    const dedupedFaqs = [
+      { question: 'F1' },
+      { question: 'F2' },
+      { question: 'F3' },
+      { question: 'F4' },
+    ];
+    faqEngine.dedupeSharedOwnWebsiteFaqs.mockResolvedValue({ faqs: dedupedFaqs });
+
+    const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
+
+    // Dedup was called once with the full 6-FAQ aggregate.
+    expect(faqEngine.dedupeSharedOwnWebsiteFaqs).toHaveBeenCalledTimes(1);
+    const dedupCall = faqEngine.dedupeSharedOwnWebsiteFaqs.mock.calls[0][0] as {
+      candidates: Array<unknown>;
+    };
+    expect(dedupCall.candidates).toHaveLength(6);
+
+    // Consolidated artifact carries the deduped list (length 4) and dedup_applied:true.
+    expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: { faqs: unknown[]; batch_count: number; dedup_applied: boolean };
+    };
+    expect(recordCall.artifactKey).toBe('website_faq_candidates');
+    expect(recordCall.content.faqs).toHaveLength(4);
+    expect(recordCall.content.dedup_applied).toBe(true);
+
+    // faq_database.insert receives the deduped row count, not the raw aggregate.
+    expect(insertSpy.callCount).toBe(1);
+    expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
+
+    // Run still succeeds.
+    expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ executedStep: 'persist' });
+  });
+
+  it('falls back to raw aggregate when dedup Claude fails', async () => {
+    // If dedupeSharedOwnWebsiteFaqs throws after retries, the runner must
+    // NOT fail the run — it should log a warning, fall back to the raw
+    // aggregate, and proceed. A transient Claude outage on the dedup step
+    // alone shouldn't stall the whole onboarding run.
+    const run = makeRun();
+    const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    const supabase = makePersistSupabase({
+      batchRows: [
+        {
+          artifact_key: 'website_faq_candidates_batch_0',
+          content: { faqs: [{ question: 'A' }, { question: 'B' }] },
+        },
+        {
+          artifact_key: 'website_faq_candidates_batch_1',
+          content: { faqs: [{ question: 'C' }, { question: 'D' }] },
+        },
+      ],
+      insertSpy,
+    });
+
+    faqEngine.dedupeSharedOwnWebsiteFaqs.mockReset();
+    faqEngine.dedupeSharedOwnWebsiteFaqs.mockRejectedValue(
+      new Error('persistent Claude 429 after retries'),
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
+
+    // Dedup attempted — and failed — once.
+    expect(faqEngine.dedupeSharedOwnWebsiteFaqs).toHaveBeenCalledTimes(1);
+
+    // Consolidated artifact carries the RAW aggregate (4, not truncated) and
+    // dedup_applied:false so observability reflects the fallback path.
+    expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
+    const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
+      artifactKey: string;
+      content: { faqs: unknown[]; batch_count: number; dedup_applied: boolean };
+    };
+    expect(recordCall.content.faqs).toHaveLength(4);
+    expect(recordCall.content.dedup_applied).toBe(false);
+
+    // faq_database.insert receives the raw 4-row aggregate (not 0, not deduped).
+    expect(insertSpy.callCount).toBe(1);
+    expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
+
+    // The run SUCCEEDS despite dedup failure — that's the whole point.
+    expect(stepRecorder.succeedStep).toHaveBeenCalledTimes(1);
+    expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);
+    expect(stepRecorder.failStep).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ executedStep: 'persist' });
+
+    warnSpy.mockRestore();
   });
 });

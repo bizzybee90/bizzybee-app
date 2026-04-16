@@ -849,3 +849,56 @@ Rules:
     faqs: normalizeFaqCollection(response, 'faqs'),
   };
 }
+
+export async function dedupeOwnWebsiteFaqsAcrossBatches(
+  apiKey: string,
+  model: string,
+  context: PromptContext,
+  candidates: FaqCandidate[],
+): Promise<{ faqs: FaqCandidate[] }> {
+  if (candidates.length === 0) return { faqs: [] };
+
+  const systemPrompt = `You are BizzyBee's own-website FAQ deduplicator.
+
+Return valid JSON only in the exact shape:
+{ "faqs": [ { "question": "...", "answer": "...", "source_url": "...", "evidence_quote": "...", "quality_score": 0.0, "source_business": "..." }, ... ] }
+
+CONTEXT
+- Workspace: ${context.workspace_name}
+- Industry: ${context.industry || ''}
+- Service area: ${context.service_area || ''}
+- Business type: ${context.business_type || ''}
+
+INPUT
+You receive a list of FAQ candidates extracted independently from different pages of this workspace's own website. Each batch processed one page without knowing what other batches produced, so the SAME question often appears multiple times with slightly different wording.
+
+YOUR JOB
+Identify groups of duplicate / near-duplicate questions and return a single deduplicated list.
+
+RULES
+1. Keep ONE FAQ per distinct topic — pick the version with the clearest question and best-grounded answer (prefer ones with highest quality_score, strongest evidence_quote, most specific numbers).
+2. PRESERVE genuinely-distinct FAQs even when they share keywords. Examples of questions that must NOT be merged:
+   - "How much does window cleaning cost in Luton?" vs "How much does window cleaning cost in Dunstable?" — different locations, different pricing.
+   - "How much does fascia cleaning cost?" vs "How much does gutter clearing cost?" — different services.
+   - "How long does a fascia clean take?" vs "How long does a conservatory roof clean take?" — different services.
+3. DO merge these patterns (examples):
+   - "Do I need to be home for my window clean?" / "Do I need to be home when MAC Cleaning cleans my windows?" / "Do I need to be home when MAC Cleaning visits?" → keep one.
+   - "What is included in a standard window clean?" / "What is included in every window clean?" / "What exactly is included in a standard window clean?" → keep one.
+   - Questions about the same topic asked from different pages (home page vs blog vs location page) where the underlying answer is identical.
+4. Do NOT invent new FAQs. Do NOT modify question/answer/source_url/evidence_quote/quality_score text. Copy the winning candidate's fields verbatim.
+5. No maximum count — return as many FAQs as there are distinct topics. For a 89-candidate input with ~15 duplicate groups, expect ~70-75 output FAQs.
+6. If a candidate has missing/empty question/answer/source_url/evidence_quote, drop it.`;
+
+  const userPrompt = JSON.stringify({ candidates }, null, 2);
+
+  const response = await callClaudeForJson<unknown>(apiKey, {
+    systemPrompt,
+    userPrompt,
+    model,
+    maxTokens: 16000, // 89 FAQs × ~150 tokens each = ~13k; 16k provides headroom
+  });
+
+  return {
+    faqs: normalizeFaqCollection(response, 'faqs'),
+  };
+}
