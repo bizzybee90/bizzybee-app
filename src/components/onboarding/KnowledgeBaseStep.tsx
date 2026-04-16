@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  Brain,
   CheckCircle2,
   RotateCcw,
   Globe,
@@ -15,7 +16,6 @@ import {
   Download,
   Loader2,
   Search,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -475,7 +475,7 @@ export function KnowledgeBaseStep({
               label: 'Scrape Content',
               detail: pagesCount ? `${pagesCount} pages scraped` : 'Complete',
             },
-            { icon: Sparkles, label: 'Extract Knowledge', detail: `${faqCount} FAQs extracted` },
+            { icon: Brain, label: 'Extract Knowledge', detail: `${faqCount} FAQs extracted` },
           ].map(({ icon: Icon, label, detail }, i) => (
             <div
               key={i}
