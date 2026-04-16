@@ -5,7 +5,7 @@ import { VoiceDNASummary } from './VoiceDNASummary';
 import { ResponsePlaybook } from './ResponsePlaybook';
 import { ConfidenceAssessment } from './ConfidenceAssessment';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Brain, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface AILearningReportProps {
@@ -88,7 +88,9 @@ export function AILearningReport({ workspaceId, onNext, onBack }: AILearningRepo
       <div className="space-y-6">
         <div className="text-center space-y-4 py-8">
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto">
-            <Brain className="h-8 w-8 text-muted-foreground" />
+            <span role="img" aria-label="BizzyBee" className="text-3xl leading-none">
+              🐝
+            </span>
           </div>
           <div className="space-y-2">
             <h2 className="text-xl font-semibold">Learning In Progress</h2>
@@ -118,7 +120,9 @@ export function AILearningReport({ workspaceId, onNext, onBack }: AILearningRepo
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-          <Brain className="h-6 w-6 text-primary" />
+          <span role="img" aria-label="BizzyBee" className="text-2xl leading-none">
+            🐝
+          </span>
         </div>
         <h2 className="text-xl font-semibold">What BizzyBee Learned About You</h2>
         <p className="text-sm text-muted-foreground">

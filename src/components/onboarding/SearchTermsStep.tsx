@@ -5,10 +5,11 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { ChevronLeft, ChevronRight, Plus, X, Search, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { CardTitle, CardDescription } from '@/components/ui/card';
 import { generateSearchTerms, normalizePrimaryServiceLocation } from '@/lib/generateSearchTerms';
+import { markPendingOnboardingDiscoveryTrigger } from '@/lib/onboarding/discoveryTrigger';
 
 interface SearchTermsStepProps {
   workspaceId: string;
@@ -142,6 +143,8 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     // this invoke fails before the server records the run.
     setIsSaving(true);
     try {
+      markPendingOnboardingDiscoveryTrigger(workspaceId);
+
       const discoveryPromise = supabase.functions
         .invoke('start-onboarding-discovery', {
           body: {
@@ -215,9 +218,11 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
         </CardDescription>
       </div>
 
-      {/* Auto-generated terms info */}
+      {/* Auto-generated terms info — 🐝 brand mark instead of generic AI sparkle. */}
       <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 text-sm">
-        <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+        <span role="img" aria-label="BizzyBee" className="text-base leading-none mt-0.5 shrink-0">
+          🐝
+        </span>
         <div className="text-muted-foreground">
           <span className="font-medium text-foreground">BizzyBee suggested these</span> from your
           business type ({businessContext?.businessType || 'Unknown'}) and location (

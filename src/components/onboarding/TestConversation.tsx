@@ -38,7 +38,9 @@ export const TestConversation = ({ workspaceId, onComplete }: TestConversationPr
       <Card className="max-w-2xl mx-auto">
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
+            <span role="img" aria-label="BizzyBee" className="text-2xl leading-none">
+              🐝
+            </span>
             See BizzyBee in Action!
           </CardTitle>
         </CardHeader>
