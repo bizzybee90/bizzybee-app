@@ -31,15 +31,19 @@ interface SearchTerm {
  * tsconfig.app.json only includes `src`, so cross-boundary imports would
  * pull the shared module out of its own tsc scope. The source of truth
  * lives with the SQL RPC; both copies must stay in lockstep.
+ *
+ * Parity with the shared module's `fromRpcResult` is enforced by the test
+ * `__tests__/mapRpcResult.parity.test.ts` — that test imports from BOTH
+ * files and diffs their output, so a drift in either copy trips CI.
  */
-interface ExpandSearchQueriesRpcResult {
+export interface ExpandSearchQueriesRpcResult {
   queries: string[];
   towns_used: string[];
   primary_coverage: string[];
   expanded_coverage: string[];
 }
 
-interface ExpandedQueriesState {
+export interface ExpandedQueriesState {
   queries: string[];
   townsUsed: string[];
   primaryCoverage: string[];
@@ -49,9 +53,12 @@ interface ExpandedQueriesState {
 /**
  * Mirror of `fromRpcResult` in `supabase/functions/_shared/expandSearchQueries.ts`.
  * Each array falls back to `[]` so downstream code can assume non-null arrays.
+ * Accepts `null` too (Supabase RPC can return null on soft failures) —
+ * shared `fromRpcResult` does not, so the parity test handles that edge
+ * by checking non-null inputs only.
  * Keep in sync with the shared module.
  */
-function mapRpcResult(raw: ExpandSearchQueriesRpcResult | null): ExpandedQueriesState {
+export function mapRpcResult(raw: ExpandSearchQueriesRpcResult | null): ExpandedQueriesState {
   if (!raw) {
     return { queries: [], townsUsed: [], primaryCoverage: [], expandedCoverage: [] };
   }
@@ -221,12 +228,19 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
   // Final search_queries payload: expandedQueries minus anything matching an
   // excluded town. A query is "matched" to a town by a case-insensitive
   // trailing " {town}" suffix, which is how the RPC constructs them.
+  //
+  // Must sort townsUsed DESCENDING by length before matching so overlapping
+  // suffixes resolve to the longer town. Without this, "plumber hemel
+  // hempstead" could be attributed to "Hemel" if "Hemel" sits earlier in
+  // townsUsed than "Hemel Hempstead" — same for "Bury" vs "Bury St Edmunds"
+  // and any Welsh "Pont*" clusters. Longest-first match is stable.
   const finalQueries = useMemo(() => {
     if (excludedTowns.size === 0) return expandedQueries;
     const excludedLower = new Set(Array.from(excludedTowns).map((t) => t.toLowerCase()));
+    const townsByLength = [...townsUsed].sort((a, b) => b.length - a.length);
     return expandedQueries.filter((q) => {
       const lowered = q.toLowerCase();
-      const town = townsUsed.find((t) => lowered.endsWith(` ${t.toLowerCase()}`));
+      const town = townsByLength.find((t) => lowered.endsWith(` ${t.toLowerCase()}`));
       return !town || !excludedLower.has(town.toLowerCase());
     });
   }, [expandedQueries, excludedTowns, townsUsed]);

@@ -418,4 +418,49 @@ describe('SearchTermsStep — radius expansion', () => {
     const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
     expect(invokeBody.search_queries.length).toBeGreaterThan(0);
   });
+
+  it('attributes queries to the LONGEST matching town when towns share a suffix prefix', async () => {
+    // Regression guard for the "Hemel / Hemel Hempstead" overlap bug:
+    // without length-desc sort, excluding "Hemel" would strip the
+    // "Hemel Hempstead" query too (or vice-versa, depending on
+    // townsUsed order). This test pins the longest-first match.
+    const user = userEvent.setup();
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        company_name: 'Test Co',
+        business_type: 'plumbing',
+        service_area: 'Luton (20 miles)',
+        website_url: 'https://example.com',
+      },
+      error: null,
+    });
+    // Deliberately put 'Hemel' BEFORE 'Hemel Hempstead' in towns_used
+    // to surface a regression if someone removes the length-desc sort.
+    mockRpc.mockResolvedValue({
+      data: {
+        queries: ['plumber luton', 'plumber hemel', 'plumber hemel hempstead'],
+        towns_used: ['Luton', 'Hemel', 'Hemel Hempstead'],
+        primary_coverage: ['plumber'],
+        expanded_coverage: ['plumber'],
+      },
+      error: null,
+    });
+
+    render(<SearchTermsStep workspaceId="test-workspace-id" onNext={vi.fn()} onBack={vi.fn()} />);
+
+    // Exclude the SHORT town. The long-town query must survive.
+    const hemelChip = await screen.findByRole('button', { name: /^Hemel$/ });
+    await user.click(hemelChip);
+
+    const continueButton = await screen.findByRole('button', { name: /continue/i });
+    await user.click(continueButton);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+    const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
+    expect(invokeBody.search_queries).toContain('plumber hemel hempstead');
+    expect(invokeBody.search_queries).not.toContain('plumber hemel');
+    expect(invokeBody.search_queries).toContain('plumber luton');
+  });
 });
