@@ -73,20 +73,32 @@ export interface PgmqHeartbeatOptions {
  * set_vt failures are logged to console.warn and swallowed — the heartbeat is
  * best-effort and should never crash the owning worker's main work.
  */
+export interface PgmqBeatOptions {
+  /**
+   * Bypass the min-interval rate-limit and fire set_vt unconditionally.
+   * Use this at the start of long-running sub-steps (e.g. a Claude call
+   * whose duration could exceed the VT itself) so we don't rely on the
+   * next time-gated beat landing in time — which, per the 2026-04-16
+   * onboarding-website persist regression, it won't when a single
+   * Claude call takes 180s+ with retries and the worker was just popped.
+   */
+  force?: boolean;
+}
+
 export function createPgmqHeartbeat(
   client: PgmqRpcClient,
   queueName: string,
   msgId: number,
   options: PgmqHeartbeatOptions = {},
-): () => Promise<void> {
+): (beatOptions?: PgmqBeatOptions) => Promise<void> {
   const minIntervalMs = options.minIntervalMs ?? DEFAULT_PGMQ_HEARTBEAT_INTERVAL_MS;
   const vtSeconds = options.vtSeconds ?? DEFAULT_PGMQ_VT_SECONDS;
 
   let lastBeatMs = Date.now();
 
-  return async () => {
+  return async (beatOptions: PgmqBeatOptions = {}) => {
     const now = Date.now();
-    if (now - lastBeatMs < minIntervalMs) {
+    if (!beatOptions.force && now - lastBeatMs < minIntervalMs) {
       return;
     }
     lastBeatMs = now;

@@ -109,6 +109,52 @@ describe('createPgmqHeartbeat', () => {
     expect(rpc).toHaveBeenCalledTimes(2);
   });
 
+  it('force: true bypasses the min-interval rate-limit and fires immediately', async () => {
+    // Regression: the own-website persist step runs a Claude dedup call
+    // that can exceed the 180s pgmq VT. Time-gated beats cannot fire
+    // during an await'd sync call, so the caller must be able to force a
+    // pre-emptive set_vt at persist entry to reset VT before the long
+    // call starts — otherwise pgmq redelivers and two workers race on
+    // the same run's persist step. Observed 2026-04-16 run 4032e877.
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+    const client = createRpcClient(rpc);
+
+    const heartbeat = createPgmqHeartbeat(client, 'bb_onboarding_website_jobs', 42);
+
+    // Normal call right after creation: no-op (< 60s since init).
+    await heartbeat();
+    expect(rpc).not.toHaveBeenCalled();
+
+    // Same timestamp, but force: true — must fire.
+    await heartbeat({ force: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('bb_queue_set_vt', {
+      queue_name: 'bb_onboarding_website_jobs',
+      msg_id: 42,
+      vt_seconds: 180,
+    });
+  });
+
+  it('force: true resets the timer so subsequent normal beats respect the new interval', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
+    const client = createRpcClient(rpc);
+
+    const heartbeat = createPgmqHeartbeat(client, 'bb_onboarding_website_jobs', 42);
+
+    await heartbeat({ force: true });
+    expect(rpc).toHaveBeenCalledTimes(1);
+
+    // 30s later: still within the min-interval from the forced beat, no-op.
+    vi.advanceTimersByTime(30_000);
+    await heartbeat();
+    expect(rpc).toHaveBeenCalledTimes(1);
+
+    // 60s after the forced beat: normal beat fires.
+    vi.advanceTimersByTime(30_000);
+    await heartbeat();
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
   it('respects custom minIntervalMs and vtSeconds overrides', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
     const client = createRpcClient(rpc);

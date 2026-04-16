@@ -36,6 +36,7 @@ vi.mock('sonner', () => ({
 describe('SearchTermsStep — early competitor discovery trigger', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     // Default: business context loaded successfully
     mockMaybeSingle.mockResolvedValue({
       data: {
@@ -77,6 +78,10 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
         },
       });
     });
+
+    expect(
+      window.sessionStorage.getItem('bizzybee:onboarding-discovery-trigger:test-workspace-id'),
+    ).toMatch(/^\d+$/);
 
     // onNext should still be called (user advances even before trigger resolves)
     expect(onNext).toHaveBeenCalled();

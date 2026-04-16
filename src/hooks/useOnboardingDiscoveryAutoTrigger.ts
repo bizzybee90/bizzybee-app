@@ -1,5 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  clearPendingOnboardingDiscoveryTrigger,
+  getPendingOnboardingDiscoveryTriggerRemainingMs,
+} from '@/lib/onboarding/discoveryTrigger';
 
 export interface UseOnboardingDiscoveryAutoTriggerParams {
   /**
@@ -41,6 +45,14 @@ export function useOnboardingDiscoveryAutoTrigger(
 ): void {
   const { enabled, workspaceId, hasDiscoveryRun, hasCompetitors } = params;
   const firedRef = useRef(false);
+  const [graceTick, setGraceTick] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    if (!hasDiscoveryRun && !hasCompetitors) return;
+
+    clearPendingOnboardingDiscoveryTrigger(workspaceId);
+  }, [workspaceId, hasDiscoveryRun, hasCompetitors]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -49,7 +61,16 @@ export function useOnboardingDiscoveryAutoTrigger(
     if (hasCompetitors) return;
     if (firedRef.current) return;
 
+    const remainingMs = getPendingOnboardingDiscoveryTriggerRemainingMs(workspaceId);
+    if (remainingMs > 0) {
+      const timeoutId = window.setTimeout(() => {
+        setGraceTick((tick) => tick + 1);
+      }, remainingMs);
+      return () => window.clearTimeout(timeoutId);
+    }
+
     firedRef.current = true;
+    clearPendingOnboardingDiscoveryTrigger(workspaceId);
     void supabase.functions
       .invoke('start-onboarding-discovery', {
         body: {
@@ -61,5 +82,5 @@ export function useOnboardingDiscoveryAutoTrigger(
       .catch((err) => {
         console.warn('[useOnboardingDiscoveryAutoTrigger] start-onboarding-discovery failed', err);
       });
-  }, [enabled, workspaceId, hasDiscoveryRun, hasCompetitors]);
+  }, [enabled, workspaceId, hasDiscoveryRun, hasCompetitors, graceTick]);
 }

@@ -162,7 +162,7 @@ export interface WebsiteRunStepOptions {
    * beat per invocation is sufficient. See
    * pipeline-worker-onboarding-website/index.ts for the motivation.
    */
-  heartbeat?: () => Promise<void>;
+  heartbeat?: (options?: { force?: boolean }) => Promise<void>;
 
   /**
    * Only meaningful when `requestedStep === 'extract'`. Tells the runner
@@ -207,7 +207,7 @@ async function executeExtractOneBatch(params: {
   batchIndex: number;
   /** ALL pages — the helper slices internally. */
   pages: FetchedPage[];
-  heartbeat?: () => Promise<void>;
+  heartbeat?: (options?: { force?: boolean }) => Promise<void>;
 }): Promise<{ candidateCount: number; totalCandidateCount: number; batchCount: number }> {
   const { supabase, run, attempt, batchIndex, pages, heartbeat } = params;
   const batchCount = pages.length;
@@ -522,6 +522,17 @@ export async function executeWebsiteRunStep(
     model,
   });
 
+  // Persist now runs a Claude dedup call which can take 30-60s (or
+  // 180s+ with Anthropic 429 retries). Without heartbeating pgmq's VT
+  // stays at 180s from pop time; one slow retry pushes total persist
+  // past VT, pgmq redelivers, and a second worker spawns a concurrent
+  // persist that race-inserts into faq_database (observed 2026-04-16
+  // run 4032e877 after adding dedup). `force: true` bypasses the time
+  // gate so the VT is reset to NOW+180s immediately at persist entry —
+  // giving the Claude call a fresh 180s budget from here regardless of
+  // how long the worker had the msg before reaching persist.
+  if (heartbeat) await heartbeat({ force: true });
+
   try {
     // Load all per-batch artifacts and concatenate their faqs into a single
     // list. Tasks 3-4 split the extract step into one pgmq msg per batch;
@@ -598,6 +609,10 @@ export async function executeWebsiteRunStep(
           business_type: businessContext?.business_type ?? null,
         };
 
+        // Force another VT reset right before the long Claude call so we
+        // have a full 180s window for the retry-ladder to resolve.
+        if (heartbeat) await heartbeat({ force: true });
+
         const deduped = await withTransientRetry(() =>
           dedupeSharedOwnWebsiteFaqs({
             apiKey: anthropicApiKey,
@@ -606,6 +621,11 @@ export async function executeWebsiteRunStep(
             candidates: aggregatedFaqs,
           }),
         );
+
+        // And again after Claude returns, so the remaining DB writes also
+        // run under a fresh VT even if Claude burned most of the prior one.
+        if (heartbeat) await heartbeat({ force: true });
+
         faqs =
           Array.isArray(deduped?.faqs) && deduped.faqs.length > 0 ? deduped.faqs : aggregatedFaqs;
         dedupApplied = Array.isArray(deduped?.faqs) && deduped.faqs.length > 0;

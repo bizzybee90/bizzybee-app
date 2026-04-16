@@ -1,6 +1,7 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOnboardingDiscoveryAutoTrigger } from '../useOnboardingDiscoveryAutoTrigger';
+import { DISCOVERY_TRIGGER_GRACE_MS } from '@/lib/onboarding/discoveryTrigger';
 
 // Regression: ProgressScreen has historically had no auto-trigger. If the
 // SearchTermsStep fire-and-forget invoke failed before the server recorded
@@ -24,6 +25,11 @@ describe('useOnboardingDiscoveryAutoTrigger', () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.invoke.mockResolvedValue({ data: { run_id: 'run-123' }, error: null });
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('fires start-onboarding-discovery when enabled, no run, and no competitors', async () => {
@@ -153,5 +159,33 @@ describe('useOnboardingDiscoveryAutoTrigger', () => {
     });
 
     expect(result.current).toBeUndefined();
+  });
+
+  it('waits for the same-tab grace window before auto-triggering discovery', async () => {
+    vi.useFakeTimers();
+    window.sessionStorage.setItem('bizzybee:onboarding-discovery-trigger:ws-1', String(Date.now()));
+
+    renderHook(() =>
+      useOnboardingDiscoveryAutoTrigger({
+        enabled: true,
+        workspaceId: 'ws-1',
+        hasDiscoveryRun: false,
+        hasCompetitors: false,
+      }),
+    );
+
+    expect(mocks.invoke).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(DISCOVERY_TRIGGER_GRACE_MS - 1);
+    });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    await Promise.resolve();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
   });
 });
