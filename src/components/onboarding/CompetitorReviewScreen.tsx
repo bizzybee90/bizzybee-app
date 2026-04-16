@@ -93,6 +93,19 @@ const SUSPICIOUS_DOMAINS = [
 
 const ITEMS_PER_PAGE = 50;
 
+/**
+ * Upper bound the onboarding FAQ pipeline actually scrapes. Mirrors
+ * MAX_ONBOARDING_COMPETITOR_SITES in
+ * supabase/functions/pipeline-worker-onboarding-faq/index.ts and
+ * supabase/functions/start-faq-generation/index.ts. If selections exceed
+ * this the pipeline silently truncates to the top N by relevance; we
+ * surface that in the UI so the user isn't surprised.
+ *
+ * Keep in sync with the edge function constants — if either moves, this
+ * and both edge function copies must update together.
+ */
+const PIPELINE_ONBOARDING_COMPETITOR_CEILING = 25;
+
 export function CompetitorReviewScreen({
   workspaceId,
   jobId,
@@ -432,6 +445,21 @@ export function CompetitorReviewScreen({
           but your own website will always be the primary source of truth for your AI's answers.
         </p>
       </div>
+
+      {/* Pipeline-cap disclosure — only when selection actually exceeds what the
+          pipeline will analyse. Avoids the silent UI/backend mismatch the Task 9
+          code review flagged: user picks 40, pipeline analyses 25, user gets no
+          warning. */}
+      {selectedCount > PIPELINE_ONBOARDING_COMPETITOR_CEILING && (
+        <div className="border border-amber-200 bg-amber-50 p-3 rounded-lg text-sm text-amber-900">
+          <p>
+            <span className="font-medium">Heads up:</span> you've selected{' '}
+            <span className="font-medium">{selectedCount}</span> competitors, but we'll analyse the
+            top <span className="font-medium">{PIPELINE_ONBOARDING_COMPETITOR_CEILING}</span> by
+            relevance to keep extraction sharp. Feel free to deselect any you don't need.
+          </p>
+        </div>
+      )}
 
       {/* Search terms used (SERP) */}
       {queriesUsed.length > 0 && (

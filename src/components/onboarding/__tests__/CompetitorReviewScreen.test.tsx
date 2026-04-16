@@ -232,6 +232,78 @@ describe('CompetitorReviewScreen', () => {
       expect(headsUpClassName).not.toMatch(/destructive|text-red|bg-red/);
     });
 
+    it('checkboxes, manual URL add, and Select All all stay interactive past the 10-recommendation threshold', async () => {
+      // Regression guard for the Task 9 code review: the 5 original tests
+      // proved the Continue button stays enabled past 10, but NONE of them
+      // clicked a checkbox / manual URL input / Select All button while
+      // already past the threshold. A regression that reintroduced
+      // `disabled={isAtLimit}` on those controls would pass all 5 original
+      // tests. This test exercises all three controls with 12 pre-selected.
+      const competitors = Array.from({ length: 20 }, (_, i) =>
+        makeCompetitor(i + 1, { is_selected: i < 12 }),
+      );
+      const user = userEvent.setup();
+      renderWith(competitors, 10);
+
+      // Sanity: we're actually past the soft-recommendation threshold.
+      await waitFor(() => {
+        const header = screen.getByRole('heading', { name: /Review Competitors/i }).parentElement!;
+        expect(header).toHaveTextContent(/12\s*of\s*20\s*selected/i);
+      });
+
+      // 1. Checkbox past threshold: clicking an UNSELECTED competitor must
+      //    fire toggle (not be disabled).
+      const checkboxes = screen.getAllByRole('checkbox');
+      // Find one currently unchecked (the 13th+ competitor).
+      const unchecked = checkboxes.find((cb) => !(cb as HTMLInputElement).checked);
+      expect(unchecked).toBeDefined();
+      expect(unchecked).not.toBeDisabled();
+      await user.click(unchecked!);
+      await waitFor(() => {
+        expect(mockToggleOnboardingCompetitorSelection).toHaveBeenCalled();
+      });
+
+      // 2. Manual URL input past threshold: must accept text and submit.
+      const urlInput = screen.getByPlaceholderText(/https?:\/\//i);
+      expect(urlInput).not.toBeDisabled();
+
+      // 3. Select All past threshold: must be clickable (not disabled by
+      //    selection count). We don't need to assert the full bulk-set call
+      //    here — the dedicated "Select All" test below covers that — just
+      //    that the button isn't disabled.
+      const selectAllBtn = screen.getByRole('button', { name: /select all/i });
+      expect(selectAllBtn).not.toBeDisabled();
+    });
+
+    it('surfaces a pipeline-cap heads-up when selection exceeds 25', async () => {
+      // The UI removed its hard cap, but the pipeline still truncates to
+      // MAX_ONBOARDING_COMPETITOR_SITES = 25. Without an explicit UI
+      // disclosure the user would pick 40 and be silently truncated. Assert
+      // the amber disclosure appears at 26+ and the cap (25) is named.
+      const competitors = Array.from({ length: 30 }, (_, i) =>
+        makeCompetitor(i + 1, { is_selected: i < 26 }),
+      );
+      renderWith(competitors, 25);
+      await waitFor(() => {
+        const header = screen.getByRole('heading', { name: /Review Competitors/i }).parentElement!;
+        expect(header).toHaveTextContent(/26\s*of\s*30\s*selected/i);
+      });
+      // Disclosure text mentions the 25 cap and "top by relevance" rationale.
+      expect(screen.getByText(/we'?ll analyse the top/i)).toBeInTheDocument();
+      // The disclosure paragraph contains "25" — scope the regex to that paragraph
+      // to avoid matching other "25"s in the screen (e.g. targetCount labels).
+      const disclosure = screen.getByText(/we'?ll analyse the top/i).closest('div');
+      expect(disclosure).toHaveTextContent(/\b25\b/);
+    });
+
+    it('does NOT show the pipeline-cap heads-up at or below 25', () => {
+      const competitors = Array.from({ length: 30 }, (_, i) =>
+        makeCompetitor(i + 1, { is_selected: i < 25 }),
+      );
+      renderWith(competitors, 25);
+      expect(screen.queryByText(/we'?ll analyse the top/i)).not.toBeInTheDocument();
+    });
+
     it('Select All picks every non-selected filtered competitor (no targetCount gating)', async () => {
       const competitors = Array.from({ length: 20 }, (_, i) =>
         makeCompetitor(i + 1, { is_selected: i < 3 }),
