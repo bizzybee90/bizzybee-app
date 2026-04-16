@@ -80,12 +80,26 @@ export async function resolvePendingWebsiteStep(
   return 'persist';
 }
 
+export interface WebsiteRunStepOptions {
+  /**
+   * Optional pgmq heartbeat. The worker creates a heartbeat tied to its
+   * current message msg_id and passes it in — we call it at step entry
+   * and after each Claude batch inside the extract loop, so pgmq doesn't
+   * redeliver the message mid-processing when extract takes longer than
+   * the VT. See pipeline-worker-onboarding-website/index.ts for the
+   * motivation.
+   */
+  heartbeat?: () => Promise<void>;
+}
+
 export async function executeWebsiteRunStep(
   supabase: SupabaseClient,
   run: WebsiteRunRecord,
   requestedStep: WebsiteWorkflowStep,
   attempt: number,
+  options: WebsiteRunStepOptions = {},
 ): Promise<{ executedStep: WebsiteWorkflowStep | null }> {
+  const heartbeat = options.heartbeat;
   const sourceJobId = run.source_job_id;
   if (!sourceJobId) {
     await failRun(supabase, {
@@ -225,6 +239,13 @@ export async function executeWebsiteRunStep(
           },
           pages,
           onWebsiteProgress: async (progress) => {
+            // Heartbeat keeps the pgmq VT ahead of the Claude batch loop
+            // wall-clock (12 batches x ~40s = ~8 min, far longer than the
+            // 180s VT). Internally rate-limited so it's cheap to call
+            // every batch.
+            if (heartbeat) {
+              await heartbeat();
+            }
             await touchAgentRun(supabase, {
               runId: run.id,
               status: 'running',

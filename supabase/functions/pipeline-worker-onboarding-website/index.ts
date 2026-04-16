@@ -18,6 +18,7 @@ import {
   requeueStepJob,
 } from '../_shared/onboarding-worker.ts';
 import { executeWebsiteRunStep } from '../_shared/onboarding-website-runner.ts';
+import { createPgmqHeartbeat } from '../_shared/pgmq-heartbeat.ts';
 
 const QUEUE_NAME = ONBOARDING_WEBSITE_QUEUE;
 const VT_SECONDS = 180;
@@ -37,7 +38,19 @@ async function processJob(
   }
   const effectiveAttempt = resolveQueueAttempt(record);
 
-  const { executedStep } = await executeWebsiteRunStep(supabase, run, job.step, effectiveAttempt);
+  // Pgmq heartbeat: extend this message's VT every ~60s of wall-clock
+  // while the step executes. The extract step performs up to 12 Claude
+  // calls serially (each 20-60s) which can easily exceed the 180s VT and
+  // cause pgmq to redeliver — spawning concurrent workers that race on
+  // the same run's output_summary (observed 2026-04-16 as "batch counter
+  // appears to reset from 10/12 back to 7/12"). The nudge-side dedupe
+  // handles external re-enqueues; this heartbeat handles the pgmq-level
+  // redelivery caused by long-running processing.
+  const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
+
+  const { executedStep } = await executeWebsiteRunStep(supabase, run, job.step, effectiveAttempt, {
+    heartbeat,
+  });
 
   if (executedStep === 'fetch') {
     await queueSend(

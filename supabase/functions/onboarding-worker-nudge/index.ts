@@ -257,12 +257,69 @@ async function resolvePendingFaqStep(
   return (count || 0) > 0 ? null : nextFaqStepOrInFlight(supabase, run, 'persist');
 }
 
+/**
+ * Same in-flight-check pattern as FAQ_STEP_RUN_KEY above. Without this, the
+ * own-site knowledge extraction spawned concurrent Claude batches — user
+ * observed 2026-04-16 that the progress counter appeared to "reset" (e.g.
+ * 10/12 → 7/12) because three website:extract workers were racing against
+ * the same run's output_summary.
+ */
+const WEBSITE_STEP_RUN_KEY: Record<string, string> = {
+  fetch: 'website:fetch',
+  extract: 'website:extract',
+  persist: 'website:persist',
+};
+
+async function isWebsiteStepInFlight(
+  supabase: ReturnType<typeof createServiceClient>,
+  run: RunRow,
+  queueStep: string,
+): Promise<boolean> {
+  const runKey = WEBSITE_STEP_RUN_KEY[queueStep];
+  if (!runKey) return false;
+
+  const { count, error } = await supabase
+    .from('agent_run_steps')
+    .select('id', { count: 'exact', head: true })
+    .eq('run_id', run.id)
+    .eq('step_key', runKey)
+    .eq('status', 'running');
+
+  if (error) {
+    console.warn('[nudge] failed to check in-flight website step', {
+      run_id: run.id,
+      step: queueStep,
+      error: error.message,
+    });
+    // Fail open: treat as in-flight. Better to miss a nudge (supervisor
+    // will retry) than to silently spawn a second concurrent extract.
+    return true;
+  }
+
+  return (count ?? 0) > 0;
+}
+
+async function nextWebsiteStepOrInFlight(
+  supabase: ReturnType<typeof createServiceClient>,
+  run: RunRow,
+  candidate: string,
+): Promise<string | null> {
+  if (await isWebsiteStepInFlight(supabase, run, candidate)) {
+    console.warn('[nudge] website step already running, not re-enqueuing', {
+      run_id: run.id,
+      step: candidate,
+    });
+    return null;
+  }
+  return candidate;
+}
+
 async function resolvePendingWebsiteStep(
   supabase: ReturnType<typeof createServiceClient>,
   run: RunRow,
 ) {
   const hasPages = await hasRunArtifact(supabase, run.id, run.workspace_id, 'website_pages');
-  if (!hasPages) return 'fetch';
+  if (!hasPages) return nextWebsiteStepOrInFlight(supabase, run, 'fetch');
 
   const hasCandidates = await hasRunArtifact(
     supabase,
@@ -270,7 +327,7 @@ async function resolvePendingWebsiteStep(
     run.workspace_id,
     'website_faq_candidates',
   );
-  if (!hasCandidates) return 'extract';
+  if (!hasCandidates) return nextWebsiteStepOrInFlight(supabase, run, 'extract');
 
   const { count, error } = await supabase
     .from('faq_database')
@@ -282,7 +339,7 @@ async function resolvePendingWebsiteStep(
     throw new HttpError(500, `Failed to inspect website FAQ rows: ${error.message}`);
   }
 
-  return (count || 0) > 0 ? null : 'persist';
+  return (count || 0) > 0 ? null : nextWebsiteStepOrInFlight(supabase, run, 'persist');
 }
 
 function buildImportResumeJob(run: ImportRunRow) {
