@@ -26,6 +26,11 @@ import {
   withTransientRetry,
 } from '../_shared/onboarding-worker.ts';
 import { createPgmqHeartbeat } from '../_shared/pgmq-heartbeat.ts';
+import {
+  classifyFetchedPage,
+  summarizeFetchOutcomes,
+  type FetchOutcome,
+} from '../_shared/pageFetchOutcome.ts';
 import { beginStep, failStep, succeedStep } from '../faq-agent-runner/lib/step-recorder.ts';
 import { type FaqCandidate } from '../faq-agent-runner/lib/onboarding-ai.ts';
 import { handleFetchSourcePage } from '../faq-agent-runner/tools/fetch-source-page.ts';
@@ -233,6 +238,13 @@ async function processJob(
       // concurrent calls to at most one set_vt per interval.
       const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
 
+      // Per-URL outcome tracking. Previously we just console.warn'd failures
+      // and left pagesByIndex[idx] null, so the run succeeded with "12 pages"
+      // even when 4 of 12 actually failed. Now we record fetch_failed /
+      // empty / too_short structurally and surface a degraded flag on the
+      // step if the failure ratio crosses FETCH_DEGRADATION_THRESHOLD.
+      const fetchOutcomes: FetchOutcome[] = [];
+
       const queue = targetUrls.map((url, idx) => ({ url, idx }));
       const workers = Array.from(
         { length: Math.min(FETCH_CONCURRENCY, queue.length) },
@@ -250,12 +262,34 @@ async function processJob(
                   context.allowed_urls,
                 ),
               );
-              pagesByIndex[idx] = {
-                ...page,
-                source_business: businessNameByUrl.get(url) || url,
-              };
+              const classification = classifyFetchedPage(page?.content ?? null);
+              if (classification.status === 'ok') {
+                pagesByIndex[idx] = {
+                  ...page,
+                  source_business: businessNameByUrl.get(url) || url,
+                };
+                fetchOutcomes.push({ ok: true, url });
+              } else if (classification.status === 'too_short') {
+                console.warn(
+                  '[fetch_pages] skipping page with too-short content',
+                  url,
+                  'length=',
+                  classification.contentLength,
+                );
+                fetchOutcomes.push({
+                  ok: false,
+                  url,
+                  reason: 'too_short',
+                  detail: `length=${classification.contentLength}`,
+                });
+              } else {
+                console.warn('[fetch_pages] skipping page with empty content', url);
+                fetchOutcomes.push({ ok: false, url, reason: 'empty' });
+              }
             } catch (err) {
-              console.warn('[fetch_pages] handleFetchSourcePage failed for url', url, err);
+              const message = err instanceof Error ? err.message : String(err);
+              console.warn('[fetch_pages] handleFetchSourcePage failed for url', url, message);
+              fetchOutcomes.push({ ok: false, url, reason: 'fetch_failed', detail: message });
               // Leave index null; we'll skip it in the final compaction below.
             } finally {
               await heartbeat();
@@ -301,13 +335,27 @@ async function processJob(
       const pages: SharedFaqSourcePage[] = pagesByIndex.filter(
         (p): p is SharedFaqSourcePage => p !== null,
       );
+      const fetchSummary = summarizeFetchOutcomes(fetchOutcomes);
+
+      if (fetchSummary.degraded) {
+        console.warn('[fetch_pages-degraded]', {
+          workspace_id: run.workspace_id,
+          run_id: run.id,
+          total: fetchSummary.total,
+          ok: fetchSummary.ok,
+          failed: fetchSummary.failed,
+          failure_ratio: fetchSummary.failureRatio,
+          by_reason: fetchSummary.byReason,
+          failed_urls: fetchSummary.failedUrls,
+        });
+      }
 
       await recordRunArtifact(supabase, {
         runId: run.id,
         workspaceId: run.workspace_id,
         artifactType: 'source_page_batch',
         artifactKey: 'faq_pages',
-        content: { pages },
+        content: { pages, fetch_summary: fetchSummary },
         stepId: step.id,
       });
 
@@ -334,7 +382,15 @@ async function processJob(
         run.workspace_id,
       );
 
-      await succeedStep(supabase, step.id, { page_count: pages.length });
+      await succeedStep(supabase, step.id, {
+        page_count: pages.length,
+        fetch_total: fetchSummary.total,
+        fetch_ok: fetchSummary.ok,
+        fetch_failed: fetchSummary.failed,
+        fetch_failure_ratio: fetchSummary.failureRatio,
+        fetch_failures_by_reason: fetchSummary.byReason,
+        fetch_degraded: fetchSummary.degraded,
+      });
       await queueSend(
         supabase,
         QUEUE_NAME,
