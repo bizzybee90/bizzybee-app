@@ -17,6 +17,11 @@ import {
   normalizePrimaryServiceLocation,
 } from '../_shared/onboarding.ts';
 import { AuthError, authErrorResponse, validateAuth } from '../_shared/auth.ts';
+import {
+  MAX_SEARCH_QUERIES,
+  MAX_SEARCH_QUERY_LENGTH,
+  normalizeSearchQueries,
+} from '../_shared/searchQueryValidation.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -81,12 +86,32 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to load business context: ${businessContextError.message}`);
     }
 
-    const searchQueries =
-      Array.isArray(body.search_queries) && body.search_queries.length > 0
-        ? body.search_queries.filter(
-            (value): value is string => typeof value === 'string' && value.trim().length > 0,
-          )
-        : buildDefaultSearchQueries(businessContext?.business_type, businessContext?.service_area);
+    // Normalise user-supplied search terms: cap count, trim length, dedupe,
+    // reject non-strings. Previously this was a bare filter that left Apify
+    // spend unbounded — 50 terms = 50 Apify calls. See searchQueryValidation.ts.
+    let searchQueries: string[];
+    if (Array.isArray(body.search_queries) && body.search_queries.length > 0) {
+      const normalised = normalizeSearchQueries(body.search_queries);
+      if (normalised.queries.length === 0) {
+        throw new HttpError(
+          400,
+          `search_queries contained no valid terms after normalisation (max ${MAX_SEARCH_QUERIES} terms, ${MAX_SEARCH_QUERY_LENGTH} chars each)`,
+        );
+      }
+      if (normalised.rejections.length > 0) {
+        console.warn('[start-onboarding-discovery] search_queries normalisation rejected entries', {
+          workspaceId,
+          rejections: normalised.rejections,
+          accepted: normalised.queries.length,
+        });
+      }
+      searchQueries = normalised.queries;
+    } else {
+      searchQueries = buildDefaultSearchQueries(
+        businessContext?.business_type,
+        businessContext?.service_area,
+      );
+    }
 
     if (searchQueries.length === 0) {
       throw new HttpError(400, 'search_queries could not be derived for this workspace');
