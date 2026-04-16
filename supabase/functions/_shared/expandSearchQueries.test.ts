@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('https://esm.sh/@supabase/supabase-js@2', () => ({}));
 vi.mock('https://esm.sh/@supabase/supabase-js@2.57.2', () => ({}));
 
-const { expandSearchQueries, stripPrimaryTownSuffix } = await import('./expandSearchQueries.ts');
+const { expandSearchQueries, stripPrimaryTownSuffix, fromRpcResult } =
+  await import('./expandSearchQueries.ts');
 
 describe('stripPrimaryTownSuffix', () => {
   it('strips trailing primary town (case-insensitive)', () => {
@@ -151,5 +152,33 @@ describe('expandSearchQueries', () => {
     // Only 'window cleaning' survives as a stem → 1 primary + 1 nearby = 2.
     expect(result.queries).toEqual(['window cleaning luton', 'window cleaning dunstable']);
     expect(result.queries.every((q) => q.trim().length > 0 && !q.startsWith(' '))).toBe(true);
+  });
+});
+
+describe('fromRpcResult', () => {
+  it('maps snake_case RPC payload to camelCase', () => {
+    expect(
+      fromRpcResult({
+        queries: ['window cleaning luton'],
+        towns_used: ['Luton'],
+        primary_coverage: ['window cleaning'],
+        expanded_coverage: [],
+      }),
+    ).toEqual({
+      queries: ['window cleaning luton'],
+      townsUsed: ['Luton'],
+      primaryCoverage: ['window cleaning'],
+      expandedCoverage: [],
+    });
+  });
+
+  it('coerces missing arrays to empty', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(fromRpcResult({} as any)).toEqual({
+      queries: [],
+      townsUsed: [],
+      primaryCoverage: [],
+      expandedCoverage: [],
+    });
   });
 });

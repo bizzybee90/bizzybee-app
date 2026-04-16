@@ -130,3 +130,35 @@ export function expandSearchQueries(params: ExpandSearchQueriesParams): ExpandSe
     expandedCoverage: expandedStems,
   };
 }
+
+/**
+ * Shape of the raw jsonb returned by the SQL RPC `public.expand_search_queries`.
+ * The RPC intentionally emits snake_case keys (SQL convention); callers need
+ * the TypeScript-idiomatic camelCase shape declared above.
+ *
+ * Keep this interface in sync with the `jsonb_build_object` call in
+ * `supabase/migrations/*_expand_search_queries_rpc.sql`.
+ */
+export interface ExpandSearchQueriesRpcResult {
+  queries: string[];
+  towns_used: string[];
+  primary_coverage: string[];
+  expanded_coverage: string[];
+}
+
+/**
+ * Convert the SQL RPC's snake_case jsonb result into the camelCase
+ * `ExpandSearchQueriesResult` shape. Pure mapping — does not call the RPC.
+ *
+ * Use this at the client callsite (SearchTermsStep) after invoking
+ * `supabase.rpc('expand_search_queries', …)`. Each array field falls back to
+ * `[]` if the RPC omits it so downstream code can assume non-null arrays.
+ */
+export function fromRpcResult(raw: ExpandSearchQueriesRpcResult): ExpandSearchQueriesResult {
+  return {
+    queries: raw.queries ?? [],
+    townsUsed: raw.towns_used ?? [],
+    primaryCoverage: raw.primary_coverage ?? [],
+    expandedCoverage: raw.expanded_coverage ?? [],
+  };
+}
