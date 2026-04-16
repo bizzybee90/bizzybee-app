@@ -1,3 +1,4 @@
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import {
   DEFAULT_TIME_BUDGET_MS,
   HttpError,
@@ -24,6 +25,14 @@ const QUEUE_NAME = ONBOARDING_WEBSITE_QUEUE;
 const VT_SECONDS = 180;
 const MAX_ATTEMPTS = 5;
 
+async function tryWakeWorker(supabase: SupabaseClient): Promise<void> {
+  try {
+    await wakeWorker(supabase, 'pipeline-worker-onboarding-website');
+  } catch (workerKickError) {
+    console.warn('Failed to chain onboarding website worker', workerKickError);
+  }
+}
+
 async function processJob(
   record: { msg_id: number; read_ct: number; message: OnboardingWebsiteJob },
   startMs: number,
@@ -48,11 +57,14 @@ async function processJob(
   // redelivery caused by long-running processing.
   const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
 
-  const { executedStep } = await executeWebsiteRunStep(supabase, run, job.step, effectiveAttempt, {
+  // Pass job.batch_index through to the runner so it processes exactly this batch.
+  const result = await executeWebsiteRunStep(supabase, run, job.step, effectiveAttempt, {
     heartbeat,
+    batchIndex: job.batch_index,
   });
 
-  if (executedStep === 'fetch') {
+  if (result.executedStep === 'fetch') {
+    // Start the chunked extract chain at batch 0.
     await queueSend(
       supabase,
       QUEUE_NAME,
@@ -61,31 +73,55 @@ async function processJob(
         workspace_id: run.workspace_id,
         step: 'extract',
         attempt: 1,
+        batch_index: 0,
       },
       0,
     );
-    try {
-      await wakeWorker(supabase, 'pipeline-worker-onboarding-website');
-    } catch (workerKickError) {
-      console.warn('Failed to chain onboarding website extract step', workerKickError);
+    await tryWakeWorker(supabase);
+  } else if (result.executedStep === 'extract') {
+    if (result.allBatchesDone === true) {
+      await queueSend(
+        supabase,
+        QUEUE_NAME,
+        {
+          run_id: run.id,
+          workspace_id: run.workspace_id,
+          step: 'persist',
+          attempt: 1,
+        },
+        0,
+      );
+    } else if (typeof result.batchIndex === 'number' && typeof result.batchCount === 'number') {
+      // Runner wrote batch N; next is N+1.
+      await queueSend(
+        supabase,
+        QUEUE_NAME,
+        {
+          run_id: run.id,
+          workspace_id: run.workspace_id,
+          step: 'extract',
+          attempt: 1,
+          batch_index: result.batchIndex + 1,
+        },
+        0,
+      );
+    } else {
+      // Defensive: neither allBatchesDone nor usable batch info. The runner
+      // contract says one of those shapes must hold for extract. Throwing
+      // here triggers the outer catch → requeueStepJob → another worker
+      // picks it up and retries (at which point idempotency short-circuits
+      // or the resolver fills in the missing index).
+      throw new Error(
+        `Invalid extract step result for run ${run.id}: ` +
+          JSON.stringify({
+            executedStep: result.executedStep,
+            batchIndex: result.batchIndex,
+            batchCount: result.batchCount,
+            allBatchesDone: result.allBatchesDone,
+          }),
+      );
     }
-  } else if (executedStep === 'extract') {
-    await queueSend(
-      supabase,
-      QUEUE_NAME,
-      {
-        run_id: run.id,
-        workspace_id: run.workspace_id,
-        step: 'persist',
-        attempt: 1,
-      },
-      0,
-    );
-    try {
-      await wakeWorker(supabase, 'pipeline-worker-onboarding-website');
-    } catch (workerKickError) {
-      console.warn('Failed to chain onboarding website persist step', workerKickError);
-    }
+    await tryWakeWorker(supabase);
   }
 
   await queueDelete(supabase, QUEUE_NAME, record.msg_id);
