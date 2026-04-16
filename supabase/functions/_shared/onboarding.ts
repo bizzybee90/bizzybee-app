@@ -49,6 +49,13 @@ export interface OnboardingWebsiteJob {
   workspace_id: string;
   step: 'fetch' | 'extract' | 'persist';
   attempt: number;
+  /**
+   * Only meaningful when step === 'extract'. When present, the worker
+   * processes exactly one page batch (0-indexed, 0..batch_count-1). When
+   * omitted, the runner falls back to "resolve the next missing batch
+   * from artifacts" — used for legacy msgs and nudge-initiated resumes.
+   */
+  batch_index?: number;
 }
 
 export interface OnboardingFaqJob {
