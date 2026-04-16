@@ -76,25 +76,12 @@ export function normalizeFaqQuestion(value: string): string {
 }
 
 /**
- * Tokens stripped during fingerprinting. Three categories:
- *
- *   1. Generic English stopwords (articles, auxiliaries, pronouns, etc.)
- *   2. Brand / self-reference ("Does MAC Cleaning X?" ≡ "Do you X?")
- *   3. Location-and-area tokens. Most service businesses do NOT price
- *      differently per town (a window clean is the same £ in Luton, Dunstable,
- *      Harpenden, etc. for MAC Cleaning), and the per-page extraction commonly
- *      produces "How much does X cost in {City}?" and "Which areas of {City}
- *      do you cover?" for every location page. Stripping these merges the
- *      redundant per-location questions into a single generic winner.
- *      Service names (gutter, fascia, window, conservatory) stay — they
- *      carry real topic info and should stay distinct.
- *
- * Known trade-off: this collapses location-specific questions even for
- * businesses that genuinely DO price differently per area. If a future
- * workspace needs location-distinct pricing, the fix is to make this list
- * configurable per workspace rather than hard-coded.
+ * BASE stopwords — always stripped regardless of workspace settings.
+ * Generic English + brand/self-reference. Safe for every business: "Does
+ * MAC Cleaning X?" ≡ "Do you X?" is true regardless of whether the
+ * business prices per area.
  */
-const FAQ_FINGERPRINT_STOPWORDS = new Set([
+const BASE_FAQ_FINGERPRINT_STOPWORDS = new Set([
   // Articles / auxiliaries / copulas
   'a',
   'an',
@@ -219,11 +206,28 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'cleaning',
   'maccleaning',
   'bizzybee',
-  // UK service-area tokens. Per the 2026-04-16 user feedback ("no area is
-  // more expensive than another, so we don't need per-city pricing FAQs"),
-  // these collapse "cost in Luton?" / "cost in Harpenden?" / "cost in
-  // Dunstable?" etc. into a single generic "cost" group.
-  // Cities / towns this workspace operates in:
+]);
+
+/**
+ * OPT-IN location stopwords — stripped ONLY when `collapseLocations: true` is
+ * passed to fingerprintFaqQuestion / dedupeAggregatedFaqs.
+ *
+ * Per the 2026-04-16 MAC Cleaning user feedback: "No area is more expensive
+ * than another, so we don't need per-city pricing FAQs." For businesses that
+ * DON'T price per location, stripping these collapses redundant
+ * "cost in Luton?" / "cost in Harpenden?" questions into a single winner.
+ *
+ * For businesses that DO price per area (rare in cleaning, more common in
+ * taxi / delivery / last-mile services), keep collapseLocations=false and
+ * these tokens stay in the fingerprint — per-city questions remain distinct.
+ *
+ * Current list is UK-specific (towns this project's early-access workspaces
+ * operate in). Can grow as more UK/international areas are needed. A fully
+ * dynamic list (e.g. pulled from a geographies table or the workspace's
+ * own location pages) is a future refinement.
+ */
+const LOCATION_FAQ_FINGERPRINT_STOPWORDS = new Set([
+  // Cities / towns
   'luton',
   'dunstable',
   'harpenden',
@@ -235,13 +239,11 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'regis',
   'wheathampstead',
   'redbourn',
-  // County-level / region-level — safe to strip globally since "in the UK"
-  // / "in Bedfordshire" etc. aren't topic-distinguishing.
+  // County / region
   'bedfordshire',
   'hertfordshire',
   'uk',
-  // Area modifiers that often accompany location-scoped questions
-  // ("postcodes and areas" / "surrounding villages" / "regional coverage")
+  // Area modifiers ("postcodes and areas", "surrounding villages", etc.)
   'area',
   'areas',
   'local',
@@ -264,13 +266,19 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
 ]);
 
 /**
- * Regex for detecting location-tagged questions. Matches any of the tokens
- * the fingerprint strips from the "location" bucket. Used by
- * scoreFaqForDedup to PREFER location-free phrasing when two questions
- * fingerprint the same — e.g. "How much does window cleaning cost?" beats
- * "How much does window cleaning cost in Dunstable?" so the surviving FAQ
- * text reads generically even though both point to the same underlying
- * pricing topic.
+ * Pre-computed combined set for the `collapseLocations: true` path — avoids
+ * constructing a new Set on every fingerprint call when the flag is on.
+ */
+const COMBINED_FAQ_FINGERPRINT_STOPWORDS = new Set([
+  ...BASE_FAQ_FINGERPRINT_STOPWORDS,
+  ...LOCATION_FAQ_FINGERPRINT_STOPWORDS,
+]);
+
+/**
+ * Regex for detecting location-/brand-tagged questions. Used by the
+ * location-penalty branch of scoreFaqForDedup so that, within a single
+ * fingerprint group, the generic phrasing wins over a city-tagged one.
+ * Only applied when `collapseLocations: true`.
  */
 const LOCATION_OR_BRAND_PATTERN = new RegExp(
   [
@@ -294,6 +302,18 @@ const LOCATION_OR_BRAND_PATTERN = new RegExp(
     'postcode',
     'postcodes',
   ].join('|'),
+  'i',
+);
+
+/**
+ * When collapseLocations is false, we still want to prefer the generic
+ * brand-stripped variant over a MAC-Cleaning-tagged duplicate within the
+ * same fingerprint group — brand dedup is always safe regardless of
+ * location behaviour. This is the narrower penalty regex used for the
+ * collapseLocations=false path.
+ */
+const BRAND_ONLY_PATTERN = new RegExp(
+  ['mac\\s+cleaning', 'maccleaning', 'bizzybee'].join('|'),
   'i',
 );
 
@@ -328,49 +348,74 @@ function simpleStem(token: string): string {
 }
 
 /**
+ * Options threaded through fingerprint + dedup + score so a single
+ * workspace-level flag (`business_context.custom_flags.faq_dedup_collapse_locations`)
+ * switches the full pipeline between "keep per-city questions distinct"
+ * (default, safe for any business) and "collapse per-city questions into
+ * one generic winner" (opt-in, for businesses that don't price per area).
+ */
+export interface FaqFingerprintOptions {
+  /**
+   * When true, strip UK city/area tokens in addition to the base stopwords
+   * and apply a location-penalty to location-tagged candidates during
+   * winner selection. Default false.
+   */
+  collapseLocations?: boolean;
+}
+
+/**
  * Deterministic fingerprint for grouping near-duplicate questions.
  *
  * Design choices, all to catch cross-batch restatements of the same intent:
  *
  * - lowercase + punctuation-stripped: "What is the cost?" and "What's the
  *   cost" bucket together.
- * - stopwords + brand tokens removed: "Do I need to be home when MAC
+ * - base stopwords + brand tokens removed: "Do I need to be home when MAC
  *   Cleaning cleans my windows?" and "Do I need to be home for my window
  *   clean?" both reduce to {home, need, window, clean}.
  * - naive stemming: "cleans"/"cleaning"/"cleaned" → "clean".
  * - set + sorted: word order doesn't matter, duplicate tokens collapse.
+ * - opt-in location collapse (`collapseLocations: true`): also strips UK
+ *   city/area tokens so "cost in Luton?" ≡ "cost in Dunstable?" ≡ "cost?".
  *
- * Returns empty string if every token was a stopword (rare — caller skips).
+ * Returns empty string if every token was a stopword (rare — caller skips
+ * or falls back to the raw normalized question).
  */
-export function fingerprintFaqQuestion(question: string): string {
+export function fingerprintFaqQuestion(
+  question: string,
+  options: FaqFingerprintOptions = {},
+): string {
+  const stopwords = options.collapseLocations
+    ? COMBINED_FAQ_FINGERPRINT_STOPWORDS
+    : BASE_FAQ_FINGERPRINT_STOPWORDS;
   const tokens = tokenizeForFingerprint(question)
-    .filter((t) => !FAQ_FINGERPRINT_STOPWORDS.has(t))
+    .filter((t) => !stopwords.has(t))
     .map(simpleStem);
   return Array.from(new Set(tokens)).sort().join(' ');
 }
 
-function scoreFaqForDedup(faq: FaqCandidate): number {
+function scoreFaqForDedup(faq: FaqCandidate, options: FaqFingerprintOptions = {}): number {
   const qualityScore = typeof faq.quality_score === 'number' ? faq.quality_score : 0;
   const evidenceLength = typeof faq.evidence_quote === 'string' ? faq.evidence_quote.length : 0;
   const answerLength = typeof faq.answer === 'string' ? faq.answer.length : 0;
   const question = typeof faq.question === 'string' ? faq.question : '';
-  // Penalise location-/brand-tagged phrasing so the generic variant of a
-  // fingerprint group wins. Example: fingerprint "cost window" has winners
-  // "How much does window cleaning cost in Dunstable?" and "How much does
-  // window cleaning cost?" — without this penalty the former may win on
-  // quality_score alone, leaving a city-specific question title for a
-  // workspace that doesn't price per-city. The penalty (-250) is smaller
-  // than the quality_score signal's typical scale (0.5 quality_score ≈ 500
-  // points) so a significantly better-grounded location-tagged FAQ can
-  // still win over a weakly-grounded generic one.
-  const locationPenalty = LOCATION_OR_BRAND_PATTERN.test(question) ? -250 : 0;
+  // When collapseLocations=true, penalise ANY location-/brand-tagged phrasing
+  // so the generic variant of a fingerprint group wins (surviving text reads
+  // "How much does window cleaning cost?" not "...in Dunstable?"). When
+  // collapseLocations=false, brand dedup is still safe — apply a narrower
+  // penalty to MAC Cleaning / BizzyBee brand tokens only, so "What services
+  // does MAC Cleaning offer?" loses to "What services do you offer?" even
+  // when we're NOT stripping locations.
+  const penaltyPattern = options.collapseLocations ? LOCATION_OR_BRAND_PATTERN : BRAND_ONLY_PATTERN;
+  // Penalty magnitude (-250) is smaller than the quality_score signal's
+  // typical scale (0.5 quality_score ≈ 500 points) so a significantly
+  // better-grounded location-tagged FAQ can still win over a weakly-
+  // grounded generic one.
+  const penalty = penaltyPattern.test(question) ? -250 : 0;
   // quality_score is the dominant signal (0..1). Evidence + answer length
   // break ties deterministically — longer, better-grounded wins.
   return (
-    qualityScore * 1000 +
-    Math.min(evidenceLength, 500) +
-    Math.min(answerLength, 500) +
-    locationPenalty
+    qualityScore * 1000 + Math.min(evidenceLength, 500) + Math.min(answerLength, 500) + penalty
   );
 }
 
@@ -381,9 +426,14 @@ function scoreFaqForDedup(faq: FaqCandidate): number {
  * no wall-clock risk.
  *
  * Groups candidates by `fingerprintFaqQuestion` and keeps the highest-scoring
- * (by quality_score + evidence/answer length) FAQ per group.
+ * (by quality_score + evidence/answer length, minus location/brand penalty)
+ * FAQ per group. Pass `collapseLocations: true` to additionally fold
+ * per-city variants into a single generic winner.
  */
-export function dedupeAggregatedFaqs(faqs: FaqCandidate[]): {
+export function dedupeAggregatedFaqs(
+  faqs: FaqCandidate[],
+  options: FaqFingerprintOptions = {},
+): {
   faqs: FaqCandidate[];
   groups_collapsed: number;
 } {
@@ -403,12 +453,12 @@ export function dedupeAggregatedFaqs(faqs: FaqCandidate[]): {
     // collapse to an empty fingerprint. Rather than silently drop, bucket
     // by the raw normalized question so each distinct surface form keeps
     // its own slot.
-    const fp = fingerprintFaqQuestion(question) || normalizeFaqQuestion(question);
+    const fp = fingerprintFaqQuestion(question, options) || normalizeFaqQuestion(question);
     if (!fp) continue;
 
     considered += 1;
     const existing = byFingerprint.get(fp);
-    if (!existing || scoreFaqForDedup(faq) > scoreFaqForDedup(existing)) {
+    if (!existing || scoreFaqForDedup(faq, options) > scoreFaqForDedup(existing, options)) {
       byFingerprint.set(fp, faq);
     }
   }

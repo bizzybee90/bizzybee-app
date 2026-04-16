@@ -583,13 +583,26 @@ export async function executeWebsiteRunStep(
     // 180s VT even with aggressive heartbeating, and produced unpredictable
     // output counts (97 one run, 89 the next, same source site). This
     // token-fingerprint dedup runs in ~1ms for ~100 candidates, has zero
-    // network dependency, and is fully deterministic. Trade-off: catches
-    // word-order + inflection + brand-reference variants but cannot fold
-    // truly-paraphrased semantic duplicates (e.g. "Do you provide X?" vs
-    // "Can I get X?"). That's an acceptable loss — the common dupe pattern
-    // in cross-batch extraction is the same question restated with brand
-    // re-references, which is exactly what the fingerprint collapses.
-    const dedupResult = dedupeAggregatedFaqs(aggregatedFaqs);
+    // network dependency, and is fully deterministic.
+    //
+    // `collapseLocations` is a per-workspace opt-in
+    // (business_context.custom_flags.faq_dedup_collapse_locations). Default
+    // OFF — keeps per-city pricing questions distinct, safe for any
+    // business. When ON, strips UK city/area tokens so "cost in Luton?" /
+    // "cost in Dunstable?" / "cost?" fingerprint-collapse into a single
+    // winner (preferring the generic phrasing via the -250 location
+    // penalty). MAC Cleaning is the first opt-in workspace per 2026-04-16
+    // user feedback ("no area is more expensive than another").
+    const { data: workspaceFlagsRow } = await supabase
+      .from('business_context')
+      .select('custom_flags')
+      .eq('workspace_id', run.workspace_id)
+      .maybeSingle();
+    const customFlags =
+      (workspaceFlagsRow?.custom_flags as Record<string, unknown> | null | undefined) ?? {};
+    const collapseLocations = customFlags.faq_dedup_collapse_locations === true;
+
+    const dedupResult = dedupeAggregatedFaqs(aggregatedFaqs, { collapseLocations });
     const faqs: FaqCandidate[] = dedupResult.faqs;
     const dedupApplied = dedupResult.groups_collapsed > 0 || aggregatedFaqs.length === faqs.length;
 

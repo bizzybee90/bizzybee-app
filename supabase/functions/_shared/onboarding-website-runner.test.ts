@@ -533,9 +533,17 @@ function makePersistSupabase(options: {
   persistedFaqCount?: number;
   /** Defaults to 'extracting' — must NOT be 'completed' for persist to run. */
   scrapingStatus?: string;
+  /**
+   * Defaults to false (safe default — location-collapse is opt-in per
+   * workspace). When true, the business_context mock returns
+   * custom_flags.faq_dedup_collapse_locations=true so the persist branch
+   * threads `collapseLocations: true` into dedupeAggregatedFaqs.
+   */
+  collapseLocations?: boolean;
 }): SupabaseClient {
   const persistedFaqCount = options.persistedFaqCount ?? 0;
   const scrapingStatus = options.scrapingStatus ?? 'extracting';
+  const customFlags = options.collapseLocations ? { faq_dedup_collapse_locations: true } : {};
 
   return {
     from: (table: string) => {
@@ -605,15 +613,26 @@ function makePersistSupabase(options: {
         };
       }
       if (table === 'business_context') {
-        // Persist branch loads industry/service_area/business_type for the dedup prompt.
+        // Persist branch reads custom_flags (for the collapseLocations opt-in)
+        // via its own separate .select('custom_flags') call. Respond to BOTH
+        // the legacy industry/service_area/business_type select (used by the
+        // earlier Claude-dedup code path that's now removed but may come back
+        // as a prompt-context enrichment) AND the new custom_flags select.
         return {
-          select: () => ({
+          select: (columns?: string) => ({
             eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({
+              maybeSingle: () => {
+                if ((columns ?? '').includes('custom_flags')) {
+                  return Promise.resolve({
+                    data: { custom_flags: customFlags },
+                    error: null,
+                  });
+                }
+                return Promise.resolve({
                   data: { industry: null, service_area: null, business_type: null },
                   error: null,
-                }),
+                });
+              },
             }),
           }),
         };
@@ -861,7 +880,11 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
     //   - "Can you clean gutters?" (distinct gutter topic)
     const run = makeRun();
     const insertSpy = { lastArgs: null as unknown, callCount: 0 };
+    // Opt into location-collapse via the business_context flag — this is
+    // the MAC Cleaning scenario where no area is more expensive than
+    // another. Default-off workspaces keep their per-city FAQs distinct.
     const supabase = makePersistSupabase({
+      collapseLocations: true,
       batchRows: [
         {
           artifact_key: 'website_faq_candidates_batch_0',
