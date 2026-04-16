@@ -226,51 +226,55 @@ export async function executeWebsiteRunStep(
       const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')?.trim();
       if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
-      const extracted = await withTransientRetry(() =>
-        extractFaqCandidatesFromPages({
-          sourceKind: 'own_site',
-          apiKey: anthropicApiKey,
-          model,
-          context: {
-            workspace_name: workspace?.name || 'BizzyBee workspace',
-            industry: businessContext?.industry ?? null,
-            service_area: businessContext?.service_area ?? null,
-            business_type: businessContext?.business_type ?? null,
-          },
-          pages,
-          onWebsiteProgress: async (progress) => {
-            // Heartbeat keeps the pgmq VT ahead of the Claude batch loop
-            // wall-clock (12 batches x ~40s = ~8 min, far longer than the
-            // 180s VT). Internally rate-limited so it's cheap to call
-            // every batch.
-            if (heartbeat) {
-              await heartbeat();
-            }
-            await touchAgentRun(supabase, {
-              runId: run.id,
-              status: 'running',
-              currentStepKey: 'website:extract',
-              outputSummaryPatch: {
-                website_extract_progress: {
-                  batch_index: progress.batchIndex,
-                  batch_count: progress.batchCount,
-                  pages_in_batch: progress.pagesInBatch,
-                  pages_total: pages.length,
-                  candidate_count: progress.candidateCount,
-                  total_candidate_count: progress.totalCandidateCount,
-                },
+      // NOTE: no outer withTransientRetry here. extractFaqCandidatesFromPages
+      // for sourceKind='own_site' internally retries per-batch and skips
+      // exhausted batches — wrapping the WHOLE call in a retry made the
+      // batch-loop restart from batch 0 on any single-batch error, which is
+      // what caused the user-visible "AI pass 9 of 12 resets to pass 1"
+      // regression observed on 2026-04-16.
+      const extracted = await extractFaqCandidatesFromPages({
+        sourceKind: 'own_site',
+        apiKey: anthropicApiKey,
+        model,
+        context: {
+          workspace_name: workspace?.name || 'BizzyBee workspace',
+          industry: businessContext?.industry ?? null,
+          service_area: businessContext?.service_area ?? null,
+          business_type: businessContext?.business_type ?? null,
+        },
+        pages,
+        onWebsiteProgress: async (progress) => {
+          // Heartbeat keeps the pgmq VT ahead of the Claude batch loop
+          // wall-clock (12 batches x ~40s = ~8 min, far longer than the
+          // 180s VT). Internally rate-limited so it's cheap to call
+          // every batch.
+          if (heartbeat) {
+            await heartbeat();
+          }
+          await touchAgentRun(supabase, {
+            runId: run.id,
+            status: 'running',
+            currentStepKey: 'website:extract',
+            outputSummaryPatch: {
+              website_extract_progress: {
+                batch_index: progress.batchIndex,
+                batch_count: progress.batchCount,
+                pages_in_batch: progress.pagesInBatch,
+                pages_total: pages.length,
+                candidate_count: progress.candidateCount,
+                total_candidate_count: progress.totalCandidateCount,
               },
-            });
-            await supabase
-              .from('scraping_jobs')
-              .update({
-                status: 'extracting',
-                faqs_found: progress.totalCandidateCount,
-              })
-              .eq('id', sourceJobId);
-          },
-        }),
-      );
+            },
+          });
+          await supabase
+            .from('scraping_jobs')
+            .update({
+              status: 'extracting',
+              faqs_found: progress.totalCandidateCount,
+            })
+            .eq('id', sourceJobId);
+        },
+      });
 
       await recordRunArtifact(supabase, {
         runId: run.id,

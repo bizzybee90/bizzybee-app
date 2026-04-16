@@ -1,4 +1,5 @@
 import { domainFromUrl } from '../../_shared/onboarding.ts';
+import { withTransientRetry } from '../../_shared/retry.ts';
 import { canonicalizeUrl } from '../../_shared/urlCanonicalization.ts';
 import { isKnownUnscrapableUrl } from '../../_shared/unscrapableUrl.ts';
 import { callClaudeForJson } from './json-tools.ts';
@@ -724,14 +725,37 @@ export async function extractWebsiteFaqsInChunks(
     };
   }
 
+  // Per-batch retry scope — NOT per-function. Previously the entire
+  // extractWebsiteFaqsInChunks was wrapped in withTransientRetry at the
+  // caller, so any single batch throwing a 429/5xx restarted the loop
+  // from batch 0 — users saw "AI pass 9 of 12" reset to "pass 1 of 12"
+  // with no useful signal. Now each batch gets its own retry; if the
+  // retry exhausts, we log the batch as skipped and carry on. Losing
+  // one batch (~10% of candidates) is far better than losing all 12.
+  let skippedBatches = 0;
   for (let batchIndex = 0; batchIndex < chunks.length; batchIndex += 1) {
     const chunk = chunks[batchIndex].map((page) => ({
       ...page,
       content: page.content.slice(0, WEBSITE_EXTRACTION_CONTENT_LIMIT),
       content_length: Math.min(page.content_length, WEBSITE_EXTRACTION_CONTENT_LIMIT),
     }));
-    const extracted = await extractWebsiteFaqs(apiKey, model, context, chunk);
-    const candidates = Array.isArray(extracted?.faqs) ? extracted.faqs : [];
+
+    let candidates: FaqCandidate[] = [];
+    try {
+      const extracted = await withTransientRetry(
+        () => extractWebsiteFaqs(apiKey, model, context, chunk),
+        { attempts: 3, baseMs: 500, maxMs: 10_000 },
+      );
+      candidates = Array.isArray(extracted?.faqs) ? extracted.faqs : [];
+    } catch (err) {
+      skippedBatches += 1;
+      console.warn('[extractWebsiteFaqsInChunks] batch failed after retries — skipping', {
+        batch_index: batchIndex + 1,
+        batch_count: chunks.length,
+        pages_in_batch: chunk.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     collected.push(...candidates);
 
     if (onProgress) {
@@ -743,6 +767,14 @@ export async function extractWebsiteFaqsInChunks(
         totalCandidateCount: collected.length,
       });
     }
+  }
+
+  if (skippedBatches > 0) {
+    console.warn('[extractWebsiteFaqsInChunks] completed with skipped batches', {
+      skipped: skippedBatches,
+      batch_count: chunks.length,
+      final_candidate_count: collected.length,
+    });
   }
 
   return {
