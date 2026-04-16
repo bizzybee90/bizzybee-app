@@ -47,13 +47,43 @@ describe('fingerprintFaqQuestion', () => {
     expect(a).toBe(b);
   });
 
-  it('keeps location-specific variants distinct (Luton vs Dunstable vs Harpenden)', () => {
+  it('collapses location-tagged variants (Luton/Dunstable/Harpenden) into the same fingerprint', () => {
+    // Per 2026-04-16 user feedback: "There is no area more expensive than
+    // another so we don't need to have how much do you charge in
+    // luton/hemel/dunstable. It's pointless." Location tokens now strip to
+    // the same generic fingerprint, so the 5-6 per-city pricing questions
+    // the per-batch extractor produces collapse into one group at persist.
     const luton = fingerprintFaqQuestion('How much does window cleaning cost in Luton?');
     const dunstable = fingerprintFaqQuestion('How much does window cleaning cost in Dunstable?');
     const harpenden = fingerprintFaqQuestion('How much does window cleaning cost in Harpenden?');
-    expect(luton).not.toBe(dunstable);
-    expect(luton).not.toBe(harpenden);
-    expect(dunstable).not.toBe(harpenden);
+    const generic = fingerprintFaqQuestion('How much does window cleaning cost?');
+    expect(luton).toBe(dunstable);
+    expect(luton).toBe(harpenden);
+    expect(luton).toBe(generic);
+  });
+
+  it('collapses "areas / coverage" location phrasings but keeps service-scoped coverage distinct', () => {
+    // These 4 all reduce to fingerprint "cover" (after stripping areas,
+    // locations, brand, stopwords):
+    const a = fingerprintFaqQuestion('Which areas does MAC Cleaning cover?');
+    const b = fingerprintFaqQuestion('Which areas of Luton do you cover?');
+    const c = fingerprintFaqQuestion('Which areas of St Albans do MAC Cleaning cover?');
+    const d = fingerprintFaqQuestion('Do you cover Houghton Regis and Dunstable?');
+    expect(a).toBe(b);
+    expect(a).toBe(c);
+    expect(a).toBe(d);
+
+    // But service-scoped coverage ("cover for window cleaning",
+    // "cover for fascia cleaning") SHOULD stay distinct from the bare
+    // "cover" group because the service token survives the stopword pass.
+    const windowCover = fingerprintFaqQuestion(
+      'What areas does MAC Cleaning cover for window cleaning?',
+    );
+    const fasciaCover = fingerprintFaqQuestion(
+      'What areas does MAC Cleaning serve for fascia cleaning?',
+    );
+    expect(windowCover).not.toBe(a);
+    expect(fasciaCover).not.toBe(windowCover);
   });
 
   it('keeps service-specific variants distinct (gutter vs fascia vs conservatory)', () => {
@@ -113,14 +143,55 @@ describe('dedupeAggregatedFaqs', () => {
     expect(questions).toEqual(['Do you clean gutters?', 'What services do you offer?']);
   });
 
-  it('preserves location-specific pricing variants even when the rest of the wording matches', () => {
+  it('collapses location-tagged pricing variants and prefers the generic phrasing as winner', () => {
+    // Matches real 2026-04-16 MAC Cleaning data: 6 per-city pricing FAQs
+    // all with the same underlying answer ("£15 per 3-bed semi" regardless
+    // of town). Dedup collapses them AND the LOCATION_OR_BRAND_PATTERN
+    // penalty in scoreFaqForDedup tips the winner toward the generic
+    // phrasing — so the surviving question reads "How much does window
+    // cleaning cost?" not "...in Dunstable?" even when the city variant
+    // has higher quality_score.
     const input = [
       makeFaq('How much does window cleaning cost in Luton?', 0.9),
-      makeFaq('How much does window cleaning cost in Dunstable?', 0.8),
+      makeFaq('How much does window cleaning cost in Dunstable?', 0.95),
       makeFaq('How much does window cleaning cost in Harpenden?', 0.85),
+      makeFaq('How much does window cleaning cost?', 0.8),
+    ];
+    const { faqs, groups_collapsed } = dedupeAggregatedFaqs(input);
+    expect(faqs).toHaveLength(1);
+    expect(groups_collapsed).toBe(3);
+    // Generic variant wins despite having a LOWER quality_score than
+    // Dunstable (0.8 vs 0.95): the -250 location penalty pushes the
+    // Dunstable score from 1450 (950 + 500) to 1200, below the generic's
+    // 1300 (800 + 500).
+    expect(faqs[0].question).toBe('How much does window cleaning cost?');
+  });
+
+  it('falls back to city-tagged winner when NO generic variant exists', () => {
+    // If the per-batch extractor never produced the generic phrasing, the
+    // best city-tagged variant (highest quality_score after penalty) still
+    // wins — we don't want dedup to produce zero survivors for a valid
+    // topic.
+    const input = [
+      makeFaq('How much does window cleaning cost in Luton?', 0.7),
+      makeFaq('How much does window cleaning cost in Dunstable?', 0.9),
+      makeFaq('How much does window cleaning cost in Harpenden?', 0.6),
     ];
     const { faqs } = dedupeAggregatedFaqs(input);
-    expect(faqs).toHaveLength(3);
+    expect(faqs).toHaveLength(1);
+    expect(faqs[0].question).toBe('How much does window cleaning cost in Dunstable?');
+    expect(faqs[0].quality_score).toBe(0.9);
+  });
+
+  it('keeps service-specific variants (gutter vs fascia vs conservatory) distinct', () => {
+    const input = [
+      makeFaq('How much does gutter clearing cost?', 0.8),
+      makeFaq('How much does fascia cleaning cost?', 0.85),
+      makeFaq('How much does conservatory roof cleaning cost?', 0.75),
+      makeFaq('How much does window cleaning cost?', 0.9),
+    ];
+    const { faqs } = dedupeAggregatedFaqs(input);
+    expect(faqs).toHaveLength(4);
   });
 
   it('uses evidence_quote + answer length as deterministic tiebreakers when quality_score ties', () => {

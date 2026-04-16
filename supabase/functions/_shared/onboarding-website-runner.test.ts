@@ -840,31 +840,25 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
     expect(recordCall.content.batch_count).toBe(3);
   });
 
-  it('collapses dupes the fingerprint catches (exact-match, brand-stripped, stem/order variants) and preserves distinct topics', async () => {
-    // Real (un-mocked) `dedupeAggregatedFaqs` runs against the three dup
-    // classes the token-fingerprint CAN catch, all pulled from patterns
-    // seen in the MAC Cleaning 2026-04-16 live data:
+  it('collapses cross-batch dupes end-to-end: location, brand, and exact-match variants all fold into one winner per topic', async () => {
+    // Real (un-mocked) `dedupeAggregatedFaqs` runs against the dup classes
+    // we see in live MAC Cleaning extraction (2026-04-16):
     //
-    //   Class 1 — exact-match restated across pages:
-    //     "How much does window cleaning cost in Luton?" × 2
+    //   Class 1 — per-city pricing variants + generic:
+    //     "How much does window cleaning cost in Luton?" × 2 (different pages)
+    //     "How much does window cleaning cost in Dunstable?"
+    //     "How much does window cleaning cost?"
+    //     → ALL collapse (location tokens are stopwords). Location-penalty
+    //       in scoreFaqForDedup makes the generic variant the winner even
+    //       when a city-tagged one has higher quality_score.
     //
     //   Class 2 — brand-reference variants:
     //     "What services do you offer?" vs "What services does MAC Cleaning offer?"
-    //     → "mac"/"cleaning" stripped, both fingerprint to the same {offer,service}
+    //     → fingerprint to the same {offer,service}; generic variant wins
+    //       (the brand-tagged one gets the same -250 penalty).
     //
-    //   Class 3 — word-order/inflection variants:
-    //     "How much does window cleaning cost with MAC Cleaning?" vs
-    //     "How much does window cleaning with MAC Cleaning cost?"
-    //     → bag-of-words + stems, both fingerprint to the same {cost,window,much}
-    //
-    // Preserved (distinct topics the fingerprint correctly keeps separate):
-    //   - Luton pricing vs Dunstable pricing (different city tokens)
+    // Preserved:
     //   - "Can you clean gutters?" (distinct gutter topic)
-    //
-    // Trade-off: "Do I need to be home when MAC Cleaning visits?" vs
-    // "Do I need to be home for my window clean?" are NOT merged — "visits"
-    // and "window clean" are genuinely different content tokens. That's
-    // acceptable; semantic paraphrase matching would require embeddings.
     const run = makeRun();
     const insertSpy = { lastArgs: null as unknown, callCount: 0 };
     const supabase = makePersistSupabase({
@@ -873,7 +867,7 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
           artifact_key: 'website_faq_candidates_batch_0',
           content: {
             faqs: [
-              // Class 1: exact dup (appears twice across pages)
+              // Class 1: city-tagged Luton — will lose to the generic in batch_1
               {
                 question: 'How much does window cleaning cost in Luton?',
                 answer: 'From £15.',
@@ -881,7 +875,7 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
                 evidence_quote: 'Pricing starts at £15.',
                 quality_score: 0.9,
               },
-              // Class 2: brand-stripped variant pair — winner
+              // Class 2: brand-stripped variant pair — generic wins
               {
                 question: 'What services do you offer?',
                 answer: 'Window, gutter, fascia, conservatory roof cleaning.',
@@ -889,7 +883,7 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
                 evidence_quote: 'We offer four main services.',
                 quality_score: 0.75,
               },
-              // Distinct topic kept
+              // Distinct topic kept as its own survivor
               {
                 question: 'Can you clean gutters?',
                 answer: 'Yes, bundled service available.',
@@ -904,29 +898,38 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
           artifact_key: 'website_faq_candidates_batch_1',
           content: {
             faqs: [
-              // Class 1: exact dup of the Luton pricing question (lower qs)
+              // Class 1: same Luton pricing question from another page
               {
                 question: 'How much does window cleaning cost in Luton?',
                 answer: 'About £15-£20 depending on property size.',
                 source_url: 'https://maccleaning.uk/blog/window-cleaning-luton-guide',
                 evidence_quote: 'Luton typically costs £15-£20.',
-                quality_score: 0.7, // loses to batch_0 variant (0.9)
+                quality_score: 0.7,
               },
-              // Class 2: brand-stripped variant pair — loser (same intent)
+              // Class 2: brand-tagged variant of the "services" question
               {
                 question: 'What services does MAC Cleaning offer?',
                 answer: 'Four core cleaning services.',
                 source_url: 'https://maccleaning.uk/services',
                 evidence_quote: 'We provide four services.',
-                quality_score: 0.65, // loses to batch_0 variant (0.75)
+                quality_score: 0.65,
               },
-              // Different location — must be preserved separately
+              // Class 1: Dunstable variant — same topic, different city
               {
                 question: 'How much does window cleaning cost in Dunstable?',
                 answer: 'Similar range.',
                 source_url: 'https://maccleaning.uk/locations/dunstable',
                 evidence_quote: 'Dunstable pricing mirrors Luton.',
                 quality_score: 0.8,
+              },
+              // Class 1: GENERIC variant — should win thanks to the
+              // location-penalty pushing city-tagged scores below this.
+              {
+                question: 'How much does window cleaning cost?',
+                answer: 'Priced per property size; typically £15-£20.',
+                source_url: 'https://maccleaning.uk/',
+                evidence_quote: 'Standard pricing for 3-bed semi.',
+                quality_score: 0.75,
               },
             ],
           },
@@ -937,11 +940,10 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
 
     const result = await executeWebsiteRunStep(supabase, run, 'persist', 1, {});
 
-    // 6 aggregate → 4 winners:
-    //   - Luton pricing group (exact dup, qs 0.9 wins over 0.7)
-    //   - "services offer" group (brand variants, qs 0.75 wins over 0.65)
-    //   - "Can you clean gutters?" (distinct)
-    //   - "Dunstable pricing" (distinct location)
+    // 7 aggregate → 3 winners:
+    //   - Pricing group (4 variants collapse; generic wins via location penalty)
+    //   - "services offer" group (brand variants collapse; generic wins)
+    //   - "Can you clean gutters?" (distinct topic, unchanged)
     expect(onboarding.recordRunArtifact).toHaveBeenCalledTimes(1);
     const recordCall = onboarding.recordRunArtifact.mock.calls[0][1] as {
       artifactKey: string;
@@ -952,20 +954,24 @@ describe('executeWebsiteRunStep persist branch (per-batch aggregation)', () => {
       };
     };
     expect(recordCall.artifactKey).toBe('website_faq_candidates');
-    expect(recordCall.content.faqs).toHaveLength(4);
+    expect(recordCall.content.faqs).toHaveLength(3);
     expect(recordCall.content.dedup_applied).toBe(true);
 
     const byQuestion = new Map(recordCall.content.faqs.map((f) => [f.question, f.quality_score]));
-    // Winners: highest quality_score per dup group.
-    expect(byQuestion.get('How much does window cleaning cost in Luton?')).toBe(0.9);
+    // Pricing group: generic variant wins despite 0.75 < 0.9 (Luton) because
+    // Luton's score gets the -250 location penalty.
+    expect(byQuestion.get('How much does window cleaning cost?')).toBe(0.75);
+    // Services group: generic phrasing wins over the MAC Cleaning variant.
     expect(byQuestion.get('What services do you offer?')).toBe(0.75);
-    // Distinct entries kept:
-    expect(byQuestion.has('How much does window cleaning cost in Dunstable?')).toBe(true);
+    // Distinct entry kept:
     expect(byQuestion.has('Can you clean gutters?')).toBe(true);
+    // Sanity: no location-tagged variants survived the dedup.
+    expect(byQuestion.has('How much does window cleaning cost in Luton?')).toBe(false);
+    expect(byQuestion.has('How much does window cleaning cost in Dunstable?')).toBe(false);
 
-    // faq_database insert receives exactly the 4 deduped rows.
+    // faq_database insert receives exactly the 3 deduped rows.
     expect(insertSpy.callCount).toBe(1);
-    expect((insertSpy.lastArgs as unknown[]).length).toBe(4);
+    expect((insertSpy.lastArgs as unknown[]).length).toBe(3);
 
     // Run succeeds.
     expect(onboarding.succeedRun).toHaveBeenCalledTimes(1);

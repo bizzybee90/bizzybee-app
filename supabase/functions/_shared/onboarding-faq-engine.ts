@@ -76,10 +76,23 @@ export function normalizeFaqQuestion(value: string): string {
 }
 
 /**
- * Stopwords + brand tokens stripped during fingerprinting. Location names and
- * service names (gutter, fascia, window, luton, dunstable, etc.) are NOT in
- * this list, so "window cleaning cost in Luton" stays distinct from
- * "...in Dunstable" and from "fascia cleaning cost".
+ * Tokens stripped during fingerprinting. Three categories:
+ *
+ *   1. Generic English stopwords (articles, auxiliaries, pronouns, etc.)
+ *   2. Brand / self-reference ("Does MAC Cleaning X?" ≡ "Do you X?")
+ *   3. Location-and-area tokens. Most service businesses do NOT price
+ *      differently per town (a window clean is the same £ in Luton, Dunstable,
+ *      Harpenden, etc. for MAC Cleaning), and the per-page extraction commonly
+ *      produces "How much does X cost in {City}?" and "Which areas of {City}
+ *      do you cover?" for every location page. Stripping these merges the
+ *      redundant per-location questions into a single generic winner.
+ *      Service names (gutter, fascia, window, conservatory) stay — they
+ *      carry real topic info and should stay distinct.
+ *
+ * Known trade-off: this collapses location-specific questions even for
+ * businesses that genuinely DO price differently per area. If a future
+ * workspace needs location-distinct pricing, the fix is to make this list
+ * configurable per workspace rather than hard-coded.
  */
 const FAQ_FINGERPRINT_STOPWORDS = new Set([
   // Articles / auxiliaries / copulas
@@ -141,6 +154,7 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'who',
   'whom',
   'which',
+  'whose',
   // Connectives
   'and',
   'or',
@@ -152,6 +166,8 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'if',
   'then',
   'than',
+  'because',
+  'though',
   // Prepositions (position/direction, low-signal for topic matching)
   'of',
   'in',
@@ -177,6 +193,7 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'those',
   'there',
   'here',
+  'well',
   // Intensifiers / fillers
   'too',
   'very',
@@ -197,15 +214,88 @@ const FAQ_FINGERPRINT_STOPWORDS = new Set([
   'each',
   'all',
   'another',
-  // Low-signal verbs that appear in many topically-different questions
-  // ("offer", "provide", "use", etc. stay — they carry real topic info).
-  // Aggressively drop brand/self-reference so "Does MAC Cleaning X?" and
-  // "Do you X?" fingerprint the same.
+  // Brand / self-reference
   'mac',
   'cleaning',
   'maccleaning',
   'bizzybee',
+  // UK service-area tokens. Per the 2026-04-16 user feedback ("no area is
+  // more expensive than another, so we don't need per-city pricing FAQs"),
+  // these collapse "cost in Luton?" / "cost in Harpenden?" / "cost in
+  // Dunstable?" etc. into a single generic "cost" group.
+  // Cities / towns this workspace operates in:
+  'luton',
+  'dunstable',
+  'harpenden',
+  'hemel',
+  'hempstead',
+  'albans',
+  'st',
+  'houghton',
+  'regis',
+  'wheathampstead',
+  'redbourn',
+  // County-level / region-level — safe to strip globally since "in the UK"
+  // / "in Bedfordshire" etc. aren't topic-distinguishing.
+  'bedfordshire',
+  'hertfordshire',
+  'uk',
+  // Area modifiers that often accompany location-scoped questions
+  // ("postcodes and areas" / "surrounding villages" / "regional coverage")
+  'area',
+  'areas',
+  'local',
+  'locally',
+  'locality',
+  'nearby',
+  'near',
+  'around',
+  'postcode',
+  'postcodes',
+  'village',
+  'villages',
+  'town',
+  'towns',
+  'city',
+  'cities',
+  'regional',
+  'region',
+  'surrounding',
 ]);
+
+/**
+ * Regex for detecting location-tagged questions. Matches any of the tokens
+ * the fingerprint strips from the "location" bucket. Used by
+ * scoreFaqForDedup to PREFER location-free phrasing when two questions
+ * fingerprint the same — e.g. "How much does window cleaning cost?" beats
+ * "How much does window cleaning cost in Dunstable?" so the surviving FAQ
+ * text reads generically even though both point to the same underlying
+ * pricing topic.
+ */
+const LOCATION_OR_BRAND_PATTERN = new RegExp(
+  [
+    'mac\\s+cleaning',
+    'maccleaning',
+    'bizzybee',
+    'luton',
+    'dunstable',
+    'harpenden',
+    'hemel\\s+hempstead',
+    'hemel',
+    'hempstead',
+    'st\\.?\\s+albans',
+    'albans',
+    'houghton\\s+regis',
+    'houghton',
+    'wheathampstead',
+    'redbourn',
+    'bedfordshire',
+    'hertfordshire',
+    'postcode',
+    'postcodes',
+  ].join('|'),
+  'i',
+);
 
 function tokenizeForFingerprint(text: string): string[] {
   return text
@@ -263,9 +353,25 @@ function scoreFaqForDedup(faq: FaqCandidate): number {
   const qualityScore = typeof faq.quality_score === 'number' ? faq.quality_score : 0;
   const evidenceLength = typeof faq.evidence_quote === 'string' ? faq.evidence_quote.length : 0;
   const answerLength = typeof faq.answer === 'string' ? faq.answer.length : 0;
+  const question = typeof faq.question === 'string' ? faq.question : '';
+  // Penalise location-/brand-tagged phrasing so the generic variant of a
+  // fingerprint group wins. Example: fingerprint "cost window" has winners
+  // "How much does window cleaning cost in Dunstable?" and "How much does
+  // window cleaning cost?" — without this penalty the former may win on
+  // quality_score alone, leaving a city-specific question title for a
+  // workspace that doesn't price per-city. The penalty (-250) is smaller
+  // than the quality_score signal's typical scale (0.5 quality_score ≈ 500
+  // points) so a significantly better-grounded location-tagged FAQ can
+  // still win over a weakly-grounded generic one.
+  const locationPenalty = LOCATION_OR_BRAND_PATTERN.test(question) ? -250 : 0;
   // quality_score is the dominant signal (0..1). Evidence + answer length
   // break ties deterministically — longer, better-grounded wins.
-  return qualityScore * 1000 + Math.min(evidenceLength, 500) + Math.min(answerLength, 500);
+  return (
+    qualityScore * 1000 +
+    Math.min(evidenceLength, 500) +
+    Math.min(answerLength, 500) +
+    locationPenalty
+  );
 }
 
 /**
