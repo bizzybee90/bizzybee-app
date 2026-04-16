@@ -366,6 +366,73 @@ describe('executeWebsiteRunStep extract branch (per-batch)', () => {
     });
   });
 
+  it('passes singlePageSite=false to the extractor when the site has >3 pages', async () => {
+    // Regression guard for the threshold that ACTUALLY controls dedup on
+    // the Claude side. MAC Cleaning's 88-FAQ bug went away only because
+    // a 15-page site triggered the page-aware "skip facts that belong on
+    // another page" prompt branch — which requires singlePageSite=false.
+    // A regression that flips `pages.length <= 3` to `< 3` (or similar)
+    // would pass every other test and silently re-enable the single-page
+    // comprehensive-extract path for multi-page sites, re-introducing
+    // the duplicate blowup. This test locks the >3 side of the threshold.
+    const run = makeRun();
+    const pages = makePages(6);
+    faqEngine.loadRunArtifact.mockResolvedValue({ pages });
+    faqEngine.hasRunArtifact.mockImplementation(
+      async (_s: unknown, _r: string, _w: string, key: string) => {
+        if (key === 'website_pages') return true;
+        return false;
+      },
+    );
+
+    const supabase = makeExtractSupabase({ existingBatchKeys: [] });
+    await executeWebsiteRunStep(supabase, run, 'extract', 1, { batchIndex: 0 });
+
+    expect(onboardingAi.extractWebsiteFaqs).toHaveBeenCalledTimes(1);
+    const [, , , , optionsArg] = onboardingAi.extractWebsiteFaqs.mock.calls[0];
+    expect(optionsArg).toEqual({ singlePageSite: false });
+  });
+
+  it('treats exactly 3 pages as singlePageSite=true (boundary condition for the ≤3 threshold)', async () => {
+    // The threshold is inclusive. A 3-page site is a small site; switching
+    // the comparison to `< 3` would turn this off and force a 3-page site
+    // through the dedup-gated prompt branch, losing facts. This test pins
+    // the inclusive-at-3 semantics.
+    const run = makeRun();
+    const pages = makePages(3);
+    faqEngine.loadRunArtifact.mockResolvedValue({ pages });
+    faqEngine.hasRunArtifact.mockImplementation(
+      async (_s: unknown, _r: string, _w: string, key: string) => {
+        if (key === 'website_pages') return true;
+        return false;
+      },
+    );
+
+    const supabase = makeExtractSupabase({ existingBatchKeys: [] });
+    await executeWebsiteRunStep(supabase, run, 'extract', 1, { batchIndex: 0 });
+
+    const [, , , , optionsArg] = onboardingAi.extractWebsiteFaqs.mock.calls[0];
+    expect(optionsArg).toEqual({ singlePageSite: true });
+  });
+
+  it('treats exactly 4 pages as singlePageSite=false (immediately above the threshold)', async () => {
+    const run = makeRun();
+    const pages = makePages(4);
+    faqEngine.loadRunArtifact.mockResolvedValue({ pages });
+    faqEngine.hasRunArtifact.mockImplementation(
+      async (_s: unknown, _r: string, _w: string, key: string) => {
+        if (key === 'website_pages') return true;
+        return false;
+      },
+    );
+
+    const supabase = makeExtractSupabase({ existingBatchKeys: [] });
+    await executeWebsiteRunStep(supabase, run, 'extract', 1, { batchIndex: 0 });
+
+    const [, , , , optionsArg] = onboardingAi.extractWebsiteFaqs.mock.calls[0];
+    expect(optionsArg).toEqual({ singlePageSite: false });
+  });
+
   it('short-circuits when the batch artifact already exists (idempotency)', async () => {
     const run = makeRun();
     const pages = makePages(6);
