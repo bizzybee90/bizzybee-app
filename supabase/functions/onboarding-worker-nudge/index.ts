@@ -147,15 +147,78 @@ async function resolvePendingDiscoveryStep(
   return hasAcquiredCandidates ? 'qualify' : 'acquire';
 }
 
+/**
+ * Map the FAQ workflow's queue-step key onto the agent_run_steps step_key so
+ * we can detect when a step is already actively running and skip the nudge.
+ * Without this check, a UI poll that lands while fetch_pages is mid-scrape
+ * sees `hasPages=false` and enqueues a second fetch_pages job — two workers
+ * then race on Apify quota and cause the duplicate-delivery regression
+ * observed on 2026-04-16 (6/16 vs 1/16 scrape rate across concurrent
+ * attempts).
+ */
+const FAQ_STEP_RUN_KEY: Record<string, string> = {
+  load_context: 'faq:load_context',
+  fetch_pages: 'faq:fetch_pages',
+  generate_candidates: 'faq:generate_candidates',
+  dedupe: 'faq:dedupe',
+  finalize: 'faq:finalize',
+  persist: 'faq:persist',
+};
+
+async function isFaqStepInFlight(
+  supabase: ReturnType<typeof createServiceClient>,
+  run: RunRow,
+  queueStep: string,
+): Promise<boolean> {
+  const runKey = FAQ_STEP_RUN_KEY[queueStep];
+  if (!runKey) return false;
+
+  const { count, error } = await supabase
+    .from('agent_run_steps')
+    .select('id', { count: 'exact', head: true })
+    .eq('run_id', run.id)
+    .eq('step_key', runKey)
+    .eq('status', 'running');
+
+  if (error) {
+    console.warn('[nudge] failed to check in-flight faq step', {
+      run_id: run.id,
+      step: queueStep,
+      error: error.message,
+    });
+    // Fail open — if we can't query, don't silently re-enqueue. Treat as
+    // in-flight to be safe; the real retry path is the pipeline-supervisor
+    // at its slower cadence.
+    return true;
+  }
+
+  return (count ?? 0) > 0;
+}
+
+async function nextFaqStepOrInFlight(
+  supabase: ReturnType<typeof createServiceClient>,
+  run: RunRow,
+  candidate: string,
+): Promise<string | null> {
+  if (await isFaqStepInFlight(supabase, run, candidate)) {
+    console.warn('[nudge] faq step already running, not re-enqueuing', {
+      run_id: run.id,
+      step: candidate,
+    });
+    return null;
+  }
+  return candidate;
+}
+
 async function resolvePendingFaqStep(
   supabase: ReturnType<typeof createServiceClient>,
   run: RunRow,
 ) {
   const hasContext = await hasRunArtifact(supabase, run.id, run.workspace_id, 'faq_context');
-  if (!hasContext) return 'load_context';
+  if (!hasContext) return nextFaqStepOrInFlight(supabase, run, 'load_context');
 
   const hasPages = await hasRunArtifact(supabase, run.id, run.workspace_id, 'faq_pages');
-  if (!hasPages) return 'fetch_pages';
+  if (!hasPages) return nextFaqStepOrInFlight(supabase, run, 'fetch_pages');
 
   const hasRawCandidates = await hasRunArtifact(
     supabase,
@@ -163,7 +226,7 @@ async function resolvePendingFaqStep(
     run.workspace_id,
     'faq_candidates_raw',
   );
-  if (!hasRawCandidates) return 'generate_candidates';
+  if (!hasRawCandidates) return nextFaqStepOrInFlight(supabase, run, 'generate_candidates');
 
   const hasDedupedCandidates = await hasRunArtifact(
     supabase,
@@ -171,7 +234,7 @@ async function resolvePendingFaqStep(
     run.workspace_id,
     'faq_candidates_deduped',
   );
-  if (!hasDedupedCandidates) return 'dedupe';
+  if (!hasDedupedCandidates) return nextFaqStepOrInFlight(supabase, run, 'dedupe');
 
   const hasFinalCandidates = await hasRunArtifact(
     supabase,
@@ -179,7 +242,7 @@ async function resolvePendingFaqStep(
     run.workspace_id,
     'faq_candidates_final',
   );
-  if (!hasFinalCandidates) return 'finalize';
+  if (!hasFinalCandidates) return nextFaqStepOrInFlight(supabase, run, 'finalize');
 
   const { count, error } = await supabase
     .from('faq_database')
@@ -191,7 +254,7 @@ async function resolvePendingFaqStep(
     throw new HttpError(500, `Failed to inspect competitor FAQ rows: ${error.message}`);
   }
 
-  return (count || 0) > 0 ? null : 'persist';
+  return (count || 0) > 0 ? null : nextFaqStepOrInFlight(supabase, run, 'persist');
 }
 
 async function resolvePendingWebsiteStep(

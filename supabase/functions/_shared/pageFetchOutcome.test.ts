@@ -48,7 +48,7 @@ describe('classifyFetchedPage', () => {
 });
 
 describe('summarizeFetchOutcomes', () => {
-  it('counts successes and failures by reason', () => {
+  it('counts successes and failures by reason and preserves per-URL detail', () => {
     const summary: FetchOutcomeSummary = summarizeFetchOutcomes([
       { ok: true, url: 'https://a.com' },
       { ok: true, url: 'https://b.com' },
@@ -67,6 +67,14 @@ describe('summarizeFetchOutcomes', () => {
       too_short: 1,
     });
     expect(summary.failedUrls).toEqual(['https://c.com', 'https://d.com', 'https://e.com']);
+    // failures carries the per-URL detail strings that used to live only
+    // in transient console.warn logs — operators now see the actual reason
+    // each URL failed without trawling deno logs.
+    expect(summary.failures).toEqual([
+      { url: 'https://c.com', reason: 'fetch_failed', detail: 'Apify 500' },
+      { url: 'https://d.com', reason: 'empty', detail: null },
+      { url: 'https://e.com', reason: 'too_short', detail: 'length=40' },
+    ]);
   });
 
   it('handles an all-success run', () => {

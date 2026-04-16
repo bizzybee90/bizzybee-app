@@ -40,6 +40,19 @@ export function classifyFetchedPage(content: string | null | undefined): PageCla
   return { status: 'ok' };
 }
 
+export interface FetchOutcomeFailure {
+  url: string;
+  reason: FetchOutcomeReason;
+  /**
+   * Truncated (<400 chars) error message preserved per-URL so operators
+   * can see exactly why each URL failed — "Apify cheerio crawl failed
+   * (504): timeout" vs "Both crawlers failed for X: cheerio=500 /
+   * playwright=timeout". Previously this detail only lived in transient
+   * console.warn logs; now it rides along in the run artifact.
+   */
+  detail: string | null;
+}
+
 export interface FetchOutcomeSummary {
   total: number;
   ok: number;
@@ -47,6 +60,7 @@ export interface FetchOutcomeSummary {
   failureRatio: number;
   byReason: Record<FetchOutcomeReason, number>;
   failedUrls: string[];
+  failures: FetchOutcomeFailure[];
   /**
    * True iff failureRatio > FETCH_DEGRADATION_THRESHOLD. Callers should
    * surface this in step output_summary so the UI can show "Fetched N of M
@@ -62,6 +76,7 @@ export function summarizeFetchOutcomes(outcomes: FetchOutcome[]): FetchOutcomeSu
     too_short: 0,
   };
   const failedUrls: string[] = [];
+  const failures: FetchOutcomeFailure[] = [];
   let ok = 0;
   let failed = 0;
 
@@ -73,6 +88,11 @@ export function summarizeFetchOutcomes(outcomes: FetchOutcome[]): FetchOutcomeSu
     failed += 1;
     byReason[outcome.reason] += 1;
     failedUrls.push(outcome.url);
+    failures.push({
+      url: outcome.url,
+      reason: outcome.reason,
+      detail: outcome.detail ?? null,
+    });
   }
 
   const total = outcomes.length;
@@ -85,6 +105,7 @@ export function summarizeFetchOutcomes(outcomes: FetchOutcome[]): FetchOutcomeSu
     failureRatio,
     byReason,
     failedUrls,
+    failures,
     degraded: failureRatio > FETCH_DEGRADATION_THRESHOLD,
   };
 }

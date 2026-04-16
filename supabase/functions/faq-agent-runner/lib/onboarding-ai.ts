@@ -1,5 +1,6 @@
 import { domainFromUrl } from '../../_shared/onboarding.ts';
 import { canonicalizeUrl } from '../../_shared/urlCanonicalization.ts';
+import { isKnownUnscrapableUrl } from '../../_shared/unscrapableUrl.ts';
 import { callClaudeForJson } from './json-tools.ts';
 import { injectPromptVariables, loadPrompt } from './prompt-loader.ts';
 
@@ -527,10 +528,13 @@ export async function qualifyCompetitorCandidates(
         '[competitor-qualification] Claude returned no approved competitors, falling back to heuristics',
       );
       const fallback = buildHeuristicCompetitorFallback(context, candidates, targetCount);
-      return { ...fallback, fallback_reason: 'claude_empty' };
+      return filterUnscrapableFromQualification({
+        ...fallback,
+        fallback_reason: 'claude_empty',
+      });
     }
 
-    return { ...result, fallback_reason: 'none' };
+    return filterUnscrapableFromQualification({ ...result, fallback_reason: 'none' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
@@ -538,8 +542,52 @@ export async function qualifyCompetitorCandidates(
       message,
     );
     const fallback = buildHeuristicCompetitorFallback(context, candidates, targetCount);
-    return { ...fallback, fallback_reason: 'claude_error', claude_error: message };
+    return filterUnscrapableFromQualification({
+      ...fallback,
+      fallback_reason: 'claude_error',
+      claude_error: message,
+    });
   }
+}
+
+/**
+ * Move any approved competitor whose URL matches a known-unscrapable pattern
+ * (facebook, yelp, google.com/maps, etc.) into the rejected list with a
+ * clear reason. Claude sometimes rubber-stamps social profiles that look
+ * like real businesses — by the time fetch_pages sees them they waste an
+ * Apify slot that will 100% fail. Catching them here means the review
+ * screen shows them in the rejected panel with a sensible explanation
+ * instead of confusing the user when the scrape produces no FAQs for them.
+ */
+function filterUnscrapableFromQualification(result: QualificationResult): QualificationResult {
+  const stillApproved: QualifiedCandidate[] = [];
+  const extraRejected: RejectedCandidate[] = [];
+
+  for (const candidate of result.approved) {
+    if (isKnownUnscrapableUrl(candidate.url)) {
+      extraRejected.push({
+        url: candidate.url,
+        domain: candidate.domain,
+        business_name: candidate.business_name,
+        reason: 'Social / directory URL — site is not scrapable for competitor FAQs',
+      });
+      continue;
+    }
+    stillApproved.push(candidate);
+  }
+
+  if (extraRejected.length > 0) {
+    console.warn('[competitor-qualification] dropped unscrapable URLs from approved list', {
+      dropped: extraRejected.length,
+      urls: extraRejected.map((r) => r.url),
+    });
+  }
+
+  return {
+    ...result,
+    approved: stillApproved,
+    rejected: [...result.rejected, ...extraRejected],
+  };
 }
 
 export async function crawlWebsitePages(url: string, maxPages = 8): Promise<FetchedPage[]> {
