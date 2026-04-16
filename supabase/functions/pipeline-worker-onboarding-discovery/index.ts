@@ -271,9 +271,22 @@ async function processJob(
         );
       }
 
+      if (qualified.fallback_reason !== 'none') {
+        console.warn('[competitor-qualification-fallback]', {
+          workspace_id: run.workspace_id,
+          run_id: run.id,
+          fallback_reason: qualified.fallback_reason,
+          claude_error: qualified.claude_error ?? null,
+          approved_count: qualified.approved.length,
+          rejected_count: qualified.rejected.length,
+        });
+      }
+
       await succeedStep(supabase, step.id, {
         approved_count: qualified.approved.length,
         rejected_count: qualified.rejected.length,
+        qualification_fallback_reason: qualified.fallback_reason,
+        qualification_claude_error: qualified.claude_error ?? null,
       });
       await queueSend(
         supabase,

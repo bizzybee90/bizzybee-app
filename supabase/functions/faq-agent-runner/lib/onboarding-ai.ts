@@ -1,4 +1,5 @@
 import { domainFromUrl } from '../../_shared/onboarding.ts';
+import { canonicalizeUrl } from '../../_shared/urlCanonicalization.ts';
 import { callClaudeForJson } from './json-tools.ts';
 import { injectPromptVariables, loadPrompt } from './prompt-loader.ts';
 
@@ -429,7 +430,10 @@ export async function searchCompetitorCandidates(
     }),
   );
 
-  const resultsByUrl = new Map<string, SearchCandidate>();
+  // Dedup by canonical URL — collapses http/https, leading www./m., trailing
+  // slash, hash fragments, and hostname case so variants of the same page
+  // from different search queries don't pollute the candidate list.
+  const resultsByCanonicalUrl = new Map<string, SearchCandidate>();
   for (const { query, items } of perQueryResults) {
     for (const item of items) {
       const organicResults = Array.isArray(item.organicResults)
@@ -444,6 +448,8 @@ export async function searchCompetitorCandidates(
               ? result.link
               : '';
         if (!url) continue;
+        const canonical = canonicalizeUrl(url);
+        if (!canonical) continue;
         const domain = domainFromUrl(url);
         if (!domain) continue;
 
@@ -460,14 +466,34 @@ export async function searchCompetitorCandidates(
           discovery_query: query,
         };
 
-        if (!resultsByUrl.has(url)) {
-          resultsByUrl.set(url, candidate);
+        if (!resultsByCanonicalUrl.has(canonical)) {
+          resultsByCanonicalUrl.set(canonical, candidate);
         }
       }
     }
   }
 
-  return Array.from(resultsByUrl.values()).slice(0, Math.max(targetCount * 3, targetCount));
+  return Array.from(resultsByCanonicalUrl.values()).slice(
+    0,
+    Math.max(targetCount * 3, targetCount),
+  );
+}
+
+export type QualificationFallbackReason = 'none' | 'claude_empty' | 'claude_error';
+
+export interface QualificationResult {
+  approved: QualifiedCandidate[];
+  rejected: RejectedCandidate[];
+  /**
+   * Why (if at all) we fell back from Claude's LLM qualification to the
+   * heuristic scoring path. Callers should log + record this on the step so
+   * operators can distinguish "Claude ran and approved these" from "Claude
+   * broke and we silently substituted heuristic scores" — previously those
+   * two paths produced identical results with no visibility into which was
+   * taken.
+   */
+  fallback_reason: QualificationFallbackReason;
+  claude_error?: string;
 }
 
 export async function qualifyCompetitorCandidates(
@@ -476,7 +502,7 @@ export async function qualifyCompetitorCandidates(
   context: PromptContext,
   candidates: SearchCandidate[],
   targetCount: number,
-): Promise<{ approved: QualifiedCandidate[]; rejected: RejectedCandidate[] }> {
+): Promise<QualificationResult> {
   const template = await loadPrompt('competitor-qualification.md');
   const systemPrompt = injectPromptVariables(template, buildPromptContext(context));
   const userPrompt = JSON.stringify(
@@ -497,14 +523,22 @@ export async function qualifyCompetitorCandidates(
     });
 
     if (!result || !Array.isArray(result.approved) || result.approved.length === 0) {
-      console.warn('Claude returned no approved competitors, falling back to heuristics');
-      return buildHeuristicCompetitorFallback(context, candidates, targetCount);
+      console.warn(
+        '[competitor-qualification] Claude returned no approved competitors, falling back to heuristics',
+      );
+      const fallback = buildHeuristicCompetitorFallback(context, candidates, targetCount);
+      return { ...fallback, fallback_reason: 'claude_empty' };
     }
 
-    return result;
+    return { ...result, fallback_reason: 'none' };
   } catch (error) {
-    console.warn('Falling back to heuristic competitor qualification', error);
-    return buildHeuristicCompetitorFallback(context, candidates, targetCount);
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      '[competitor-qualification] Falling back to heuristic qualification after Claude error',
+      message,
+    );
+    const fallback = buildHeuristicCompetitorFallback(context, candidates, targetCount);
+    return { ...fallback, fallback_reason: 'claude_error', claude_error: message };
   }
 }
 
