@@ -1,7 +1,6 @@
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import {
   dedupeOwnWebsiteFaqsAcrossBatches,
-  extractCompetitorFaqCandidates,
   extractWebsiteFaqsInChunks,
   finalizeFaqCandidates,
   type FaqCandidate,
@@ -483,27 +482,24 @@ export async function extractFaqCandidatesFromPages(params: {
     totalCandidateCount: number;
   }) => Promise<void> | void;
 }): Promise<{ faqs: FaqCandidate[]; batchCount: number }> {
-  if (params.sourceKind === 'own_site') {
-    return extractWebsiteFaqsInChunks(
-      params.apiKey,
-      params.model,
-      params.context,
-      params.pages,
-      params.onWebsiteProgress,
-    );
-  }
-
-  const extracted = await extractCompetitorFaqCandidates(
+  // Both source kinds now route through the chunked per-page extractor.
+  // Previously competitors used a single-shot extractCompetitorFaqCandidates
+  // call that took ALL pages at once — which starved the prompt of per-page
+  // focus and silently produced far fewer FAQs than own-site's per-page
+  // loop. With competitors now crawling 8 pages each (handleFetchSourcePage
+  // max_pages=8), the all-at-once path also blew the Claude token budget.
+  // The finalizer step (finalizeSharedFaqCandidates) handles brand-name
+  // stripping and source-of-truth policing that used to live in the
+  // competitor-specific extraction prompt, so we no longer need a
+  // competitor-dedicated extractor here.
+  return extractWebsiteFaqsInChunks(
     params.apiKey,
     params.model,
     params.context,
     params.pages,
+    params.onWebsiteProgress,
+    { finalLimit: params.sourceKind === 'competitor' ? 60 : 15 },
   );
-
-  return {
-    faqs: extracted.candidates,
-    batchCount: 1,
-  };
 }
 
 export async function loadExistingFaqQuestions(

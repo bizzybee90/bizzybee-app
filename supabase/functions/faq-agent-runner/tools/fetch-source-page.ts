@@ -2,8 +2,9 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const APIFY_RUN_URL =
   'https://api.apify.com/v2/acts/apify~website-content-crawler/run-sync-get-dataset-items';
-const APIFY_TIMEOUT_SECS = 90;
+const APIFY_TIMEOUT_SECS = 180;
 const MAX_CONTENT_LENGTH = 30_000;
+const DEFAULT_MAX_PAGES = 8;
 
 /**
  * We scrape competitor sites with Apify's website-content-crawler actor in
@@ -53,10 +54,10 @@ export interface FetchResult {
 
 export async function handleFetchSourcePage(
   supabase: SupabaseClient,
-  input: { url: string; run_id: string },
+  input: { url: string; run_id: string; max_pages?: number },
   workspaceId: string,
   allowedUrls: string[],
-): Promise<FetchResult> {
+): Promise<FetchResult[]> {
   if (!allowedUrls.includes(input.url)) {
     throw new Error(`URL not in allowed list: ${input.url}`);
   }
@@ -64,19 +65,34 @@ export async function handleFetchSourcePage(
   const apifyKey = Deno.env.get('APIFY_API_KEY') || Deno.env.get('APIFY_API_TOKEN');
   if (!apifyKey) throw new Error('APIFY_API_KEY or APIFY_API_TOKEN not configured');
 
+  const maxPages = Math.max(1, Math.min(input.max_pages ?? DEFAULT_MAX_PAGES, 12));
+  const origin = (() => {
+    try {
+      return new URL(input.url).origin;
+    } catch {
+      return null;
+    }
+  })();
+
   const response = await fetch(`${APIFY_RUN_URL}?token=${apifyKey}&timeout=${APIFY_TIMEOUT_SECS}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       startUrls: [{ url: input.url }],
-      maxCrawlPages: 1,
+      // Mirror own-site scrape depth (onboarding-ai.ts#crawlWebsitePages) so
+      // competitors get the same 8-page crawl + per-page extraction that
+      // makes own-site FAQ harvest 10× more productive than the old
+      // single-landing-page competitor scrape. /services, /pricing, /faq
+      // sub-pages are where the real FAQ content lives.
+      maxCrawlPages: maxPages,
       crawlerType: APIFY_CRAWLER_TYPE,
+      // Only follow links within the same origin — we don't want the
+      // crawler wandering off onto cross-domain footer links.
+      ...(origin ? { includeUrlGlobs: [`${origin}/**`] } : {}),
       // Remove cookie banners and consent modals from the extracted content
       // so Claude doesn't see "We use cookies on this site" as the main
       // heading of every page.
       removeCookieWarnings: true,
-      // Run quietly — don't follow same-domain links. We only want the
-      // landing page for FAQ extraction.
       sameDomainDelaySecs: 0,
     }),
   });
@@ -89,12 +105,35 @@ export async function handleFetchSourcePage(
   }
 
   const items = (await response.json()) as ApifyCrawlItem[];
-  const page = Array.isArray(items) ? items[0] : undefined;
-  if (!page) throw new Error(`Apify playwright returned no content for ${input.url}`);
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error(`Apify playwright returned no content for ${input.url}`);
+  }
 
-  let content = page.markdown || page.text || '';
-  const truncated = content.length > MAX_CONTENT_LENGTH;
-  if (truncated) content = content.slice(0, MAX_CONTENT_LENGTH);
+  const results: FetchResult[] = [];
+  const seenUrls = new Set<string>();
+  for (const item of items) {
+    const pageUrl = typeof item.url === 'string' && item.url.length > 0 ? item.url : input.url;
+    if (seenUrls.has(pageUrl)) continue;
+    seenUrls.add(pageUrl);
+
+    let content = item.markdown || item.text || '';
+    if (!content.trim()) continue;
+    const truncated = content.length > MAX_CONTENT_LENGTH;
+    if (truncated) content = content.slice(0, MAX_CONTENT_LENGTH);
+
+    results.push({
+      url: pageUrl,
+      title: item.title ?? null,
+      content,
+      content_length: content.length,
+      truncated,
+      crawler: 'playwright',
+    });
+  }
+
+  if (results.length === 0) {
+    throw new Error(`Apify playwright returned no usable pages for ${input.url}`);
+  }
 
   await supabase.from('agent_run_artifacts').insert({
     run_id: input.run_id,
@@ -103,19 +142,17 @@ export async function handleFetchSourcePage(
     artifact_key: input.url,
     source_url: input.url,
     content: {
-      title: page.title ?? null,
-      text_length: content.length,
-      truncated,
+      start_url: input.url,
+      page_count: results.length,
+      pages: results.map((page) => ({
+        url: page.url,
+        title: page.title,
+        text_length: page.content_length,
+        truncated: page.truncated,
+      })),
       crawler: 'playwright',
     },
   });
 
-  return {
-    url: input.url,
-    title: page.title ?? null,
-    content,
-    content_length: content.length,
-    truncated,
-    crawler: 'playwright',
-  };
+  return results;
 }

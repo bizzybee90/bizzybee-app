@@ -37,19 +37,25 @@ export const UNSCRAPABLE_HOSTNAME_PATTERNS: readonly string[] = [
   'snapchat.com',
   'reddit.com',
   'nextdoor.com',
+  'nextdoor.co.uk',
   // Google-owned
   'google.com',
   'g.page',
   'business.google.com',
   // Known directories / aggregators we already distrust
   'yelp.com',
+  'yelp.co.uk',
   'yell.com',
+  'yell.co.uk',
   'trustpilot.com',
+  'trustpilot.co.uk',
   'checkatrade.com',
   'trustatrader.com',
   'mybuilder.com',
   'ratedpeople.com',
   'bark.com',
+  'angi.com',
+  'threebestrated.co.uk',
 ];
 
 function extractHostname(raw: string): string | null {

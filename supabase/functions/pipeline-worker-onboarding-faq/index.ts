@@ -33,7 +33,10 @@ import {
 } from '../_shared/pageFetchOutcome.ts';
 import { beginStep, failStep, succeedStep } from '../faq-agent-runner/lib/step-recorder.ts';
 import { type FaqCandidate } from '../faq-agent-runner/lib/onboarding-ai.ts';
-import { handleFetchSourcePage } from '../faq-agent-runner/tools/fetch-source-page.ts';
+import {
+  handleFetchSourcePage,
+  type FetchResult,
+} from '../faq-agent-runner/tools/fetch-source-page.ts';
 import { handleGetRunContext, type RunContext } from '../faq-agent-runner/tools/get-run-context.ts';
 import { handleMirrorProgress } from '../faq-agent-runner/tools/mirror-progress.ts';
 import {
@@ -48,7 +51,14 @@ import {
 } from '../_shared/onboarding-faq-engine.ts';
 
 const QUEUE_NAME = ONBOARDING_FAQ_QUEUE;
-const VT_SECONDS = 180;
+// VT was 180s when each competitor only fetched 1 page. With the 8-page
+// unified crawl (see handleFetchSourcePage max_pages=8) a batch of 25
+// competitor URLs easily runs 4-6 minutes wall-clock despite parallelism.
+// If VT expires mid-scrape pgmq redelivers the message and a second worker
+// races against the first — duplicate artifacts, flickering progress
+// counters, and Apify charged twice for the same work. 600s covers the
+// worst observed case (2m 19s) with 4× headroom.
+const VT_SECONDS = 600;
 const MAX_ATTEMPTS = 5;
 const MAX_ONBOARDING_COMPETITOR_SITES = 25;
 
@@ -207,12 +217,30 @@ async function processJob(
       // visibility timeout (causing duplicate deliveries). Bounded concurrency
       // of 5 cuts wall-clock to ~max-site-time while staying polite to Apify's
       // per-account concurrency and Anthropic downstream.
-      const FETCH_CONCURRENCY = 5;
+      // Concurrency was 5 when each competitor scraped 1 page. With 8-page
+      // crawls that's 40 Playwright page-fetches in flight, which hammered
+      // Apify hard enough to fail 79% of calls (observed 2026-04-17).
+      // Concurrency 2 × 8 pages = 16 concurrent — still parallel enough
+      // to avoid a 10-minute serial floor, but low enough that Apify's
+      // per-account concurrency and each site's rate-limits don't push
+      // us into degraded territory.
+      const FETCH_CONCURRENCY = 2;
+      // Pages-per-competitor cap. Mirrors own-site's crawlWebsitePages
+      // default (onboarding-ai.ts#crawlWebsitePages). The real FAQ content
+      // typically lives on /services, /pricing, /faq sub-pages — crawling
+      // the first 8 internal pages of each competitor gives Claude the
+      // same surface area to extract from as own-site gets.
+      const PAGES_PER_COMPETITOR = 8;
       const targetUrls = context.allowed_urls.slice(0, targetCount);
-      const pagesByIndex: Array<SharedFaqSourcePage | null> = new Array(targetUrls.length).fill(
-        null,
+      // Per-competitor page buckets. Each bucket holds up to PAGES_PER_COMPETITOR
+      // pages from that competitor's crawl. Flattened to a single array at the
+      // end for the `faq_pages` artifact — downstream extract/dedupe/finalize
+      // already treat `pages` as a flat list keyed by url + source_business.
+      const pagesByCompetitor: Array<SharedFaqSourcePage[]> = Array.from(
+        { length: targetUrls.length },
+        () => [],
       );
-      let pagesCompleted = 0;
+      let competitorsCompleted = 0;
 
       if (sourceJobId) {
         await supabase
@@ -254,59 +282,95 @@ async function processJob(
             if (!next) return;
             const { url, idx } = next;
             try {
-              const page = await withTransientRetry(() =>
-                handleFetchSourcePage(
-                  supabase,
-                  { url, run_id: run.id },
-                  run.workspace_id,
-                  context.allowed_urls,
-                ),
+              // Per-competitor 3-min ceiling. Previously one slow site
+              // (Cloudflare challenge, huge blog index, etc.) could stall
+              // a whole worker past VT and trigger pgmq redelivery. Now
+              // we bound each competitor's wall-clock to 180s and fail
+              // over cleanly; the pipeline carries on with the remaining
+              // sites rather than getting dragged back.
+              const PER_COMPETITOR_TIMEOUT_MS = 180_000;
+              const fetched = await withTransientRetry(() =>
+                Promise.race<FetchResult[]>([
+                  handleFetchSourcePage(
+                    supabase,
+                    { url, run_id: run.id, max_pages: PAGES_PER_COMPETITOR },
+                    run.workspace_id,
+                    context.allowed_urls,
+                  ),
+                  new Promise<FetchResult[]>((_, reject) =>
+                    setTimeout(
+                      () =>
+                        reject(
+                          new Error(`per-competitor timeout ${PER_COMPETITOR_TIMEOUT_MS / 1000}s`),
+                        ),
+                      PER_COMPETITOR_TIMEOUT_MS,
+                    ),
+                  ),
+                ]),
               );
-              const classification = classifyFetchedPage(page?.content ?? null);
-              if (classification.status === 'ok') {
-                pagesByIndex[idx] = {
-                  ...page,
-                  source_business: businessNameByUrl.get(url) || url,
-                };
+              // handleFetchSourcePage now returns an array of up to
+              // PAGES_PER_COMPETITOR pages per competitor (was single-page).
+              // Classify each individually so one junk page doesn't poison
+              // the per-competitor outcome.
+              const bucket: SharedFaqSourcePage[] = [];
+              for (const page of fetched) {
+                const classification = classifyFetchedPage(page?.content ?? null);
+                if (classification.status === 'ok') {
+                  bucket.push({
+                    ...page,
+                    source_business: businessNameByUrl.get(url) || url,
+                  });
+                } else if (classification.status === 'too_short') {
+                  console.warn(
+                    '[fetch_pages] skipping page with too-short content',
+                    page?.url,
+                    'length=',
+                    classification.contentLength,
+                  );
+                }
+              }
+              if (bucket.length > 0) {
+                pagesByCompetitor[idx] = bucket;
                 fetchOutcomes.push({ ok: true, url });
-              } else if (classification.status === 'too_short') {
-                console.warn(
-                  '[fetch_pages] skipping page with too-short content',
-                  url,
-                  'length=',
-                  classification.contentLength,
-                );
-                fetchOutcomes.push({
-                  ok: false,
-                  url,
-                  reason: 'too_short',
-                  detail: `length=${classification.contentLength}`,
-                });
               } else {
-                console.warn('[fetch_pages] skipping page with empty content', url);
+                console.warn('[fetch_pages] all pages empty/too-short for', url);
                 fetchOutcomes.push({ ok: false, url, reason: 'empty' });
               }
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
               console.warn('[fetch_pages] handleFetchSourcePage failed for url', url, message);
               fetchOutcomes.push({ ok: false, url, reason: 'fetch_failed', detail: message });
-              // Leave index null; we'll skip it in the final compaction below.
+              // Leave bucket empty; we'll skip it in the final compaction below.
             } finally {
               await heartbeat();
-              pagesCompleted += 1;
-              // Single aggregated progress write per URL (one agent_runs update +
-              // one competitor_research_jobs update). Previously there were FOUR
-              // writes per URL inside the serial loop.
+              competitorsCompleted += 1;
+              const totalPagesScraped = pagesByCompetitor.reduce(
+                (sum, bucket) => sum + bucket.length,
+                0,
+              );
+              // Monotonic progress write. If a duplicate pgmq-delivered
+              // worker is racing us, we read first + take max so the
+              // counter can't go backwards — that was causing the UX of
+              // "up to 19, then down to 1" that looked like the pipeline
+              // was malfunctioning. Worst case under concurrency is that
+              // both workers write the same max value.
               const latestUrl = url;
               if (sourceJobId) {
                 try {
+                  const { data: existing } = await supabase
+                    .from('competitor_research_jobs')
+                    .select('sites_scraped, pages_scraped')
+                    .eq('id', sourceJobId)
+                    .maybeSingle();
+                  const nextSites = Math.max(existing?.sites_scraped ?? 0, competitorsCompleted);
+                  const nextPages = Math.max(existing?.pages_scraped ?? 0, totalPagesScraped);
                   await supabase
                     .from('competitor_research_jobs')
                     .update({
                       status: 'scraping',
                       current_scraping_domain: latestUrl,
-                      sites_scraped: pagesCompleted,
-                      pages_scraped: pagesCompleted,
+                      sites_scraped: nextSites,
+                      pages_scraped: nextPages,
                       heartbeat_at: new Date().toISOString(),
                     })
                     .eq('id', sourceJobId);
@@ -314,17 +378,15 @@ async function processJob(
                   console.warn('[fetch_pages] competitor_research_jobs progress update failed', e);
                 }
               }
+              // Skip the per-competitor output_summary.faq_progress update
+              // — it's the main flicker source when a duplicate worker is
+              // running, and the UI already falls through to
+              // competitor_research_jobs (which we just updated monotonically).
+              // We only touch agent_runs for heartbeat.
               await touchAgentRun(supabase, {
                 runId: run.id,
                 status: 'running',
                 currentStepKey: 'fetch_pages',
-                outputSummaryPatch: {
-                  faq_progress: {
-                    current_domain: latestUrl,
-                    pages_scraped: pagesCompleted,
-                    page_count: targetUrls.length,
-                  },
-                },
               });
             }
           }
@@ -332,9 +394,7 @@ async function processJob(
       );
       await Promise.all(workers);
 
-      const pages: SharedFaqSourcePage[] = pagesByIndex.filter(
-        (p): p is SharedFaqSourcePage => p !== null,
-      );
+      const pages: SharedFaqSourcePage[] = pagesByCompetitor.flat();
       const fetchSummary = summarizeFetchOutcomes(fetchOutcomes);
 
       if (fetchSummary.degraded) {
@@ -360,12 +420,25 @@ async function processJob(
       });
 
       if (sourceJobId) {
+        // Step-completion counter write. Previously set sites_scraped
+        // and pages_scraped to `pages.length` — which was correct when
+        // each competitor yielded 1 page but under 8-page crawls they
+        // conflate. Report sites = competitors whose bucket is non-empty,
+        // pages = total pages. Also apply the monotonic guard so a
+        // racing duplicate worker with fewer pages can't lower the
+        // visible totals.
+        const sitesWithPages = pagesByCompetitor.filter((b) => b.length > 0).length;
+        const { data: existing } = await supabase
+          .from('competitor_research_jobs')
+          .select('sites_scraped, pages_scraped')
+          .eq('id', sourceJobId)
+          .maybeSingle();
         await supabase
           .from('competitor_research_jobs')
           .update({
             status: 'scraping',
-            sites_scraped: pages.length,
-            pages_scraped: pages.length,
+            sites_scraped: Math.max(existing?.sites_scraped ?? 0, sitesWithPages),
+            pages_scraped: Math.max(existing?.pages_scraped ?? 0, pages.length),
             heartbeat_at: new Date().toISOString(),
           })
           .eq('id', sourceJobId);
@@ -427,6 +500,14 @@ async function processJob(
     });
 
     try {
+      // Pgmq heartbeat. Per-page Claude extraction (one call per page of
+      // up to 28 pages × ~5s) easily crosses the VT boundary, and without
+      // the heartbeat pgmq redelivers to a second worker mid-loop — the
+      // 2026-04-17 "4 concurrent generate_candidates attempts" symptom.
+      // Mirrors the fetch_pages heartbeat pattern; shared helper
+      // debounces set_vt calls internally.
+      const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
+
       const { pages } = await loadRunArtifact<{
         pages: SharedFaqSourcePage[];
       }>(supabase, run.id, run.workspace_id, 'faq_pages');
@@ -437,7 +518,7 @@ async function processJob(
         .maybeSingle();
       const { data: businessContext } = await supabase
         .from('business_context')
-        .select('industry, service_area, business_type')
+        .select('service_area, business_type')
         .eq('workspace_id', run.workspace_id)
         .maybeSingle();
 
@@ -456,6 +537,13 @@ async function processJob(
             business_type: businessContext?.business_type ?? null,
           },
           pages,
+          // Fire the pgmq heartbeat after each per-page Claude extraction
+          // completes. extractWebsiteFaqsInChunks already invokes
+          // onWebsiteProgress after every batch — we piggy-back on that
+          // to keep pgmq's VT pushed out while the loop runs.
+          onWebsiteProgress: async () => {
+            await heartbeat();
+          },
         }),
       );
 
@@ -624,12 +712,19 @@ async function processJob(
     });
 
     try {
+      // Same heartbeat protection as generate_candidates — the finalize
+      // Claude call takes ~3s typical but can be 30s+ on big candidate
+      // sets, and without heartbeat a delayed response still triggers
+      // pgmq redelivery at VT.
+      const heartbeat = createPgmqHeartbeat(supabase, QUEUE_NAME, record.msg_id);
+
       const { candidates } = await loadRunArtifact<{ candidates: FaqCandidate[] }>(
         supabase,
         run.id,
         run.workspace_id,
         'faq_candidates_deduped',
       );
+      await heartbeat();
       const { data: workspace } = await supabase
         .from('workspaces')
         .select('name')
@@ -637,7 +732,7 @@ async function processJob(
         .maybeSingle();
       const { data: businessContext } = await supabase
         .from('business_context')
-        .select('industry, service_area, business_type')
+        .select('service_area, business_type')
         .eq('workspace_id', run.workspace_id)
         .maybeSingle();
 
