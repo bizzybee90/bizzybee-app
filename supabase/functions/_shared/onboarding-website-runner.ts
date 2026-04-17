@@ -238,7 +238,7 @@ async function executeExtractOneBatch(params: {
       supabase.from('workspaces').select('name').eq('id', run.workspace_id).maybeSingle(),
       supabase
         .from('business_context')
-        .select('industry, service_area, business_type')
+        .select('service_area, business_type')
         .eq('workspace_id', run.workspace_id)
         .maybeSingle(),
     ]);

@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
       workspace_id?: string;
       target_count?: number;
       search_queries?: string[];
+      towns_used?: string[];
       trigger_source?: string;
     };
 
@@ -168,6 +169,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Towns the user retained on the radius-expansion chip row. Consumed
+    // by the Places-first discovery path in pipeline-worker-onboarding-
+    // discovery so Text Search fans out across every town instead of
+    // querying the primary town only (which capped us at ~10 candidates
+    // for a 20-mile radius). Ordered primary-first, nearest-first by the
+    // RPC; the backend preserves that order for ranking ties.
+    const townsUsed: string[] = Array.isArray(body.towns_used)
+      ? body.towns_used
+          .map((t) => (typeof t === 'string' ? t.trim() : ''))
+          .filter((t): t is string => t.length > 0)
+          .slice(0, 10)
+      : [];
+
     const run = await createOnboardingRun(supabase, {
       workspaceId,
       workflowKey: 'competitor_discovery',
@@ -179,6 +193,7 @@ Deno.serve(async (req) => {
         trigger_source: body.trigger_source?.trim() || 'onboarding_search_terms',
         target_count: targetCount,
         search_queries: searchQueries,
+        towns_used: townsUsed,
         website_url: businessContext?.website_url || undefined,
         competitor_research_job_id: researchJob.id,
         model_policy: defaultModelPolicy(),

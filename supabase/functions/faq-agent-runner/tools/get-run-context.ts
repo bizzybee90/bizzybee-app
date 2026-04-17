@@ -46,7 +46,7 @@ export async function handleGetRunContext(
 
   const { data: bizCtx } = await supabase
     .from('business_context')
-    .select('company_name, industry, service_area, business_type, website_url')
+    .select('company_name, service_area, business_type, website_url')
     .eq('workspace_id', workspaceId)
     .single();
 

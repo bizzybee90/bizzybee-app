@@ -195,18 +195,97 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
     const run = async () => {
       setIsExpanding(true);
       try {
+        // Try the Places-based nearby-towns discovery first. Replaces the
+        // uk_towns + haversine RPC path which returns raw nearest-by-
+        // distance results — those include wards/suburbs (Sopwell,
+        // Fleetville, Bennetts End, Marshalswick…) that won't rank
+        // independently for "window cleaner Sopwell" because Google
+        // attributes them to the parent town. Places Nearby Search with
+        // type=locality natively filters these out.
+        let townNames: string[] | null = null;
+        try {
+          const placesResp = await supabase.functions.invoke('get-nearby-towns', {
+            body: {
+              primary_town: primaryArea.town,
+              radius_miles: primaryArea.radiusMiles,
+              max_towns: 20,
+            },
+          });
+          if (cancelled) return;
+          const placesData = placesResp.data as { towns?: Array<{ name?: string }> } | null;
+          const places = Array.isArray(placesData?.towns)
+            ? placesData!.towns
+                .map((t) => (typeof t?.name === 'string' ? t.name.trim() : ''))
+                .filter((n): n is string => n.length > 0)
+            : [];
+          if (places.length >= 2) {
+            townNames = [primaryArea.town, ...places];
+          } else {
+            console.warn(
+              '[SearchTermsStep] get-nearby-towns returned too few towns, falling back to RPC',
+              { places_count: places.length, error: placesResp.error },
+            );
+          }
+        } catch (placesErr) {
+          console.warn('[SearchTermsStep] get-nearby-towns threw, falling back to RPC', placesErr);
+        }
+
+        if (townNames) {
+          // Build queries client-side from the Places-curated town list
+          // using the same stem-extraction shape the RPC uses: for each
+          // enabled term, strip the primary town suffix to get the
+          // service-only stem; then cross each stem with each town.
+          // Primary town gets all stems; nearby towns get the first 3
+          // stems (matches RPC's p_terms_per_nearby_town=3 default).
+          const primaryLower = primaryArea.town.toLowerCase();
+          const stems = enabledTerms
+            .map((t) =>
+              t
+                .toLowerCase()
+                .replace(new RegExp(`[\\s,.;:\\-]*${primaryLower}$`, 'i'), '')
+                .trim(),
+            )
+            .filter((s) => s.length > 0);
+          const primaryStems = stems;
+          const nearbyStemCount = 3;
+          const nearbyStems = stems.slice(0, nearbyStemCount);
+          const seen = new Set<string>();
+          const builtQueries: string[] = [];
+          for (const stem of primaryStems) {
+            const q = `${stem} ${primaryLower}`;
+            if (!seen.has(q)) {
+              seen.add(q);
+              builtQueries.push(q);
+            }
+          }
+          for (const town of townNames.slice(1)) {
+            const townLower = town.toLowerCase();
+            for (const stem of nearbyStems) {
+              const q = `${stem} ${townLower}`;
+              if (!seen.has(q)) {
+                seen.add(q);
+                builtQueries.push(q);
+              }
+            }
+          }
+          setExpandedQueries(builtQueries);
+          setTownsUsed(townNames);
+          return;
+        }
+
+        // Fallback: RPC path (uk_towns haversine). Kept as a safety net
+        // if Places is unreachable or returns insufficient data.
         const { data, error } = await supabase.rpc('expand_search_queries', {
           p_search_terms: enabledTerms,
           p_primary_town: primaryArea.town,
           p_radius_miles: primaryArea.radiusMiles,
           p_terms_per_nearby_town: 3,
-          p_max_queries: 30,
-          p_max_nearby_towns: 6,
+          p_max_queries: 120,
+          p_max_nearby_towns: 20,
         });
         if (cancelled) return;
         if (error) {
           console.warn('[SearchTermsStep] expand_search_queries RPC failed', error);
-          // Fallback: use enabledTerms as-is, no chip row.
           setExpandedQueries(enabledTerms);
           setTownsUsed([primaryArea.town]);
           return;
@@ -305,12 +384,26 @@ export function SearchTermsStep({ workspaceId, onNext, onBack }: SearchTermsStep
       // error path). Never send an empty array downstream.
       const payloadQueries = finalQueries.length > 0 ? finalQueries : enabledTerms;
 
+      // Send the user-retained town list so the backend's Places discovery
+      // can fan out across every town in the chip row instead of querying
+      // the primary town only. Excluded towns are already filtered out of
+      // `townsUsed` by the useMemo that derives from excludedTowns, but we
+      // belt-and-brace filter again here.
+      const activeTowns = townsUsed.filter((t) => !excludedTowns.has(t));
+
       const discoveryPromise = supabase.functions
         .invoke('start-onboarding-discovery', {
           body: {
             workspace_id: workspaceId,
             search_queries: payloadQueries,
-            target_count: 15,
+            towns_used: activeTowns,
+            // Request the server-side hard cap. start-onboarding-discovery
+            // clamps to Math.min(25, ...), so anything above 25 is noise;
+            // below that was the old UI default that left the Places fan-
+            // out pool underused. The radius-expanded chip row + Places
+            // fan-out easily fills 25 real candidates for UK service
+            // businesses.
+            target_count: 25,
             trigger_source: 'onboarding_search_terms',
           },
         })

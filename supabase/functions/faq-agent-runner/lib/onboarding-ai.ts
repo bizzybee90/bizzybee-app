@@ -1,13 +1,39 @@
 import { domainFromUrl } from '../../_shared/onboarding.ts';
 import { withTransientRetry } from '../../_shared/retry.ts';
 import { canonicalizeUrl } from '../../_shared/urlCanonicalization.ts';
-import { isKnownUnscrapableUrl } from '../../_shared/unscrapableUrl.ts';
+import {
+  isKnownUnscrapableUrl,
+  UNSCRAPABLE_HOSTNAME_PATTERNS,
+} from '../../_shared/unscrapableUrl.ts';
 import { callClaudeForJson } from './json-tools.ts';
 import { injectPromptVariables, loadPrompt } from './prompt-loader.ts';
 
 const APIFY_SEARCH_ACTOR = 'apify/google-search-scraper';
 const APIFY_CONTENT_ACTOR = 'apify/website-content-crawler';
 const DIRECT_CRAWL_TIMEOUT_MS = 15_000;
+
+// Appended to every SERP query as `-site:` operators so the most common
+// directory / social / aggregator noise never enters the candidate pool.
+// Capped at ~10 entries — Google silently ignores operators past that count,
+// which previously caused *later* entries in the list to leak back in while
+// simultaneously distorting the SERP composition (UK directory slots got
+// freed and US results bubbled up). The full UNSCRAPABLE_HOSTNAME_PATTERNS
+// list still runs post-fetch via filterUnscrapableFromQualification.
+const SERP_QUERY_EXCLUDE_HOSTS: readonly string[] = [
+  'facebook.com',
+  'instagram.com',
+  'yell.com',
+  'yelp.com',
+  'checkatrade.com',
+  'trustatrader.com',
+  'bark.com',
+  'pinterest.com',
+  'nextdoor.com',
+  'mybuilder.com',
+];
+const SEARCH_EXCLUSION_OPERATORS = SERP_QUERY_EXCLUDE_HOSTS.map((host) => `-site:${host}`).join(
+  ' ',
+);
 
 interface PromptContext {
   workspace_name: string;
@@ -396,6 +422,198 @@ async function discoverOwnWebsiteUrls(url: string, maxPages: number): Promise<st
   return Array.from(candidates).slice(0, Math.max(maxPages, 1));
 }
 
+/**
+ * Discover competitor candidates via Google Places Text Search, filtered
+ * to operating businesses with a website. Replaces SERP as the primary
+ * discovery source for any workspace where the business_type + towns are
+ * known — see 2026-04-17 brief: "SERP returns directory/social noise
+ * that drowns the real businesses; Places returns real businesses with
+ * rating/review signal already baked in."
+ *
+ * Fans out across every town in `towns` (primary + user-retained nearby
+ * towns from the radius-expansion chip row), so a 20-mile radius actually
+ * gets covered — a single-town query only returns ~20 Places results
+ * from the primary town itself, which is nowhere near enough.
+ *
+ * Algorithm:
+ *   1. Text Search `"{business_type} in {town}, UK"` per town, in
+ *      parallel. The ", UK" suffix is a crude but effective geo pin
+ *      that avoids the Dunstable-MA class of false positives.
+ *   2. Dedupe raw places by `place_id` (same business turning up under
+ *      adjacent towns collapses) and also by `domain` (chains / multi-
+ *      listed businesses).
+ *   3. Rank by `rating × log(review_count + 1)` — treats a 5★ shop
+ *      with 5 reviews as weaker than a 4.5★ shop with 200 reviews.
+ *   4. Place Details per top-N to fetch `website` (legacy textsearch
+ *      doesn't include it). Done for the top N only so we don't pay
+ *      Details fees on low-ranked dross.
+ *   5. Filter: must have website, website not in UNSCRAPABLE, domain
+ *      not equal to workspace's own domain.
+ *   6. Return up to targetCount candidates in rank order.
+ *
+ * Fails soft: returns `[]` if GOOGLE_MAPS_API_KEY is missing or every
+ * town query errors, so callers can fall back to the SERP path without
+ * extra branching.
+ */
+export async function searchCompetitorsViaPlaces(
+  businessType: string,
+  towns: string[],
+  targetCount: number,
+  workspaceDomain: string | null,
+): Promise<SearchCandidate[]> {
+  const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY')?.trim();
+  if (!apiKey) {
+    console.warn('[searchCompetitorsViaPlaces] GOOGLE_MAPS_API_KEY missing — skipping Places path');
+    return [];
+  }
+  const trimmedBusinessType = businessType?.trim();
+  const cleanTowns = (towns ?? [])
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0);
+  if (!trimmedBusinessType || cleanTowns.length === 0) {
+    return [];
+  }
+
+  type Scored = {
+    place: Record<string, unknown>;
+    score: number;
+    firstTown: string;
+  };
+
+  // Three query variants per town widens the candidate pool — single
+  // "X in Y, UK" query hits Google's ~20-result cap per call, which
+  // for a 20-town fan-out was still leaving us short at ~10 final
+  // candidates. `near` and `best` catch businesses that rank
+  // differently on the same town-level intent but index Places
+  // tiebreak order differently. Dedupe by place_id across all three
+  // variants collapses duplicates.
+  const QUERY_VARIANTS: ReadonlyArray<(service: string, town: string) => string> = [
+    (service, town) => `${service} in ${town}, UK`,
+    (service, town) => `${service} near ${town}, UK`,
+    (service, town) => `best ${service} ${town} UK`,
+  ];
+
+  const townVariantPairs = cleanTowns.flatMap((town) =>
+    QUERY_VARIANTS.map((buildQuery) => ({ town, query: buildQuery(trimmedBusinessType, town) })),
+  );
+
+  // Per-(town, variant) text search, parallel. Each call contributes up
+  // to ~20 raw Places results. Errors in one call don't fail the run.
+  const perCall = await Promise.all(
+    townVariantPairs.map(async ({ town, query }) => {
+      const url = new URL('https://maps.googleapis.com/maps/api/place/textsearch/json');
+      url.searchParams.set('query', query);
+      url.searchParams.set('region', 'uk');
+      url.searchParams.set('key', apiKey);
+      try {
+        const response = await fetch(url.toString());
+        const data = (await response.json()) as {
+          status?: string;
+          results?: unknown[];
+          error_message?: string;
+        };
+        if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+          console.warn(
+            '[searchCompetitorsViaPlaces] textsearch failed for query',
+            query,
+            data.status,
+            data.error_message,
+          );
+          return { town, results: [] as Array<Record<string, unknown>> };
+        }
+        const results = Array.isArray(data.results)
+          ? (data.results as Array<Record<string, unknown>>)
+          : [];
+        return { town, results };
+      } catch (error) {
+        console.warn('[searchCompetitorsViaPlaces] textsearch threw for query', query, error);
+        return { town, results: [] as Array<Record<string, unknown>> };
+      }
+    }),
+  );
+
+  // Dedupe by place_id across towns+variants. When the same business
+  // shows up for multiple towns/variants we keep the first occurrence
+  // (which will be the nearest town + "in" variant because
+  // townVariantPairs is built town-outer, variant-inner with towns in
+  // primary-first, nearest-first order).
+  const byPlaceId = new Map<string, Scored>();
+  for (const { town, results } of perCall) {
+    for (const place of results) {
+      const placeId = typeof place.place_id === 'string' ? place.place_id : null;
+      if (!placeId) continue;
+      if (byPlaceId.has(placeId)) continue;
+      const rating = typeof place.rating === 'number' ? place.rating : 0;
+      const reviews = typeof place.user_ratings_total === 'number' ? place.user_ratings_total : 0;
+      byPlaceId.set(placeId, {
+        place,
+        score: rating * Math.log(reviews + 1),
+        firstTown: town,
+      });
+    }
+  }
+
+  // Rank by (rating × log(reviews + 1)). Keep roughly 2× targetCount so
+  // Details lookups that return no website still leave us a pool big
+  // enough to hit targetCount.
+  const ranked = Array.from(byPlaceId.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(targetCount * 2, 15));
+
+  const detailsUrl = 'https://maps.googleapis.com/maps/api/place/details/json';
+  const withWebsites = await Promise.all(
+    ranked.map(async (entry) => {
+      const placeId = typeof entry.place.place_id === 'string' ? entry.place.place_id : null;
+      if (!placeId) return null;
+      try {
+        const u = new URL(detailsUrl);
+        u.searchParams.set('place_id', placeId);
+        u.searchParams.set('fields', 'website,name,formatted_address');
+        u.searchParams.set('key', apiKey);
+        const resp = await fetch(u.toString());
+        const data = (await resp.json()) as { status?: string; result?: Record<string, unknown> };
+        if (data.status !== 'OK' || !data.result) return null;
+        const website = typeof data.result.website === 'string' ? data.result.website : null;
+        if (!website) return null;
+        return { ...entry, website };
+      } catch (error) {
+        console.warn('[searchCompetitorsViaPlaces] details fetch failed', placeId, error);
+        return null;
+      }
+    }),
+  );
+
+  const candidates: SearchCandidate[] = [];
+  const seenDomains = new Set<string>();
+  for (const entry of withWebsites) {
+    if (!entry) continue;
+    if (isKnownUnscrapableUrl(entry.website)) continue;
+    const domain = domainFromUrl(entry.website);
+    if (!domain) continue;
+    if (workspaceDomain && domain === workspaceDomain) continue;
+    if (seenDomains.has(domain)) continue;
+    seenDomains.add(domain);
+
+    const name = typeof entry.place.name === 'string' ? entry.place.name : domain;
+    const address =
+      typeof entry.place.formatted_address === 'string' ? entry.place.formatted_address : '';
+    const rating = typeof entry.place.rating === 'number' ? entry.place.rating : 0;
+    const reviews =
+      typeof entry.place.user_ratings_total === 'number' ? entry.place.user_ratings_total : 0;
+
+    candidates.push({
+      url: entry.website,
+      domain,
+      title: name,
+      snippet: `${rating}★ (${reviews} reviews) — ${address}`,
+      discovery_query: `places:${trimmedBusinessType} in ${entry.firstTown}`,
+    });
+    if (candidates.length >= targetCount) break;
+  }
+
+  return candidates;
+}
+
 // crawlWebsitePagesDirect (fetch + stripHtmlToText) intentionally removed:
 // it was a cheerio-equivalent raw-HTML path that silently failed on
 // JS-rendered / Cloudflare-protected sites. crawlWebsitePages now routes
@@ -415,7 +633,7 @@ export async function searchCompetitorCandidates(
     searchQueries.map(async (query) => {
       try {
         const items = await runApifyActor<Record<string, unknown>>(APIFY_SEARCH_ACTOR, {
-          queries: query,
+          queries: `${query} ${SEARCH_EXCLUSION_OPERATORS}`,
           maxPagesPerQuery: 1,
           resultsPerPage: Math.min(Math.max(targetCount, 10), 25),
           mobileResults: false,
@@ -765,7 +983,14 @@ export async function extractWebsiteFaqsInChunks(
     candidateCount: number;
     totalCandidateCount: number;
   }) => Promise<void> | void,
+  options?: { finalLimit?: number },
 ): Promise<{ faqs: FaqCandidate[]; batchCount: number }> {
+  // `finalLimit` caps the number of candidates returned after dedupe.
+  // Default 15 matches the original own-site single-site limit. Competitor
+  // runs pass a higher cap (e.g. 60) because each competitor site
+  // independently contributes 6–15 candidates and the finalizer, not this
+  // slice, is the choke-point for the final user-facing FAQ set.
+  const finalLimit = options?.finalLimit ?? 15;
   const chunks = chunkPagesForExtraction(pages);
   const structuredFaqs = dedupeFaqCandidates(
     pages.flatMap((page) => page.structured_faqs || []).slice(0, 24),
@@ -774,7 +999,7 @@ export async function extractWebsiteFaqsInChunks(
 
   if (structuredFaqs.length >= 6) {
     return {
-      faqs: structuredFaqs.slice(0, 15),
+      faqs: structuredFaqs.slice(0, finalLimit),
       batchCount: 0,
     };
   }
@@ -843,7 +1068,7 @@ export async function extractWebsiteFaqsInChunks(
   }
 
   return {
-    faqs: dedupeFaqCandidates(collected).slice(0, 15),
+    faqs: dedupeFaqCandidates(collected).slice(0, finalLimit),
     batchCount: chunks.length,
   };
 }

@@ -49,8 +49,17 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
       },
       error: null,
     });
-    // Default: trigger invoke succeeds
-    mockInvoke.mockResolvedValue({ data: { success: true }, error: null });
+    // Default: trigger invoke succeeds. The `get-nearby-towns` edge
+    // function (added 2026-04-17 to curate Places-derived town lists)
+    // is explicitly returned as empty so tests fall through to the RPC
+    // path, which is what these test fixtures were originally written
+    // against. Individual tests can override for Places-path coverage.
+    mockInvoke.mockImplementation(async (name: string) => {
+      if (name === 'get-nearby-towns') {
+        return { data: { towns: [] }, error: null };
+      }
+      return { data: { success: true }, error: null };
+    });
     // Default: expand_search_queries RPC returns the enabled terms unchanged
     // (radius=0 when the service_area has no parenthetical miles value).
     mockRpc.mockResolvedValue({
@@ -98,7 +107,8 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
         body: {
           workspace_id: 'test-workspace-id',
           search_queries: expect.any(Array),
-          target_count: 15,
+          towns_used: expect.any(Array),
+          target_count: 25,
           trigger_source: 'onboarding_search_terms',
         },
       });
@@ -139,7 +149,8 @@ describe('SearchTermsStep — early competitor discovery trigger', () => {
         body: {
           workspace_id: 'test-workspace-id',
           search_queries: expect.any(Array),
-          target_count: 15,
+          towns_used: expect.any(Array),
+          target_count: 25,
           trigger_source: 'onboarding_search_terms',
         },
       });
@@ -252,8 +263,8 @@ describe('SearchTermsStep — radius expansion', () => {
           p_primary_town: 'Luton',
           p_radius_miles: 20,
           p_terms_per_nearby_town: 3,
-          p_max_queries: 30,
-          p_max_nearby_towns: 6,
+          p_max_queries: 120,
+          p_max_nearby_towns: 20,
         }),
       );
     });
@@ -338,7 +349,8 @@ describe('SearchTermsStep — radius expansion', () => {
       });
     });
 
-    const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
+    const invokeBody = mockInvoke.mock.calls.find((c) => c[0] === 'start-onboarding-discovery')![1]
+      .body as { search_queries: string[] };
     expect(invokeBody.search_queries).not.toContain('window cleaning dunstable');
   });
 
@@ -379,7 +391,8 @@ describe('SearchTermsStep — radius expansion', () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalled();
     });
-    const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
+    const invokeBody = mockInvoke.mock.calls.find((c) => c[0] === 'start-onboarding-discovery')![1]
+      .body as { search_queries: string[] };
     expect(invokeBody.search_queries).toContain('window cleaning luton');
   });
 
@@ -415,7 +428,8 @@ describe('SearchTermsStep — radius expansion', () => {
         }),
       });
     });
-    const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
+    const invokeBody = mockInvoke.mock.calls.find((c) => c[0] === 'start-onboarding-discovery')![1]
+      .body as { search_queries: string[] };
     expect(invokeBody.search_queries.length).toBeGreaterThan(0);
   });
 
@@ -458,7 +472,8 @@ describe('SearchTermsStep — radius expansion', () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalled();
     });
-    const invokeBody = mockInvoke.mock.calls[0][1].body as { search_queries: string[] };
+    const invokeBody = mockInvoke.mock.calls.find((c) => c[0] === 'start-onboarding-discovery')![1]
+      .body as { search_queries: string[] };
     expect(invokeBody.search_queries).toContain('plumber hemel hempstead');
     expect(invokeBody.search_queries).not.toContain('plumber hemel');
     expect(invokeBody.search_queries).toContain('plumber luton');

@@ -13,6 +13,7 @@ import {
 import {
   ONBOARDING_DISCOVERY_QUEUE,
   failRun,
+  normalizePrimaryServiceLocation,
   recordRunArtifact,
   resolveStepModel,
   succeedRun,
@@ -31,6 +32,7 @@ import {
   buildHeuristicCompetitorFallback,
   qualifyCompetitorCandidates,
   searchCompetitorCandidates,
+  searchCompetitorsViaPlaces,
   type QualifiedCandidate,
   type RejectedCandidate,
   type SearchCandidate,
@@ -136,9 +138,91 @@ async function processJob(
     });
 
     try {
-      const candidates = await withTransientRetry(() =>
-        searchCompetitorCandidates(searchQueries, targetCount),
-      );
+      // Places-first discovery. We load business_context here so the
+      // Places call has the business_type + primary_town it needs; it
+      // was previously only fetched at qualify time. If Places returns
+      // enough real-business candidates we skip SERP + Claude
+      // qualification entirely (Places already filters to rated,
+      // operating local businesses with websites — that IS the
+      // qualification). SERP remains the fallback for Places misses or
+      // workspaces without a GOOGLE_MAPS_API_KEY configured.
+      const { data: businessContext } = await supabase
+        .from('business_context')
+        .select('business_type, service_area, website_url')
+        .eq('workspace_id', run.workspace_id)
+        .maybeSingle();
+
+      const businessType = businessContext?.business_type?.trim() ?? '';
+      const primaryTown = normalizePrimaryServiceLocation(businessContext?.service_area ?? '');
+      const workspaceDomain = (() => {
+        const website = businessContext?.website_url;
+        if (typeof website !== 'string' || !website.trim()) return null;
+        try {
+          const normalized = website.startsWith('http') ? website : `https://${website}`;
+          return new URL(normalized).hostname.replace(/^www\./i, '');
+        } catch {
+          return null;
+        }
+      })();
+
+      // Pull the user-retained town list from input_snapshot (populated by
+      // start-onboarding-discovery from the client's chip row). Places
+      // fans out across every town so the 20-mile radius UX actually
+      // yields coverage instead of the single-town ~10 cap. Fallback to
+      // [primaryTown] if the snapshot was written by an older client.
+      const snapshotTownsRaw = run.input_snapshot?.towns_used;
+      const snapshotTowns: string[] = Array.isArray(snapshotTownsRaw)
+        ? snapshotTownsRaw
+            .map((t) => (typeof t === 'string' ? t.trim() : ''))
+            .filter((t): t is string => t.length > 0)
+        : [];
+      const placesTowns =
+        snapshotTowns.length > 0 ? snapshotTowns : primaryTown ? [primaryTown] : [];
+
+      let candidates: SearchCandidate[] = [];
+      let discoverySource = 'serp';
+
+      if (businessType && placesTowns.length > 0) {
+        try {
+          const placesCandidates = await withTransientRetry(() =>
+            searchCompetitorsViaPlaces(businessType, placesTowns, targetCount, workspaceDomain),
+          );
+          // Threshold of 5 keeps Places on as primary for any workspace
+          // where the API responds at all. Below that we fall back to SERP
+          // rather than ship a paltry candidate set.
+          if (placesCandidates.length >= 5) {
+            candidates = placesCandidates;
+            discoverySource = 'places';
+            console.info('[discover:acquire] Places-first path', {
+              workspace_id: run.workspace_id,
+              candidate_count: candidates.length,
+              business_type: businessType,
+              town_count: placesTowns.length,
+              towns: placesTowns,
+            });
+          } else {
+            console.warn(
+              '[discover:acquire] Places returned too few results, falling back to SERP',
+              {
+                places_count: placesCandidates.length,
+                threshold: 5,
+                town_count: placesTowns.length,
+              },
+            );
+          }
+        } catch (placesError) {
+          console.warn(
+            '[discover:acquire] Places discovery threw, falling back to SERP',
+            placesError,
+          );
+        }
+      }
+
+      if (candidates.length === 0) {
+        candidates = await withTransientRetry(() =>
+          searchCompetitorCandidates(searchQueries, targetCount),
+        );
+      }
 
       await recordRunArtifact(supabase, {
         runId: run.id,
@@ -167,7 +251,10 @@ async function processJob(
         );
       }
 
-      await succeedStep(supabase, step.id, { candidate_count: candidates.length });
+      await succeedStep(supabase, step.id, {
+        candidate_count: candidates.length,
+        discovery_source: discoverySource,
+      });
       await queueSend(
         supabase,
         QUEUE_NAME,
@@ -217,7 +304,7 @@ async function processJob(
         .maybeSingle();
       const { data: businessContext } = await supabase
         .from('business_context')
-        .select('industry, service_area, business_type, website_url')
+        .select('service_area, business_type, website_url')
         .eq('workspace_id', run.workspace_id)
         .maybeSingle();
 
@@ -342,7 +429,7 @@ async function processJob(
           .maybeSingle();
         const { data: businessContext } = await supabase
           .from('business_context')
-          .select('industry, service_area, business_type, website_url')
+          .select('service_area, business_type, website_url')
           .eq('workspace_id', run.workspace_id)
           .maybeSingle();
 
@@ -379,7 +466,27 @@ async function processJob(
         throw new Error(`Failed to clear prior competitor sites: ${deleteSitesError.message}`);
       }
 
-      const approvedRows = qualified.approved.map((candidate) => ({
+      // Dedupe approved candidates on domain before insert. Claude (and the
+      // heuristic fallback) can approve the same domain from multiple
+      // discovery queries — e.g. `fantasticservices.com` turning up for both
+      // `best rated window cleaners luton` and `gutter cleaning luton`. Each
+      // duplicate would otherwise burn its own Apify scrape slot and pollute
+      // downstream FAQ dedup. Keep the highest-relevance entry per domain.
+      const approvedByDomain = new Map<string, QualifiedCandidate>();
+      for (const candidate of qualified.approved) {
+        const existing = approvedByDomain.get(candidate.domain);
+        if (!existing || candidate.relevance_score > existing.relevance_score) {
+          approvedByDomain.set(candidate.domain, candidate);
+        }
+      }
+      const dedupedApproved = Array.from(approvedByDomain.values());
+      if (dedupedApproved.length < qualified.approved.length) {
+        console.warn(
+          `[discover:persist] Dropped ${qualified.approved.length - dedupedApproved.length} duplicate approved rows by domain`,
+        );
+      }
+
+      const approvedRows = dedupedApproved.map((candidate) => ({
         job_id: sourceJobId,
         workspace_id: run.workspace_id,
         business_name: candidate.business_name || candidate.domain,
